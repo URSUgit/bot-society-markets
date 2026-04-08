@@ -49,14 +49,14 @@ The current implementation uses a Python-first stack so the product is runnable 
 Included today:
 
 - a FastAPI application with structured product endpoints
-- SQLite-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, user workspace state, and alert deliveries
+- SQLAlchemy-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, user state, sessions, notification channels, and alert deliveries
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
 - demo ingestion providers plus optional CoinGecko market mode and RSS news signal mode with safe fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
-- a working dashboard with follows, watchlist items, alert rules, alert inbox state, provider status, and pipeline controls
+- a working dashboard with follows, watchlist items, alert rules, alert inbox state, provider status, pipeline controls, and authenticated workspace support
 - operational job entrypoints for bootstrap, provider-status, run-cycle, and worker execution
-- API tests covering health, dashboard data, user workspace mutations, alert read flows, validation, and pipeline-cycle execution
+- API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
 - Docker assets for reproducible container deployment
 
@@ -72,6 +72,10 @@ Key endpoints include:
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
 - `GET /api/signals`
+- `GET /api/auth/session`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 - `GET /api/me`
 - `GET /api/me/alerts`
 - `POST /api/me/alerts/{alert_id}/read`
@@ -184,6 +188,36 @@ Local Docker command:
 docker build -t bot-society-markets .
 docker run --rm -p 8000:8000 bot-society-markets
 ```
+
+## Docker Compose
+
+This repo now includes [docker-compose.yml](C:\Users\ionut\OneDrive\Documents\New project\docker-compose.yml) for a professional local stack with Postgres.
+
+Start API + Postgres on the default Docker port `8010`:
+
+```powershell
+.\run-docker.ps1
+```
+
+Start API + Postgres + worker:
+
+```powershell
+.\run-docker.ps1 -WithWorker
+```
+
+Choose a different host port if you want:
+
+```powershell
+.\run-docker.ps1 -Port 8020
+```
+
+Stop the stack:
+
+```powershell
+.\stop-docker.ps1
+```
+
+The dashboard will be available at `http://127.0.0.1:8010/dashboard` by default.
 
 ## Notes
 

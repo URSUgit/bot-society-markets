@@ -6,12 +6,12 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 
 - `app/main.py` - FastAPI application and route registration
 - `app/config.py` - runtime settings, provider modes, and worker configuration
-- `app/database.py` - SQLite schema and connection management
+- `app/database.py` - SQLAlchemy schema, migrations for legacy SQLite data, and database connection management
 - `app/repository.py` - persistence layer for bots, market data, signals, predictions, pipeline runs, user state, and alert deliveries
 - `app/providers.py` - demo providers, optional CoinGecko market adapter, and optional RSS signal ingestion
 - `app/orchestration.py` - bot prediction generation logic
 - `app/scoring.py` - prediction scoring engine
-- `app/services.py` - application service layer, inbox delivery, and dashboard aggregation
+- `app/services.py` - application service layer, auth/session workflows, notification delivery, and dashboard aggregation
 - `app/worker.py` - scheduled pipeline worker loop
 - `app/jobs.py` - operational CLI entrypoints
 - `app/static/` - landing page and dashboard served by the backend
@@ -46,7 +46,7 @@ The current build includes:
 - seeded historical market snapshots for `BTC`, `ETH`, and `SOL`
 - seeded public signal events across social, news, and macro channels
 - scored historical predictions for the launch bot roster
-- persisted demo user state for follows, watchlist items, alert rules, and in-app alert deliveries
+- persisted user state for follows, watchlist items, alert rules, notification channels, in-app alerts, and authenticated sessions
 - a repeatable pipeline cycle that ingests fresh batches, creates new pending predictions, and delivers alert events
 - optional live market data through CoinGecko configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
@@ -116,8 +116,19 @@ docker build -t bot-society-markets .
 docker run --rm -p 8000:8000 bot-society-markets
 ```
 
+## Docker Compose
+
+```powershell
+.\run-docker.ps1
+.\run-docker.ps1 -WithWorker
+.\run-docker.ps1 -Port 8020
+.\stop-docker.ps1
+```
+
+The Compose stack uses Postgres, sets `BSM_DATABASE_URL` automatically, and defaults the host port to `8010` so it can coexist with a local dev server on `8000`.
+
 ## Next Targets
 
-- add authenticated user accounts and notification channels
-- move from SQLite to managed Postgres when multi-user workflows begin
+- add Alembic migrations for managed Postgres environments
+- add delivery retries and notification observability
 - add provider-level provenance scoring and source quality controls

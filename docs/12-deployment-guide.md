@@ -2,12 +2,45 @@
 
 ## Local One-Click Launch
 
-Use the Windows launcher when you want the fastest local experience:
+Use the Windows launcher when you want the fastest local Python experience:
 
 - `launch-dashboard.bat`
 - `launch-dashboard.ps1`
 
 The launcher will create `.venv`, install dependencies from `requirements.txt`, start the API server, wait for `/health`, and open `/dashboard` in your browser.
+
+## Local Docker Stack
+
+The repository now includes `docker-compose.yml` plus Windows helpers:
+
+- `run-docker.ps1`
+- `run-docker.bat`
+- `stop-docker.ps1`
+- `stop-docker.bat`
+
+Start API + Postgres on host port `8010`:
+
+```powershell
+.\run-docker.ps1
+```
+
+Start API + Postgres + worker:
+
+```powershell
+.\run-docker.ps1 -WithWorker
+```
+
+Choose a different host port if needed:
+
+```powershell
+.\run-docker.ps1 -Port 8020
+```
+
+Stop the stack:
+
+```powershell
+.\stop-docker.ps1
+```
 
 ## Hosted Deployment Choice
 
@@ -45,7 +78,7 @@ Included deployment assets:
 
 ## Important Runtime Note
 
-The current hosted setup is appropriate for demos and previews. It uses SQLite in ephemeral storage, so data can reset when the instance restarts or is replaced.
+The current Render setup is appropriate for demos and previews. It still uses SQLite in ephemeral storage, so data can reset when the instance restarts or is replaced. For a more production-like local environment, use Docker Compose with Postgres.
 
 ## Container Path
 
@@ -62,7 +95,7 @@ This uses the same FastAPI entrypoint as the Render blueprint.
 
 For a durable hosted environment, the next production move should be:
 
-1. move persistence to managed Postgres
+1. move the hosted environment to managed Postgres
 2. split API and worker into separate services
-3. add email/webhook notification delivery
-4. add authenticated user accounts
+3. add delivery retries and notification observability
+4. add provider provenance and source-quality controls
