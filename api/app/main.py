@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
@@ -177,6 +178,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/dashboard")
     def dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
+
+    @app.get("/dashboard/")
+    @app.get("/dachboard")
+    @app.get("/dashbord")
+    @app.get("/app")
+    def dashboard_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     return app
 
