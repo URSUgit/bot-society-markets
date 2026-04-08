@@ -4,6 +4,20 @@ const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: 
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
 
+function qualityLabel(score) {
+  const numeric = Number(score);
+  if (numeric >= 0.82) {
+    return "Institutional-grade";
+  }
+  if (numeric >= 0.72) {
+    return "High-conviction";
+  }
+  if (numeric >= 0.62) {
+    return "Monitor";
+  }
+  return "Low-conviction";
+}
+
 let selectedBotSlug = null;
 let latestSnapshot = null;
 
@@ -157,8 +171,9 @@ function renderLanding(snapshot) {
         <div>
           <strong>${signal.asset} · ${signal.title}</strong>
           <p>${signal.summary}</p>
+          <p class="panel-note">${qualityLabel(signal.source_quality_score)} · quality ${fmtPercent(signal.source_quality_score)}</p>
         </div>
-        <span>${signal.source} · ${fmtPercent(signal.relevance)}</span>
+        <span>${signal.source} · ${fmtPercent(signal.relevance)} · freshness ${fmtPercent(signal.freshness_score)}</span>
       </li>
     `).join("");
   }
@@ -306,8 +321,9 @@ function renderSignals(signals, targetId = "signal-list") {
         <strong>${signal.asset} · ${signal.title}</strong>
         <p>${signal.summary}</p>
         <p class="panel-note">${signal.provider_name}${signal.author_handle ? ` · ${signal.author_handle}` : ""}</p>
+        <p class="panel-note">${qualityLabel(signal.source_quality_score)} · trust ${fmtPercent(signal.provider_trust_score)} · freshness ${fmtPercent(signal.freshness_score)}</p>
       </div>
-      <span>${signal.source_type} · ${signal.source} · ${fmtPercent(signal.relevance)}${signal.engagement_score !== null ? ` · engagement ${fmtPercent(signal.engagement_score)}` : ""}</span>
+      <span>${signal.source_type} · ${signal.source} · quality ${fmtPercent(signal.source_quality_score)}${signal.engagement_score !== null ? ` · engagement ${fmtPercent(signal.engagement_score)}` : ""}</span>
     </li>
   `).join("");
 }

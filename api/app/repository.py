@@ -21,6 +21,7 @@ from .database import (
     users_table,
     watchlist_items_table,
 )
+from .providers import derive_signal_quality
 
 
 class BotSocietyRepository:
@@ -83,7 +84,12 @@ class BotSocietyRepository:
             connection.execute(stmt)
 
     def upsert_signals(self, signals: Iterable[dict[str, Any]]) -> int:
-        signal_list = list(signals)
+        signal_list = []
+        for signal in signals:
+            row = self._normalize_signal_row(signal)
+            for key, value in derive_signal_quality(row).items():
+                row.setdefault(key, value)
+            signal_list.append(row)
         if not signal_list:
             return 0
         stmt = self.database.upsert_insert(signals_table).values(signal_list)
@@ -91,6 +97,47 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
+
+    def refresh_signal_quality_scores(self) -> int:
+        stmt = select(signals_table)
+        refreshed = 0
+        with self.database.connect() as connection:
+            rows = self._rows(connection.execute(stmt))
+            for row in rows:
+                normalized = self._normalize_signal_row(row)
+                derived = derive_signal_quality(normalized)
+                updates = {
+                    **{
+                        field: normalized[field]
+                        for field in ("provider_name", "source_type")
+                        if normalized.get(field) != row.get(field)
+                    },
+                    **{
+                        key: value
+                        for key, value in derived.items()
+                        if abs(float(row.get(key) or 0.0) - value) >= 1e-9
+                    },
+                }
+                if not updates:
+                    continue
+                connection.execute(
+                    update(signals_table)
+                    .where(signals_table.c.id == row["id"])
+                    .values(**updates)
+                )
+                refreshed += 1
+        return refreshed
+
+    @staticmethod
+    def _normalize_signal_row(signal: dict[str, Any]) -> dict[str, Any]:
+        row = dict(signal)
+        row.setdefault("provider_name", "seed-provider")
+        channel = str(row.get("channel") or "news")
+        source_type = str(row.get("source_type") or channel)
+        if channel in {"social", "news", "macro"} and source_type != channel:
+            source_type = channel
+        row["source_type"] = source_type
+        return row
 
     def insert_predictions(self, predictions: Iterable[dict[str, Any]]) -> int:
         prediction_list = list(predictions)
@@ -147,7 +194,11 @@ class BotSocietyRepository:
         stmt = select(signals_table)
         if asset:
             stmt = stmt.where(signals_table.c.asset == asset)
-        stmt = stmt.order_by(desc(signals_table.c.observed_at), desc(signals_table.c.id)).limit(limit)
+        stmt = stmt.order_by(
+            desc(signals_table.c.observed_at),
+            desc(signals_table.c.source_quality_score),
+            desc(signals_table.c.id),
+        ).limit(limit)
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 

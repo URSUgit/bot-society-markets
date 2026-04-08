@@ -94,6 +94,52 @@ class AssetAwareSignalProvider(SignalProviderBase):
         return round(_clamp(0.58 + narrative_strength + market_strength + engagement_bonus, 0.45, 0.96), 6)
 
 
+PROVIDER_TRUST_BASE = {
+    "seed-provider": 0.82,
+    "demo-signal-provider": 0.72,
+    "rss-news-provider": 0.78,
+    "reddit-oauth-provider": 0.74,
+}
+
+SOURCE_TYPE_TRUST_ADJUSTMENT = {
+    "macro": 0.08,
+    "news": 0.05,
+    "social": 0.0,
+}
+
+
+def derive_signal_quality(signal: dict, *, now: datetime | None = None) -> dict[str, float]:
+    now = now or datetime.now(timezone.utc)
+    observed_at = signal.get("observed_at")
+    provider_name = str(signal.get("provider_name") or "seed-provider")
+    source_type = str(signal.get("source_type") or signal.get("channel") or "news")
+    relevance = float(signal.get("relevance") or 0.55)
+    engagement = float(signal.get("engagement_score") or 0.0)
+
+    base_trust = PROVIDER_TRUST_BASE.get(provider_name, 0.68)
+    provider_trust_score = _clamp(base_trust + SOURCE_TYPE_TRUST_ADJUSTMENT.get(source_type, 0.0), 0.45, 0.96)
+
+    freshness_score = 0.7
+    if observed_at:
+        try:
+            age_hours = max(0.0, (now - parse_timestamp(str(observed_at))).total_seconds() / 3600)
+            freshness_score = _clamp(math.exp(-age_hours / 36), 0.18, 1.0)
+        except ValueError:
+            freshness_score = 0.55
+
+    engagement_component = _clamp(engagement, 0.0, 1.0)
+    source_quality_score = _clamp(
+        (provider_trust_score * 0.48) + (freshness_score * 0.24) + (relevance * 0.18) + (engagement_component * 0.10),
+        0.0,
+        1.0,
+    )
+    return {
+        "provider_trust_score": round(provider_trust_score, 6),
+        "freshness_score": round(freshness_score, 6),
+        "source_quality_score": round(source_quality_score, 6),
+    }
+
+
 class DemoMarketProvider(MarketProviderBase):
     source_name = "demo-market-provider"
 

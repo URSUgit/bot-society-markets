@@ -59,6 +59,7 @@ The current build includes:
 - optional live market data through CoinGecko configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
+- signal-level provenance scoring for provider trust, freshness, and composite source quality
 - a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
 - a worker loop for scheduled cycle execution
 - Alembic-backed schema upgrade flow for Postgres-oriented environments

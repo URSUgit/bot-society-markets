@@ -48,6 +48,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
         assert payload["user_profile"]["is_demo_user"] is True
+        assert payload["recent_signals"][0]["source_quality_score"] >= 0
+        assert payload["recent_signals"][0]["provider_trust_score"] >= 0
+        assert payload["recent_signals"][0]["freshness_score"] >= 0
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -215,6 +218,21 @@ def test_reddit_provider_readiness_and_fallback() -> None:
         assert cycle_response.status_code == 200
         cycle_payload = cycle_response.json()
         assert cycle_payload["provider_status"]["signal_fallback_active"] is True
+
+
+def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
+    with build_client() as client:
+        response = client.get("/api/signals", params={"limit": 12})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload
+        first_signal = payload[0]
+        assert 0 <= first_signal["provider_trust_score"] <= 1
+        assert 0 <= first_signal["freshness_score"] <= 1
+        assert 0 <= first_signal["source_quality_score"] <= 1
+        assert first_signal["source_quality_score"] >= 0.6
+        social_signal = next(signal for signal in payload if signal["channel"] == "social")
+        assert social_signal["source_type"] == "social"
 
 
 def test_notification_retry_flow_and_health() -> None:

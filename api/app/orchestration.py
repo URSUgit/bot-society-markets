@@ -54,7 +54,15 @@ class PredictionOrchestrator:
         filtered = [signal for signal in signals if channel is None or signal["channel"] == channel]
         if not filtered:
             return None
-        return max(filtered, key=lambda signal: signal["relevance"] * (abs(signal["sentiment"]) + 0.1))
+        return max(filtered, key=PredictionOrchestrator._signal_strength)
+
+    @staticmethod
+    def _signal_strength(signal: dict) -> float:
+        quality = float(signal.get("source_quality_score") or 0.7)
+        relevance = float(signal.get("relevance") or 0.0)
+        sentiment = abs(float(signal.get("sentiment") or 0.0)) + 0.1
+        freshness = float(signal.get("freshness_score") or 0.7)
+        return relevance * sentiment * (0.55 + (quality * 0.3) + (freshness * 0.15))
 
     def _social_momentum(self, bot: dict, snapshots: dict[str, dict], signals_by_asset: dict[str, list[dict]], published_at: str) -> dict | None:
         ranked_assets = []
@@ -62,11 +70,28 @@ class PredictionOrchestrator:
             social = self._top_signal(signals, "social")
             snapshot = snapshots.get(asset)
             if social and snapshot:
-                ranked_assets.append((asset, social["sentiment"] * social["relevance"] + snapshot["trend_score"], social, snapshot))
+                ranked_assets.append(
+                    (
+                        asset,
+                        (social["sentiment"] * social["relevance"] * (0.7 + float(social.get("source_quality_score") or 0.7)))
+                        + snapshot["trend_score"],
+                        social,
+                        snapshot,
+                    )
+                )
         if not ranked_assets:
             return None
         asset, _, signal, snapshot = max(ranked_assets, key=lambda item: item[1])
-        confidence = min(0.82, max(0.58, 0.56 + signal["relevance"] * 0.18 + max(snapshot["trend_score"], 0) * 0.14))
+        confidence = min(
+            0.84,
+            max(
+                0.58,
+                0.54
+                + signal["relevance"] * 0.16
+                + float(signal.get("source_quality_score") or 0.7) * 0.08
+                + max(snapshot["trend_score"], 0) * 0.14,
+            ),
+        )
         direction = "bullish" if signal["sentiment"] >= 0 else "bearish"
         return self._base_prediction(
             bot_slug=bot["slug"],
@@ -96,7 +121,16 @@ class PredictionOrchestrator:
             return None
         asset, _, signal, snapshot = max(candidates, key=lambda item: item[1])
         direction = "bullish" if signal["sentiment"] >= -0.05 else "bearish"
-        confidence = min(0.78, max(0.56, 0.55 + max(snapshot["trend_score"], 0) * 0.18 + signal["relevance"] * 0.1))
+        confidence = min(
+            0.8,
+            max(
+                0.56,
+                0.54
+                + max(snapshot["trend_score"], 0) * 0.17
+                + signal["relevance"] * 0.08
+                + float(signal.get("provider_trust_score") or 0.7) * 0.06,
+            ),
+        )
         return self._base_prediction(
             bot_slug=bot["slug"],
             asset=asset,
@@ -117,7 +151,17 @@ class PredictionOrchestrator:
             return None
         asset, snapshot = max(snapshots.items(), key=lambda item: item[1]["change_24h"] + item[1]["trend_score"])
         signal = self._top_signal(signals_by_asset.get(asset, []))
-        confidence = min(0.76, max(0.54, 0.52 + max(snapshot["change_24h"], 0) * 4 + snapshot["trend_score"] * 0.14))
+        source_quality = float(signal.get("source_quality_score") or 0.65) if signal else 0.0
+        confidence = min(
+            0.78,
+            max(
+                0.54,
+                0.51
+                + max(snapshot["change_24h"], 0) * 4
+                + snapshot["trend_score"] * 0.14
+                + source_quality * 0.05,
+            ),
+        )
         return self._base_prediction(
             bot_slug=bot["slug"],
             asset=asset,
@@ -144,7 +188,16 @@ class PredictionOrchestrator:
             return None
         asset, _, signal, snapshot = max(extremes, key=lambda item: item[1])
         direction = "bearish" if signal["sentiment"] >= 0 else "bullish"
-        confidence = min(0.73, max(0.53, 0.51 + abs(signal["sentiment"]) * 0.2 + snapshot["volatility"] * 1.3))
+        confidence = min(
+            0.75,
+            max(
+                0.53,
+                0.5
+                + abs(signal["sentiment"]) * 0.18
+                + snapshot["volatility"] * 1.25
+                + float(signal.get("source_quality_score") or 0.7) * 0.05,
+            ),
+        )
         return self._base_prediction(
             bot_slug=bot["slug"],
             asset=asset,
@@ -165,7 +218,7 @@ class PredictionOrchestrator:
             return None
         asset, snapshot = max(snapshots.items(), key=lambda item: item[1]["volatility"])
         direction = "bearish" if snapshot["volatility"] > 0.055 else "neutral"
-        confidence = 0.58 if direction == "bearish" else 0.55
+        confidence = 0.6 if direction == "bearish" else 0.56
         signal = self._top_signal(signals_by_asset.get(asset, []))
         return self._base_prediction(
             bot_slug=bot["slug"],
@@ -193,7 +246,16 @@ class PredictionOrchestrator:
             return None
         asset, _, signal, snapshot = max(ranked_news, key=lambda item: item[1])
         direction = "bullish" if signal["sentiment"] >= 0 else "bearish"
-        confidence = min(0.74, max(0.55, 0.53 + signal["relevance"] * 0.16 + abs(signal["sentiment"]) * 0.12))
+        confidence = min(
+            0.76,
+            max(
+                0.55,
+                0.52
+                + signal["relevance"] * 0.14
+                + abs(signal["sentiment"]) * 0.1
+                + float(signal.get("provider_trust_score") or 0.7) * 0.08,
+            ),
+        )
         return self._base_prediction(
             bot_slug=bot["slug"],
             asset=asset,

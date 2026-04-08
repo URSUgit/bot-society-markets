@@ -57,6 +57,7 @@ Included today:
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
 - a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
+- signal provenance scoring with provider trust, freshness, and composite source-quality weighting
 - notification retry scheduling, retry jobs, and per-channel observability for outbound alert delivery
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution

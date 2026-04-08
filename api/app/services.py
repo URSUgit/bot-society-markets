@@ -71,6 +71,7 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
         ensure_demo_user_state(repository)
+        refreshed_signals = repository.refresh_signal_quality_scores()
         repository.delete_expired_sessions(self._now())
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
@@ -87,7 +88,7 @@ class BotSocietyService:
                     "scored_predictions": scored,
                     "message": (
                         "Seeded demo market data, user state, historical signals, and scored the initial prediction archive. "
-                        f"Initialized {alert_deliveries} alert deliveries."
+                        f"Initialized {alert_deliveries} alert deliveries and refreshed {refreshed_signals} signal quality records."
                     ),
                 }
             )

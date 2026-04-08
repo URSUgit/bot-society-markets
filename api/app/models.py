@@ -43,6 +43,9 @@ class SignalView(BaseModel):
     source_type: str
     author_handle: str | None = None
     engagement_score: float | None = None
+    provider_trust_score: float = Field(ge=0, le=1)
+    freshness_score: float = Field(ge=0, le=1)
+    source_quality_score: float = Field(ge=0, le=1)
     channel: str
     title: str
     summary: str
