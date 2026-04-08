@@ -110,9 +110,35 @@ class OperationSnapshot(BaseModel):
 class ProviderStatus(BaseModel):
     market_provider_mode: str
     market_provider_source: str
+    signal_provider_mode: str
     signal_provider_source: str
     tracked_coin_ids: list[str]
-    fallback_active: bool = False
+    rss_feed_urls: list[str]
+    market_fallback_active: bool = False
+    signal_fallback_active: bool = False
+
+
+class AlertDelivery(BaseModel):
+    id: int
+    user_slug: str
+    rule_id: int | None = None
+    prediction_id: int
+    bot_slug: str
+    asset: str
+    direction: Direction
+    confidence: float = Field(ge=0, le=1)
+    title: str
+    message: str
+    channel: str
+    delivery_status: str
+    created_at: str
+    read_at: str | None = None
+    is_read: bool = False
+
+
+class AlertInbox(BaseModel):
+    unread_count: int = Field(ge=0)
+    alerts: list[AlertDelivery]
 
 
 class DashboardSnapshot(BaseModel):
@@ -139,6 +165,7 @@ class CycleResult(BaseModel):
     leaderboard: list[BotSummary]
     recent_predictions: list[PredictionView]
     provider_status: ProviderStatus
+    alert_inbox: AlertInbox
 
 
 class FollowedBot(BaseModel):
@@ -192,6 +219,8 @@ class UserProfile(BaseModel):
     follows: list[FollowedBot]
     watchlist: list[WatchlistItem]
     alert_rules: list[AlertRule]
+    recent_alerts: list[AlertDelivery]
+    unread_alert_count: int = Field(ge=0)
 
 
 class ProviderStatusEnvelope(BaseModel):

@@ -2,7 +2,7 @@
 
 `Bot Society Markets` is a concept-stage SaaS platform for persistent AI trader personas that ingest market and public signal data, publish structured predictions, and build transparent track records for retail and enterprise users.
 
-This repository now contains both the founder documentation package and a professional Python-first MVP foundation for the product.
+This repository contains both the founder documentation package and a professional Python-first MVP foundation for the product.
 
 ## Document Index
 
@@ -29,24 +29,12 @@ This repository now contains both the founder documentation package and a profes
 - [Scoring Engine](api/app/scoring.py)
 - [Provider Layer](api/app/providers.py)
 - [Orchestration Layer](api/app/orchestration.py)
+- [Worker Loop](api/app/worker.py)
 - [Static Product UI](api/app/static/index.html)
 - [Dashboard UI](api/app/static/dashboard.html)
 - [Run Script](run-dev.ps1)
 - [Cycle Script](run-cycle.ps1)
-
-## Project Summary
-
-The long-term `Bot Society` vision is a governed digital economy of autonomous AI agents that create value, develop reputations, and collaborate in structured markets.
-
-The recommended first product is `Bot Society Markets`, a financial analyst network built from persistent AI trader bots. Each bot acts as a repeatable analyst persona with:
-
-- a strategy archetype
-- a defined asset universe
-- a fixed prediction schema
-- a public history
-- a measurable score
-
-The first release should be a research and prediction platform, not an automated trading system.
+- [Worker Script](run-worker.ps1)
 
 ## Current Implementation
 
@@ -55,16 +43,16 @@ The current implementation uses a Python-first stack so the product is runnable 
 Included today:
 
 - a FastAPI application with structured product endpoints
-- SQLite-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, and user workspace state
+- SQLite-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, user workspace state, and alert deliveries
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
-- demo ingestion providers plus an optional CoinGecko-backed market provider mode
+- demo ingestion providers plus optional CoinGecko market mode and RSS news signal mode with safe fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
-- a working dashboard with follows, watchlist items, alert rules, and pipeline controls
-- operational job entrypoints for bootstrap, provider-status, and cycle execution
-- API tests covering health, dashboard data, user workspace mutations, validation, and pipeline-cycle execution
+- a working dashboard with follows, watchlist items, alert rules, alert inbox state, provider status, and pipeline controls
+- operational job entrypoints for bootstrap, provider-status, run-cycle, and worker execution
+- API tests covering health, dashboard data, user workspace mutations, alert read flows, validation, and pipeline-cycle execution
 
-## API Surface
+## Product Surface
 
 Key endpoints include:
 
@@ -77,6 +65,9 @@ Key endpoints include:
 - `GET /api/predictions`
 - `GET /api/signals`
 - `GET /api/me`
+- `GET /api/me/alerts`
+- `POST /api/me/alerts/{alert_id}/read`
+- `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
 - `POST /api/me/watchlist`
 - `POST /api/me/alert-rules`
@@ -100,21 +91,44 @@ Then open `http://127.0.0.1:8000`.
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
 python -m api.app.jobs run-cycle
+python -m api.app.jobs worker --cycles 1 --interval-seconds 300
 ```
 
-## Optional Live Market Provider
+Or use the helper scripts:
 
-The repo can run against the demo provider by default or a live CoinGecko market provider.
+```powershell
+.\run-cycle.ps1
+.\run-worker.ps1
+```
 
-Example PowerShell setup:
+## Environment Configuration
+
+The application reads optional runtime settings from environment variables.
+
+```powershell
+$env:BSM_MARKET_PROVIDER = "demo"
+$env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
+$env:BSM_WORKER_INTERVAL_SECONDS = "900"
+$env:BSM_WORKER_MAX_CYCLES = "0"
+```
+
+Optional live provider setup:
 
 ```powershell
 $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"
 $env:BSM_COINGECKO_API_KEY = "your-key-here"
+
+$env:BSM_SIGNAL_PROVIDER = "rss"
+$env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"
 ```
 
-Then start the app normally.
+## Verification
+
+```powershell
+python -m pytest api/tests/test_api.py
+```
 
 ## Notes
 

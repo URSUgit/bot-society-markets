@@ -66,8 +66,9 @@ class BotSocietyRepository:
         if not signal_list:
             return 0
         with self.database.connect() as connection:
+            before = connection.total_changes
             connection.executemany(query, signal_list)
-        return len(signal_list)
+            return connection.total_changes - before
 
     def insert_predictions(self, predictions: Iterable[dict[str, Any]]) -> int:
         query = """
@@ -83,14 +84,13 @@ class BotSocietyRepository:
         if not prediction_list:
             return 0
         with self.database.connect() as connection:
+            before = connection.total_changes
             connection.executemany(query, prediction_list)
-        return len(prediction_list)
+            return connection.total_changes - before
 
     def list_bots(self) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM bots WHERE is_active = 1 ORDER BY name"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM bots WHERE is_active = 1 ORDER BY name").fetchall()
         return [dict(row) for row in rows]
 
     def get_bot(self, slug: str) -> dict[str, Any] | None:
@@ -124,9 +124,7 @@ class BotSocietyRepository:
 
     def list_assets(self) -> list[str]:
         with self.database.connect() as connection:
-            rows = connection.execute(
-                "SELECT DISTINCT asset FROM market_snapshots ORDER BY asset"
-            ).fetchall()
+            rows = connection.execute("SELECT DISTINCT asset FROM market_snapshots ORDER BY asset").fetchall()
         return [row["asset"] for row in rows]
 
     def list_recent_signals(self, limit: int = 12, asset: str | None = None) -> list[dict[str, Any]]:
@@ -171,23 +169,36 @@ class BotSocietyRepository:
             params.append(bot_slug)
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY predictions.published_at DESC LIMIT ?"
+        query += " ORDER BY predictions.published_at DESC, predictions.id DESC LIMIT ?"
         params.append(limit)
         with self.database.connect() as connection:
             rows = connection.execute(query, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
+    def list_predictions_by_published_at(self, published_at: str, limit: int = 50) -> list[dict[str, Any]]:
+        query = """
+        SELECT predictions.*, bots.name AS bot_name
+        FROM predictions
+        JOIN bots ON bots.slug = predictions.bot_slug
+        WHERE predictions.published_at = ?
+        ORDER BY predictions.confidence DESC, predictions.id DESC
+        LIMIT ?
+        """
+        with self.database.connect() as connection:
+            rows = connection.execute(query, (published_at, limit)).fetchall()
+        return [dict(row) for row in rows]
+
     def list_prediction_rows_for_scoring(self) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM predictions WHERE status = 'pending' ORDER BY published_at"
+                "SELECT * FROM predictions WHERE status = 'pending' ORDER BY published_at, id"
             ).fetchall()
         return [dict(row) for row in rows]
 
     def latest_prediction_for_bot(self, bot_slug: str) -> dict[str, Any] | None:
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM predictions WHERE bot_slug = ? ORDER BY published_at DESC LIMIT 1",
+                "SELECT * FROM predictions WHERE bot_slug = ? ORDER BY published_at DESC, id DESC LIMIT 1",
                 (bot_slug,),
             ).fetchone()
         return dict(row) if row else None
@@ -236,7 +247,7 @@ class BotSocietyRepository:
     def get_latest_pipeline_run(self) -> dict[str, Any] | None:
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT 1"
+                "SELECT * FROM pipeline_runs ORDER BY started_at DESC, id DESC LIMIT 1"
             ).fetchone()
         return dict(row) if row else None
 
@@ -289,6 +300,25 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             connection.executemany(query, list(rules))
 
+    def upsert_alert_delivery_events(self, events: Iterable[dict[str, Any]]) -> int:
+        query = """
+        INSERT INTO alert_delivery_events (
+            user_slug, rule_id, prediction_id, bot_slug, asset, direction, confidence,
+            title, message, channel, delivery_status, created_at, read_at
+        ) VALUES (
+            :user_slug, :rule_id, :prediction_id, :bot_slug, :asset, :direction, :confidence,
+            :title, :message, :channel, :delivery_status, :created_at, :read_at
+        )
+        ON CONFLICT(user_slug, rule_id, prediction_id, channel) DO NOTHING
+        """
+        event_list = list(events)
+        if not event_list:
+            return 0
+        with self.database.connect() as connection:
+            before = connection.total_changes
+            connection.executemany(query, event_list)
+            return connection.total_changes - before
+
     def get_user(self, slug: str) -> dict[str, Any] | None:
         with self.database.connect() as connection:
             row = connection.execute("SELECT * FROM users WHERE slug = ?", (slug,)).fetchone()
@@ -336,6 +366,36 @@ class BotSocietyRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_active_alert_rules(self, user_slug: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM alert_rules WHERE is_active = 1"
+        params: list[Any] = []
+        if user_slug:
+            query += " AND user_slug = ?"
+            params.append(user_slug)
+        query += " ORDER BY created_at ASC"
+        with self.database.connect() as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_alert_deliveries(self, user_slug: str, limit: int = 10, unread_only: bool = False) -> list[dict[str, Any]]:
+        query = "SELECT * FROM alert_delivery_events WHERE user_slug = ?"
+        params: list[Any] = [user_slug]
+        if unread_only:
+            query += " AND read_at IS NULL"
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(limit)
+        with self.database.connect() as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def count_unread_alert_deliveries(self, user_slug: str) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM alert_delivery_events WHERE user_slug = ? AND read_at IS NULL",
+                (user_slug,),
+            ).fetchone()
+        return int(row["count"])
+
     def create_follow(self, user_slug: str, bot_slug: str, created_at: str) -> None:
         with self.database.connect() as connection:
             connection.execute(
@@ -379,3 +439,19 @@ class BotSocietyRepository:
                 "DELETE FROM alert_rules WHERE user_slug = ? AND id = ?",
                 (user_slug, rule_id),
             )
+
+    def mark_alert_delivery_read(self, user_slug: str, alert_id: int, read_at: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE alert_delivery_events SET read_at = COALESCE(read_at, ?) WHERE user_slug = ? AND id = ?",
+                (read_at, user_slug, alert_id),
+            )
+
+    def mark_all_alert_deliveries_read(self, user_slug: str, read_at: str) -> int:
+        with self.database.connect() as connection:
+            before = connection.total_changes
+            connection.execute(
+                "UPDATE alert_delivery_events SET read_at = ? WHERE user_slug = ? AND read_at IS NULL",
+                (read_at, user_slug),
+            )
+            return connection.total_changes - before

@@ -122,6 +122,37 @@ CREATE TABLE IF NOT EXISTS alert_rules (
     FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
     FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS alert_delivery_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_slug TEXT NOT NULL,
+    rule_id INTEGER,
+    prediction_id INTEGER NOT NULL,
+    bot_slug TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    delivery_status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
+    FOREIGN KEY(rule_id) REFERENCES alert_rules(id) ON DELETE SET NULL,
+    FOREIGN KEY(prediction_id) REFERENCES predictions(id) ON DELETE CASCADE,
+    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE,
+    UNIQUE(user_slug, rule_id, prediction_id, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_snapshots_asset_as_of ON market_snapshots(asset, as_of DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_observed_at ON signals(observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_predictions_published_at ON predictions(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_predictions_status ON predictions(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_rules_user ON alert_rules(user_slug, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user ON alert_delivery_events(user_slug, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_unread ON alert_delivery_events(user_slug, read_at, created_at DESC);
 """
 
 

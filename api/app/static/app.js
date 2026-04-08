@@ -4,8 +4,6 @@ const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: 
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 
 let selectedBotSlug = null;
-let currentProfile = null;
-let currentLeaderboard = [];
 
 async function fetchJson(path, options = {}) {
   const response = await fetch(path, {
@@ -16,7 +14,16 @@ async function fetchJson(path, options = {}) {
     ...options,
   });
   if (!response.ok) {
-    throw new Error(`Failed to load ${path}`);
+    let message = `Failed to load ${path}`;
+    try {
+      const payload = await response.json();
+      if (payload?.detail) {
+        message = payload.detail;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    throw new Error(message);
   }
   return response.json();
 }
@@ -157,19 +164,27 @@ function renderProviderStatus(providerStatus) {
   if (!card || !providerStatus) {
     return;
   }
+  const rssFeeds = providerStatus.rss_feed_urls?.length
+    ? providerStatus.rss_feed_urls.map((feed) => `<li>${feed}</li>`).join("")
+    : "<li>No RSS feeds configured</li>";
   card.innerHTML = `
-    <p><strong>Mode:</strong> ${providerStatus.market_provider_mode}</p>
+    <p><strong>Market mode:</strong> ${providerStatus.market_provider_mode}</p>
     <p><strong>Market source:</strong> ${providerStatus.market_provider_source}</p>
+    <p><strong>Signal mode:</strong> ${providerStatus.signal_provider_mode}</p>
     <p><strong>Signal source:</strong> ${providerStatus.signal_provider_source}</p>
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
-    <p><strong>Fallback active:</strong> ${providerStatus.fallback_active ? "yes" : "no"}</p>
+    <p><strong>Market fallback:</strong> ${providerStatus.market_fallback_active ? "yes" : "no"}</p>
+    <p><strong>Signal fallback:</strong> ${providerStatus.signal_fallback_active ? "yes" : "no"}</p>
+    <div class="provider-feed-list">
+      <strong>RSS feeds</strong>
+      <ul>${rssFeeds}</ul>
+    </div>
   `;
 }
 
-function renderLeaderboard(leaderboard) {
-  currentLeaderboard = leaderboard;
+function renderLeaderboard(leaderboard, profile) {
   const body = document.getElementById("leaderboard-body");
-  const spotlight = document.getElementById("bot-spotlight");
+  const spotlight = document.getElementById("alert-spotlight");
   if (!body) {
     return;
   }
@@ -184,18 +199,13 @@ function renderLeaderboard(leaderboard) {
     </tr>
   `).join("");
 
-  if (spotlight && leaderboard.length) {
-    const top = leaderboard[0];
+  if (spotlight) {
+    const unreadCount = profile?.unread_alert_count || 0;
+    const latestAlert = profile?.recent_alerts?.[0];
     spotlight.innerHTML = `
-      <p class="eyebrow">Current leader</p>
-      <h4>${top.name}</h4>
-      <p>${top.thesis}</p>
-      <ul class="checklist compact">
-        <li>${top.archetype}</li>
-        <li>Focus: ${top.focus}</li>
-        <li>Calibration: ${top.calibration.toFixed(2)}</li>
-        <li>Pending calls: ${top.pending_predictions}</li>
-      </ul>
+      <p><strong>Unread alerts:</strong> ${unreadCount}</p>
+      <p><strong>Inbox coverage:</strong> ${profile?.recent_alerts?.length || 0} recent events</p>
+      ${latestAlert ? `<p><strong>Latest:</strong> ${latestAlert.title}</p><p>${latestAlert.message}</p>` : "<p>No alert deliveries yet.</p>"}
     `;
   }
 }
@@ -232,8 +242,29 @@ function renderSignals(signals, targetId = "signal-list") {
   `).join("");
 }
 
+function renderAlertInbox(profile) {
+  const summary = document.getElementById("alert-inbox-summary");
+  const list = document.getElementById("alert-inbox-list");
+  if (!summary || !list) {
+    return;
+  }
+
+  summary.textContent = `${profile.unread_alert_count} unread alert${profile.unread_alert_count === 1 ? "" : "s"}`;
+  list.innerHTML = profile.recent_alerts.map((alert) => `
+    <li class="${alert.is_read ? "" : "is-unread"}">
+      <div>
+        <strong>${alert.title}</strong>
+        <p>${alert.message}</p>
+      </div>
+      <div class="workspace-actions">
+        <span>${fmtPercent(alert.confidence)} · ${alert.asset}</span>
+        ${alert.is_read ? "<span class=\"badge\">Read</span>" : `<button class="button tertiary small-button" type="button" data-action="mark-alert-read" data-alert-id="${alert.id}">Mark read</button>`}
+      </div>
+    </li>
+  `).join("") || "<li><p>No alert deliveries yet.</p></li>";
+}
+
 function renderUserProfile(profile) {
-  currentProfile = profile;
   const tier = document.getElementById("workspace-tier");
   const followList = document.getElementById("follow-list");
   const watchlist = document.getElementById("watchlist-list");
@@ -278,6 +309,8 @@ function renderUserProfile(profile) {
       </li>
     `).join("") || "<li><p>No alert rules yet.</p></li>";
   }
+
+  renderAlertInbox(profile);
 }
 
 async function renderBotDetail(slug) {
@@ -308,18 +341,13 @@ async function renderBotDetail(slug) {
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }
 
-async function refreshProfileOnly() {
-  const profile = await fetchJson("/api/me");
-  renderUserProfile(profile);
-}
-
 async function loadDashboard() {
   const snapshot = await fetchJson("/api/dashboard");
   renderMetrics(snapshot.summary);
   renderAssets(snapshot.assets);
   renderOperation(snapshot.latest_operation);
   renderProviderStatus(snapshot.provider_status);
-  renderLeaderboard(snapshot.leaderboard);
+  renderLeaderboard(snapshot.leaderboard, snapshot.user_profile);
   renderPredictions(snapshot.recent_predictions);
   renderSignals(snapshot.recent_signals);
   renderUserProfile(snapshot.user_profile);
@@ -332,14 +360,14 @@ async function loadDashboard() {
 
 async function runCycle() {
   const button = document.getElementById("run-cycle-button");
-  setStatus("Running ingestion, orchestration, and scoring cycle...");
+  setStatus("Running ingestion, orchestration, scoring, and alert delivery cycle...");
   if (button) {
     button.disabled = true;
   }
   try {
-    await fetchJson("/api/admin/run-cycle", { method: "POST" });
+    const result = await fetchJson("/api/admin/run-cycle", { method: "POST" });
     await loadDashboard();
-    setStatus("Pipeline cycle completed and the dashboard was refreshed.");
+    setStatus(`Pipeline cycle completed. ${result.alert_inbox.unread_count} unread alerts currently in inbox.`);
   } catch (error) {
     setStatus(`Pipeline cycle failed: ${error.message}`);
   } finally {
@@ -385,6 +413,16 @@ async function addAlertRule(asset, confidence = 0.68) {
 
 async function deleteAlertRule(ruleId) {
   await fetchJson(`/api/me/alert-rules/${ruleId}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
+async function markAlertRead(alertId) {
+  await fetchJson(`/api/me/alerts/${alertId}/read`, { method: "POST" });
+  await loadDashboard();
+}
+
+async function markAllAlertsRead() {
+  await fetchJson("/api/me/alerts/read-all", { method: "POST" });
   await loadDashboard();
 }
 
@@ -434,6 +472,12 @@ function bindInteractions() {
       return;
     }
 
+    if (target.id === "mark-all-alerts-button") {
+      event.preventDefault();
+      await markAllAlertsRead();
+      return;
+    }
+
     const action = target.dataset.action;
     if (action === "follow") {
       await followBot(target.dataset.botSlug);
@@ -459,6 +503,10 @@ function bindInteractions() {
       await deleteAlertRule(target.dataset.ruleId);
       return;
     }
+    if (action === "mark-alert-read") {
+      await markAlertRead(target.dataset.alertId);
+      return;
+    }
 
     const botSlug = target.dataset.botSlug || target.closest("[data-bot-slug]")?.dataset.botSlug;
     if (botSlug) {
@@ -482,7 +530,7 @@ async function boot() {
     }
   } catch (error) {
     console.error(error);
-    setStatus("Unable to load dashboard data right now.");
+    setStatus(`Unable to load dashboard data right now: ${error.message}`);
   }
 }
 

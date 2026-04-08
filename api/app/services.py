@@ -6,6 +6,8 @@ from statistics import mean, median, pstdev
 from .config import Settings
 from .database import Database
 from .models import (
+    AlertDelivery,
+    AlertInbox,
     AlertRule,
     AlertRuleCreate,
     AssetSnapshot,
@@ -24,7 +26,7 @@ from .models import (
     WatchlistItem,
 )
 from .orchestration import PredictionOrchestrator
-from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider
+from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider, RSSNewsSignalProvider
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
 from .seed import ensure_demo_user_state, seed_demo_dataset
@@ -36,11 +38,14 @@ class BotSocietyService:
         self.database = database
         self.settings = settings
         self.demo_market_provider = DemoMarketProvider()
+        self.demo_signal_provider = DemoSignalProvider()
         self.market_provider = self._build_market_provider()
-        self.signal_provider = DemoSignalProvider()
+        self.signal_provider = self._build_signal_provider()
         self.orchestrator = PredictionOrchestrator()
         self.market_provider_fallback = False
+        self.signal_provider_fallback = False
         self.market_provider_source = self.market_provider.source_name
+        self.signal_provider_source = self.signal_provider.source_name
 
     def bootstrap(self) -> None:
         self.database.initialize()
@@ -49,6 +54,7 @@ class BotSocietyService:
         ensure_demo_user_state(repository)
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
+        alert_deliveries = self._deliver_alerts_for_predictions(repository, repository.list_predictions(limit=12))
         if seeded:
             repository.insert_pipeline_run(
                 {
@@ -59,7 +65,10 @@ class BotSocietyService:
                     "ingested_signals": 0,
                     "generated_predictions": 0,
                     "scored_predictions": scored,
-                    "message": "Seeded demo market data, user state, historical signals, and scored the initial prediction archive.",
+                    "message": (
+                        "Seeded demo market data, user state, historical signals, and scored the initial prediction archive. "
+                        f"Initialized {alert_deliveries} in-app alert deliveries."
+                    ),
                 }
             )
 
@@ -113,11 +122,33 @@ class BotSocietyService:
         summary = next((bot for bot in summaries if bot.slug == slug), None)
         if not summary:
             return None
-        recent_predictions = [
-            self._to_prediction_model(row)
-            for row in repository.list_predictions(bot_slug=slug, limit=8)
-        ]
+        recent_predictions = [self._to_prediction_model(row) for row in repository.list_predictions(bot_slug=slug, limit=8)]
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
+
+    def get_alert_inbox(self, unread_only: bool = False) -> AlertInbox:
+        repository = BotSocietyRepository(self.database)
+        alerts = [
+            self._to_alert_model(row)
+            for row in repository.list_alert_deliveries(
+                self.settings.default_user_slug,
+                limit=self.settings.alert_inbox_limit,
+                unread_only=unread_only,
+            )
+        ]
+        return AlertInbox(
+            unread_count=repository.count_unread_alert_deliveries(self.settings.default_user_slug),
+            alerts=alerts,
+        )
+
+    def mark_alert_read(self, alert_id: int) -> AlertInbox:
+        repository = BotSocietyRepository(self.database)
+        repository.mark_alert_delivery_read(self.settings.default_user_slug, alert_id, self._now())
+        return self.get_alert_inbox()
+
+    def mark_all_alerts_read(self) -> AlertInbox:
+        repository = BotSocietyRepository(self.database)
+        repository.mark_all_alert_deliveries_read(self.settings.default_user_slug, self._now())
+        return self.get_alert_inbox()
 
     def get_user_profile(self) -> UserProfile:
         repository = BotSocietyRepository(self.database)
@@ -136,7 +167,11 @@ class BotSocietyService:
             for row in repository.list_user_follows(self.settings.default_user_slug)
         ]
         watchlist = [WatchlistItem(**row) for row in repository.list_watchlist_items(self.settings.default_user_slug)]
-        alert_rules = [AlertRule(**{**row, "is_active": bool(row["is_active"])}) for row in repository.list_alert_rules(self.settings.default_user_slug)]
+        alert_rules = [
+            AlertRule(**{**row, "is_active": bool(row["is_active"])})
+            for row in repository.list_alert_rules(self.settings.default_user_slug)
+        ]
+        alert_inbox = self.get_alert_inbox()
         return UserProfile(
             slug=user["slug"],
             display_name=user["display_name"],
@@ -144,6 +179,8 @@ class BotSocietyService:
             follows=follows,
             watchlist=watchlist,
             alert_rules=alert_rules,
+            recent_alerts=alert_inbox.alerts,
+            unread_alert_count=alert_inbox.unread_count,
         )
 
     def follow_bot(self, bot_slug: str) -> UserProfile:
@@ -199,9 +236,12 @@ class BotSocietyService:
         return ProviderStatus(
             market_provider_mode=self.settings.market_provider_mode,
             market_provider_source=self.market_provider_source,
-            signal_provider_source=self.signal_provider.source_name,
+            signal_provider_mode=self.settings.signal_provider_mode,
+            signal_provider_source=self.signal_provider_source,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
-            fallback_active=self.market_provider_fallback,
+            rss_feed_urls=list(self.settings.rss_feed_urls),
+            market_fallback_active=self.market_provider_fallback,
+            signal_fallback_active=self.signal_provider_fallback,
         )
 
     def get_dashboard_snapshot(self) -> DashboardSnapshot:
@@ -236,23 +276,36 @@ class BotSocietyService:
         latest_snapshots = repository.list_latest_market_snapshots()
         cycle_index = repository.count_pipeline_runs() + 1
 
-        cycle_type = "demo-cycle"
-        message_prefix = ""
+        live_market_active = False
+        live_signal_active = False
+        message_prefixes: list[str] = []
+
         try:
             market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
             self.market_provider_fallback = False
             self.market_provider_source = self.market_provider.source_name
-            if self.market_provider_source != self.demo_market_provider.source_name:
-                cycle_type = "live-cycle"
+            live_market_active = self.market_provider_source != self.demo_market_provider.source_name
         except Exception as exc:
             market_batch = self.demo_market_provider.generate(latest_snapshots, cycle_index)
             self.market_provider_fallback = True
             self.market_provider_source = f"{self.market_provider.source_name}-fallback"
-            cycle_type = "fallback-demo-cycle"
-            message_prefix = f"Live provider fallback triggered after {exc.__class__.__name__}: {exc}. "
+            message_prefixes.append(f"Market provider fallback after {exc.__class__.__name__}: {exc}.")
 
         repository.upsert_market_snapshots(market_batch)
-        signal_batch = self.signal_provider.generate(market_batch, cycle_index)
+
+        try:
+            signal_batch = self.signal_provider.generate(market_batch, cycle_index)
+            if not signal_batch:
+                raise ValueError("signal provider returned zero signals")
+            self.signal_provider_fallback = False
+            self.signal_provider_source = self.signal_provider.source_name
+            live_signal_active = self.signal_provider_source != self.demo_signal_provider.source_name
+        except Exception as exc:
+            signal_batch = self.demo_signal_provider.generate(market_batch, cycle_index)
+            self.signal_provider_fallback = True
+            self.signal_provider_source = f"{self.signal_provider.source_name}-fallback"
+            message_prefixes.append(f"Signal provider fallback after {exc.__class__.__name__}: {exc}.")
+
         ingested_signals = repository.upsert_signals(signal_batch)
 
         latest_snapshots = repository.list_latest_market_snapshots()
@@ -267,9 +320,16 @@ class BotSocietyService:
             pending_lookup=pending_lookup,
         )
         created_predictions = repository.insert_predictions(generated_predictions)
+        new_predictions = repository.list_predictions_by_published_at(published_at, limit=max(created_predictions, 12))
+        delivered_alerts = self._deliver_alerts_for_predictions(repository, new_predictions)
 
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored_predictions = scorer.score_available_predictions()
+
+        cycle_type = "live-cycle" if live_market_active or live_signal_active else "demo-cycle"
+        if self.market_provider_fallback or self.signal_provider_fallback:
+            cycle_type = "fallback-cycle"
+
         repository.insert_pipeline_run(
             {
                 "cycle_type": cycle_type,
@@ -279,10 +339,9 @@ class BotSocietyService:
                 "ingested_signals": ingested_signals,
                 "generated_predictions": created_predictions,
                 "scored_predictions": scored_predictions,
-                "message": (
-                    f"{message_prefix}Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, "
-                    f"and scored {scored_predictions} eligible predictions."
-                ),
+                "message": " ".join(
+                    [*message_prefixes, f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, and delivered {delivered_alerts} in-app alerts."]
+                ).strip(),
             }
         )
         operation = repository.get_latest_pipeline_run()
@@ -291,7 +350,48 @@ class BotSocietyService:
             leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             provider_status=self.get_provider_status(),
+            alert_inbox=self.get_alert_inbox(),
         )
+
+    def _deliver_alerts_for_predictions(self, repository: BotSocietyRepository, predictions: list[dict]) -> int:
+        if not predictions:
+            return 0
+        active_rules = repository.list_active_alert_rules()
+        if not active_rules:
+            return 0
+
+        events: list[dict] = []
+        created_at = self._now()
+        for prediction in predictions:
+            for rule in active_rules:
+                if rule["bot_slug"] and rule["bot_slug"] != prediction["bot_slug"]:
+                    continue
+                if rule["asset"] and rule["asset"] != prediction["asset"]:
+                    continue
+                if float(prediction["confidence"]) < float(rule["min_confidence"]):
+                    continue
+                scope = self._alert_scope(rule)
+                events.append(
+                    {
+                        "user_slug": rule["user_slug"],
+                        "rule_id": rule["id"],
+                        "prediction_id": prediction["id"],
+                        "bot_slug": prediction["bot_slug"],
+                        "asset": prediction["asset"],
+                        "direction": prediction["direction"],
+                        "confidence": prediction["confidence"],
+                        "title": f"{prediction['bot_name']} issued a {prediction['direction']} {prediction['asset']} call",
+                        "message": (
+                            f"{prediction['bot_name']} published a {prediction['horizon_label'].lower()} view on {prediction['asset']} with "
+                            f"{int(round(float(prediction['confidence']) * 100))}% confidence. Matched {scope}."
+                        ),
+                        "channel": "in_app",
+                        "delivery_status": "delivered",
+                        "created_at": created_at,
+                        "read_at": None,
+                    }
+                )
+        return repository.upsert_alert_delivery_events(events)
 
     def _build_bot_summaries(self, repository: BotSocietyRepository, user_slug: str | None = None) -> list[BotSummary]:
         bots = repository.list_bots()
@@ -310,10 +410,11 @@ class BotSocietyService:
             hit_rate = mean(row["directional_success"] for row in scored_rows) if scored_rows else 0.0
             calibration = mean(row["calibration_score"] for row in scored_rows) if scored_rows else 0.0
             avg_strategy_return = mean(row["strategy_return"] for row in scored_rows) if scored_rows else 0.0
-            risk_discipline = mean(
-                clamp(1 - abs(row["max_adverse_excursion"] or 0.0) / 0.06, 0.0, 1.0)
-                for row in scored_rows
-            ) if scored_rows else 0.0
+            risk_discipline = (
+                mean(clamp(1 - abs(row["max_adverse_excursion"] or 0.0) / 0.06, 0.0, 1.0) for row in scored_rows)
+                if scored_rows
+                else 0.0
+            )
             score_series = [row["score"] / 100 for row in scored_rows if row["score"] is not None]
             consistency = clamp(1 - (pstdev(score_series) / 0.25), 0.0, 1.0) if len(score_series) > 1 else (1.0 if score_series else 0.0)
             return_component = clamp((avg_strategy_return + 0.04) / 0.08, 0.0, 1.0)
@@ -357,6 +458,11 @@ class BotSocietyService:
             )
         return self.demo_market_provider
 
+    def _build_signal_provider(self):
+        if self.settings.signal_provider_mode == "rss":
+            return RSSNewsSignalProvider(feed_urls=self.settings.rss_feed_urls)
+        return self.demo_signal_provider
+
     @staticmethod
     def _to_asset_model(row: dict) -> AssetSnapshot:
         return AssetSnapshot(**row)
@@ -373,6 +479,14 @@ class BotSocietyService:
         }
         return PredictionView(**payload)
 
+    @staticmethod
+    def _to_alert_model(row: dict) -> AlertDelivery:
+        payload = {
+            **row,
+            "is_read": row["read_at"] is not None,
+        }
+        return AlertDelivery(**payload)
+
     def _latest_operation(self, repository: BotSocietyRepository) -> OperationSnapshot | None:
         row = repository.get_latest_pipeline_run()
         return self._to_operation_model(row)
@@ -382,6 +496,17 @@ class BotSocietyService:
         if not row:
             return None
         return OperationSnapshot(**row)
+
+    @staticmethod
+    def _alert_scope(rule: dict) -> str:
+        target = []
+        if rule["bot_slug"]:
+            target.append(f"bot {rule['bot_slug']}")
+        if rule["asset"]:
+            target.append(f"asset {rule['asset']}")
+        target_text = " and ".join(target) if target else "alert rule"
+        threshold = int(round(float(rule["min_confidence"]) * 100))
+        return f"{target_text} at {threshold}% min confidence"
 
     @staticmethod
     def _now() -> str:

@@ -21,3 +21,4 @@ Thumbs.db
 api/data/*.db
 api/data/*.db-journal
 api/data/*.txt
+.env

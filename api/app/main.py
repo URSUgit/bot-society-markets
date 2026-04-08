@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import Settings, get_settings
 from .database import Database
 from .models import (
+    AlertInbox,
     AlertRuleCreate,
     AssetSnapshot,
     BotDetail,
@@ -124,6 +125,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/me", response_model=UserProfile)
     def me(request: Request) -> UserProfile:
         return get_service(request).get_user_profile()
+
+    @app.get("/api/me/alerts", response_model=AlertInbox)
+    def alert_inbox(request: Request, unread_only: bool = False) -> AlertInbox:
+        return get_service(request).get_alert_inbox(unread_only=unread_only)
+
+    @app.post("/api/me/alerts/{alert_id}/read", response_model=AlertInbox)
+    def mark_alert_read(alert_id: int, request: Request) -> AlertInbox:
+        return get_service(request).mark_alert_read(alert_id)
+
+    @app.post("/api/me/alerts/read-all", response_model=AlertInbox)
+    def mark_all_alerts_read(request: Request) -> AlertInbox:
+        return get_service(request).mark_all_alerts_read()
 
     @app.post("/api/me/follows", response_model=UserProfile)
     def follow_bot(payload: FollowBotRequest, request: Request) -> UserProfile:

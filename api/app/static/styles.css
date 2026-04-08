@@ -725,7 +725,7 @@ th {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
@@ -744,6 +744,12 @@ th {
   margin-bottom: 14px;
 }
 
+.workspace-subtitle {
+  margin-bottom: 12px;
+  color: var(--text-soft);
+  font-size: 0.95rem;
+}
+
 .workspace-list {
   display: grid;
   gap: 12px;
@@ -758,6 +764,24 @@ th {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.56);
   border: 1px solid var(--line);
+}
+
+.workspace-list li.is-unread {
+  border-color: rgba(196, 106, 55, 0.3);
+  background: rgba(196, 106, 55, 0.08);
+}
+
+.workspace-alerts li {
+  align-items: flex-start;
+}
+
+.workspace-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  text-align: right;
+  color: var(--text-soft);
+  font-size: 0.9rem;
 }
 
 .inline-form {
@@ -792,6 +816,25 @@ th {
 
 .detail-actions {
   margin: 18px 0 22px;
+}
+
+.provider-feed-list {
+  margin-top: 12px;
+  color: var(--text-soft);
+}
+
+.provider-feed-list ul {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.provider-feed-list li {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1080px) {
