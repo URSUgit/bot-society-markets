@@ -58,6 +58,8 @@ The current build includes:
 - retry scheduling plus delivery-health tracking for failed outbound notification attempts
 - optional live market data through CoinGecko configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
+- optional Reddit OAuth-backed social ingestion with demo fallback behavior
+- a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
 - a worker loop for scheduled cycle execution
 - Alembic-backed schema upgrade flow for Postgres-oriented environments
 
@@ -117,6 +119,13 @@ $env:BSM_COINGECKO_API_KEY = "your-key-here"
 
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"
+
+$env:BSM_SIGNAL_PROVIDER = "reddit"
+$env:BSM_REDDIT_CLIENT_ID = "your-client-id"
+$env:BSM_REDDIT_CLIENT_SECRET = "your-client-secret"
+$env:BSM_REDDIT_USER_AGENT = "BotSocietyMarkets/0.7"
+$env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
+$env:BSM_REDDIT_POST_LIMIT = "15"
 ```
 
 ## Verification

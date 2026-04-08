@@ -39,6 +39,10 @@ class SignalView(BaseModel):
     id: int
     asset: str
     source: str
+    provider_name: str
+    source_type: str
+    author_handle: str | None = None
+    engagement_score: float | None = None
     channel: str
     title: str
     summary: str
@@ -112,10 +116,15 @@ class OperationSnapshot(BaseModel):
 class ProviderStatus(BaseModel):
     market_provider_mode: str
     market_provider_source: str
+    market_provider_ready: bool = True
+    market_provider_warning: str | None = None
     signal_provider_mode: str
     signal_provider_source: str
+    signal_provider_ready: bool = True
+    signal_provider_warning: str | None = None
     tracked_coin_ids: list[str]
     rss_feed_urls: list[str]
+    reddit_subreddits: list[str] = Field(default_factory=list)
     market_fallback_active: bool = False
     signal_fallback_active: bool = False
 
@@ -283,6 +292,7 @@ class UserIdentity(BaseModel):
     display_name: str
     email: str
     tier: str
+    is_demo_user: bool = False
 
 
 class AuthRegisterRequest(BaseModel):
@@ -306,6 +316,7 @@ class UserProfile(BaseModel):
     display_name: str
     email: str
     tier: str
+    is_demo_user: bool = False
     follows: list[FollowedBot]
     watchlist: list[WatchlistItem]
     alert_rules: list[AlertRule]

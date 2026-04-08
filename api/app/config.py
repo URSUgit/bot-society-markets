@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 MarketProviderMode = Literal["demo", "coingecko"]
-SignalProviderMode = Literal["demo", "rss"]
+SignalProviderMode = Literal["demo", "rss", "reddit"]
 
 
 def _workspace_database_path() -> Path:
@@ -51,6 +51,11 @@ class Settings:
     coingecko_plan: Literal["demo", "pro"] = "demo"
     tracked_coin_ids: tuple[str, ...] = ("bitcoin", "ethereum", "solana")
     rss_feed_urls: tuple[str, ...] = ()
+    reddit_client_id: str | None = None
+    reddit_client_secret: str | None = None
+    reddit_user_agent: str = "BotSocietyMarkets/0.7"
+    reddit_subreddits: tuple[str, ...] = ("CryptoCurrency", "Bitcoin", "ethtrader", "solana")
+    reddit_post_limit: int = 15
     worker_interval_seconds: int = 900
     worker_max_cycles: int = 0
     alert_inbox_limit: int = 10
@@ -86,7 +91,7 @@ def get_settings() -> Settings:
         market_provider_mode = "demo"
 
     signal_provider_mode = os.getenv("BSM_SIGNAL_PROVIDER", "demo").lower()
-    if signal_provider_mode not in {"demo", "rss"}:
+    if signal_provider_mode not in {"demo", "rss", "reddit"}:
         signal_provider_mode = "demo"
 
     plan = os.getenv("BSM_COINGECKO_PLAN", "demo").lower()
@@ -95,12 +100,14 @@ def get_settings() -> Settings:
 
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     rss_feed_urls = _split_csv_env(os.getenv("BSM_RSS_FEED_URLS", ""))
+    reddit_subreddits = _split_csv_env(os.getenv("BSM_REDDIT_SUBREDDITS", "CryptoCurrency,Bitcoin,ethtrader,solana"))
 
     worker_interval_seconds = max(30, int(os.getenv("BSM_WORKER_INTERVAL_SECONDS", "900")))
     worker_max_cycles = max(0, int(os.getenv("BSM_WORKER_MAX_CYCLES", "0")))
     alert_inbox_limit = max(1, min(50, int(os.getenv("BSM_ALERT_INBOX_LIMIT", "10"))))
     session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
     outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
+    reddit_post_limit = max(5, min(50, int(os.getenv("BSM_REDDIT_POST_LIMIT", "15"))))
     notification_retry_limit = max(1, int(os.getenv("BSM_NOTIFICATION_RETRY_LIMIT", "25")))
     notification_max_attempts = max(1, int(os.getenv("BSM_NOTIFICATION_MAX_ATTEMPTS", "4")))
     notification_retry_base_seconds = max(30, int(os.getenv("BSM_NOTIFICATION_RETRY_BASE_SECONDS", "300")))
@@ -115,6 +122,11 @@ def get_settings() -> Settings:
         coingecko_plan=plan,
         tracked_coin_ids=coin_ids or ("bitcoin", "ethereum", "solana"),
         rss_feed_urls=rss_feed_urls,
+        reddit_client_id=os.getenv("BSM_REDDIT_CLIENT_ID") or None,
+        reddit_client_secret=os.getenv("BSM_REDDIT_CLIENT_SECRET") or None,
+        reddit_user_agent=os.getenv("BSM_REDDIT_USER_AGENT", "BotSocietyMarkets/0.7"),
+        reddit_subreddits=reddit_subreddits or ("CryptoCurrency", "Bitcoin", "ethtrader", "solana"),
+        reddit_post_limit=reddit_post_limit,
         worker_interval_seconds=worker_interval_seconds,
         worker_max_cycles=worker_max_cycles,
         alert_inbox_limit=alert_inbox_limit,

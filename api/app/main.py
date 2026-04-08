@@ -80,6 +80,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fallback_to_demo=fallback_to_demo,
         )
 
+    def authenticated_user_slug(request: Request) -> str:
+        user_slug = current_user_slug(request, fallback_to_demo=False)
+        if not user_slug:
+            raise HTTPException(status_code=401, detail="Sign in to modify a personal workspace")
+        return user_slug
+
     def set_session_cookie(response: Response, token: str) -> None:
         response.set_cookie(
             key=active_settings.auth_cookie_name,
@@ -181,35 +187,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/me/alerts/{alert_id}/read", response_model=AlertInbox)
     def mark_alert_read(alert_id: int, request: Request) -> AlertInbox:
-        return get_service(request).mark_alert_read(current_user_slug(request) or active_settings.default_user_slug, alert_id)
+        return get_service(request).mark_alert_read(authenticated_user_slug(request), alert_id)
 
     @app.post("/api/me/alerts/read-all", response_model=AlertInbox)
     def mark_all_alerts_read(request: Request) -> AlertInbox:
-        return get_service(request).mark_all_alerts_read(current_user_slug(request) or active_settings.default_user_slug)
+        return get_service(request).mark_all_alerts_read(authenticated_user_slug(request))
 
     @app.post("/api/me/follows", response_model=UserProfile)
     def follow_bot(payload: FollowBotRequest, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).follow_bot(current_user_slug(request) or active_settings.default_user_slug, payload.bot_slug))
+        return run_validated(lambda: get_service(request).follow_bot(authenticated_user_slug(request), payload.bot_slug))
 
     @app.delete("/api/me/follows/{bot_slug}", response_model=UserProfile)
     def unfollow_bot(bot_slug: str, request: Request) -> UserProfile:
-        return get_service(request).unfollow_bot(current_user_slug(request) or active_settings.default_user_slug, bot_slug)
+        return get_service(request).unfollow_bot(authenticated_user_slug(request), bot_slug)
 
     @app.post("/api/me/watchlist", response_model=UserProfile)
     def add_watchlist_asset(payload: WatchlistAssetRequest, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).add_watchlist_asset(current_user_slug(request) or active_settings.default_user_slug, payload.asset))
+        return run_validated(lambda: get_service(request).add_watchlist_asset(authenticated_user_slug(request), payload.asset))
 
     @app.delete("/api/me/watchlist/{asset}", response_model=UserProfile)
     def remove_watchlist_asset(asset: str, request: Request) -> UserProfile:
-        return get_service(request).remove_watchlist_asset(current_user_slug(request) or active_settings.default_user_slug, asset)
+        return get_service(request).remove_watchlist_asset(authenticated_user_slug(request), asset)
 
     @app.post("/api/me/alert-rules", response_model=UserProfile)
     def add_alert_rule(payload: AlertRuleCreate, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).add_alert_rule(current_user_slug(request) or active_settings.default_user_slug, payload))
+        return run_validated(lambda: get_service(request).add_alert_rule(authenticated_user_slug(request), payload))
 
     @app.delete("/api/me/alert-rules/{rule_id}", response_model=UserProfile)
     def delete_alert_rule(rule_id: int, request: Request) -> UserProfile:
-        return get_service(request).delete_alert_rule(current_user_slug(request) or active_settings.default_user_slug, rule_id)
+        return get_service(request).delete_alert_rule(authenticated_user_slug(request), rule_id)
 
     @app.get("/api/me/notification-channels", response_model=list[NotificationChannel])
     def notification_channels(request: Request) -> list[NotificationChannel]:
@@ -222,11 +228,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).add_notification_channel(current_user_slug(request) or active_settings.default_user_slug, payload))
+        return run_validated(lambda: get_service(request).add_notification_channel(authenticated_user_slug(request), payload))
 
     @app.delete("/api/me/notification-channels/{channel_id}", response_model=UserProfile)
     def delete_notification_channel(channel_id: int, request: Request) -> UserProfile:
-        return get_service(request).delete_notification_channel(current_user_slug(request) or active_settings.default_user_slug, channel_id)
+        return get_service(request).delete_notification_channel(authenticated_user_slug(request), channel_id)
 
     @app.get("/api/system/providers", response_model=ProviderStatusEnvelope)
     def provider_status(request: Request) -> ProviderStatusEnvelope:

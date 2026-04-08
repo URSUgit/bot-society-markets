@@ -47,6 +47,7 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert "notification_health" in payload
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
+        assert payload["user_profile"]["is_demo_user"] is True
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -72,13 +73,24 @@ def test_bot_detail_and_cycle_flow() -> None:
 
 def test_user_workspace_mutations() -> None:
     with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Workspace User",
+                "email": "workspace@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
         me_response = client.get("/api/me")
         assert me_response.status_code == 200
         initial_profile = me_response.json()
-        assert initial_profile["follows"]
-        assert initial_profile["watchlist"]
-        assert initial_profile["alert_rules"]
-        assert initial_profile["recent_alerts"]
+        assert initial_profile["is_demo_user"] is False
+
+        follow_response = client.post("/api/me/follows", json={"bot_slug": "social-momentum"})
+        assert follow_response.status_code == 200
+        assert any(item["bot_slug"] == "social-momentum" for item in follow_response.json()["follows"])
 
         unfollow_response = client.delete("/api/me/follows/social-momentum")
         assert unfollow_response.status_code == 200
@@ -95,6 +107,22 @@ def test_user_workspace_mutations() -> None:
 
 def test_alert_inbox_endpoints_support_read_flow() -> None:
     with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Alerts User",
+                "email": "alerts@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        alert_rule_response = client.post("/api/me/alert-rules", json={"bot_slug": "social-momentum", "min_confidence": 0.55})
+        assert alert_rule_response.status_code == 200
+
+        cycle_response = client.post("/api/admin/run-cycle")
+        assert cycle_response.status_code == 200
+
         inbox_response = client.get("/api/me/alerts")
         assert inbox_response.status_code == 200
         inbox = inbox_response.json()
@@ -167,8 +195,43 @@ def test_auth_and_notification_channels_flow() -> None:
         assert notification_health.json()["active_channels"] == 1
 
 
+def test_demo_workspace_is_read_only_for_mutations() -> None:
+    with build_client() as client:
+        response = client.post("/api/me/watchlist", json={"asset": "BTC"})
+        assert response.status_code == 401
+        assert "Sign in" in response.json()["detail"]
+
+
+def test_reddit_provider_readiness_and_fallback() -> None:
+    with build_client(Settings(signal_provider_mode="reddit", reddit_subreddits=("CryptoCurrency",))) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["signal_provider_mode"] == "reddit"
+        assert provider_payload["signal_provider_ready"] is False
+        assert "BSM_REDDIT_CLIENT_ID" in provider_payload["signal_provider_warning"]
+
+        cycle_response = client.post("/api/admin/run-cycle")
+        assert cycle_response.status_code == 200
+        cycle_payload = cycle_response.json()
+        assert cycle_payload["provider_status"]["signal_fallback_active"] is True
+
+
 def test_notification_retry_flow_and_health() -> None:
     with build_client(Settings(notification_retry_base_seconds=0)) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Retry User",
+                "email": "retry@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        alert_rule_response = client.post("/api/me/alert-rules", json={"bot_slug": "social-momentum", "min_confidence": 0.55})
+        assert alert_rule_response.status_code == 200
+
         channel_response = client.post(
             "/api/me/notification-channels",
             json={"channel_type": "webhook", "target": "https://example.com/webhook"},
@@ -202,6 +265,16 @@ def test_notification_retry_flow_and_health() -> None:
 
 def test_validation_rejects_unknown_assets() -> None:
     with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Validation User",
+                "email": "validation@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
         response = client.post("/api/me/watchlist", json={"asset": "DOGE"})
         assert response.status_code == 400
         assert "Unknown asset" in response.json()["detail"]

@@ -677,6 +677,24 @@ th {
   font-weight: 700;
 }
 
+.notice-soft,
+.notice-warning {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.notice-soft {
+  color: var(--teal);
+}
+
+.notice-warning {
+  color: #8a4a24;
+  background: rgba(196, 106, 55, 0.09);
+  border-color: rgba(196, 106, 55, 0.18);
+}
+
 .text-button {
   background: none;
   border: 0;
@@ -713,6 +731,10 @@ th {
 .button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+form:has(:disabled) {
+  opacity: 0.78;
 }
 
 @media (max-width: 1080px) {

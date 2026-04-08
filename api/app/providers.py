@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
+import math
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
@@ -16,7 +19,82 @@ TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
 
 
-class DemoMarketProvider:
+@dataclass(slots=True)
+class ProviderReadiness:
+    ready: bool
+    warning: str | None = None
+
+
+class MarketProviderBase:
+    source_name = "market-provider"
+
+    def readiness(self) -> ProviderReadiness:
+        return ProviderReadiness(ready=True)
+
+
+class SignalProviderBase:
+    source_name = "signal-provider"
+
+    def readiness(self) -> ProviderReadiness:
+        return ProviderReadiness(ready=True)
+
+
+class AssetAwareSignalProvider(SignalProviderBase):
+    ASSET_ALIASES = {
+        "BTC": ("bitcoin", "btc", "xbt", "blackrock etf", "spot btc"),
+        "ETH": ("ethereum", "eth", "ether", "staking", "l2"),
+        "SOL": ("solana", "sol", "jupiter", "memecoin", "validator"),
+    }
+    POSITIVE_TERMS = ("surge", "gain", "rally", "approval", "breakout", "strong", "higher", "bull", "inflow", "growth")
+    NEGATIVE_TERMS = ("drop", "fall", "risk", "hack", "bear", "outflow", "lower", "lawsuit", "pressure", "liquidation")
+
+    @staticmethod
+    def _local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    def _clean_text(self, value: str) -> str:
+        text = unescape(value)
+        text = TAG_RE.sub(" ", text)
+        return WHITESPACE_RE.sub(" ", text).strip()
+
+    def _infer_asset(self, text: str, tracked_assets) -> str | None:
+        scores: list[tuple[int, str]] = []
+        for asset, aliases in self.ASSET_ALIASES.items():
+            if asset not in tracked_assets:
+                continue
+            score = 0
+            for alias in aliases:
+                if " " in alias:
+                    score += 1 if alias in text else 0
+                else:
+                    score += 1 if re.search(rf"\b{re.escape(alias)}\b", text) else 0
+            if score:
+                scores.append((score, asset))
+        if not scores:
+            return None
+        scores.sort(reverse=True)
+        return scores[0][1]
+
+    def _infer_sentiment(self, text: str, snapshot: dict, *, boost: float = 1.0) -> float:
+        positive_hits = sum(text.count(term) for term in self.POSITIVE_TERMS)
+        negative_hits = sum(text.count(term) for term in self.NEGATIVE_TERMS)
+        lexical = (positive_hits - negative_hits) * 0.12 * boost
+        market_component = (float(snapshot["signal_bias"]) * 0.45) + (float(snapshot["trend_score"]) * 0.2)
+        return round(_clamp(lexical + market_component, -1.0, 1.0), 6)
+
+    def _infer_relevance(self, text: str, asset: str, snapshot: dict, *, engagement_bonus: float = 0.0) -> float:
+        alias_hits = 0
+        for alias in self.ASSET_ALIASES.get(asset, ()):
+            if " " in alias:
+                alias_hits += 1 if alias in text else 0
+            else:
+                alias_hits += 1 if re.search(rf"\b{re.escape(alias)}\b", text) else 0
+        narrative_strength = min(0.18, 0.04 * alias_hits)
+        market_strength = min(0.16, abs(float(snapshot["trend_score"])) * 0.2)
+        return round(_clamp(0.58 + narrative_strength + market_strength + engagement_bonus, 0.45, 0.96), 6)
+
+
+class DemoMarketProvider(MarketProviderBase):
     source_name = "demo-market-provider"
 
     def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
@@ -50,7 +128,7 @@ class DemoMarketProvider:
         return generated
 
 
-class CoinGeckoMarketProvider:
+class CoinGeckoMarketProvider(MarketProviderBase):
     source_name = "coingecko"
     SYMBOL_MAP = {
         "bitcoin": "BTC",
@@ -63,6 +141,11 @@ class CoinGeckoMarketProvider:
         self.api_key = api_key
         self.tracked_coin_ids = tracked_coin_ids
         self.base_url = "https://pro-api.coingecko.com/api/v3" if plan == "pro" else "https://api.coingecko.com/api/v3"
+
+    def readiness(self) -> ProviderReadiness:
+        if self.plan == "pro" and not self.api_key:
+            return ProviderReadiness(False, "CoinGecko Pro mode requires BSM_COINGECKO_API_KEY")
+        return ProviderReadiness(True)
 
     def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
         query = urlencode(
@@ -111,7 +194,7 @@ class CoinGeckoMarketProvider:
         return generated
 
 
-class DemoSignalProvider:
+class DemoSignalProvider(AssetAwareSignalProvider):
     source_name = "demo-signal-provider"
 
     def generate(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
@@ -128,6 +211,10 @@ class DemoSignalProvider:
                     "external_id": f"demo-social-{cycle_index}-{asset.lower()}",
                     "asset": asset,
                     "source": "X",
+                    "provider_name": self.source_name,
+                    "source_type": "social",
+                    "author_handle": "@demoflowdesk",
+                    "engagement_score": 0.74 if asset != "SOL" else 0.82,
                     "channel": "social",
                     "title": f"{asset} trader cluster {'leans' if positive else 'turns'} {'higher' if positive else 'defensive'} on the next session",
                     "summary": f"A curated watchlist of market accounts shows {'expanding' if positive else 'softening'} conviction around {asset}, with narrative strength tied to price structure.",
@@ -143,6 +230,10 @@ class DemoSignalProvider:
                     "external_id": f"demo-news-{cycle_index}-{asset.lower()}",
                     "asset": asset,
                     "source": "DeskWire",
+                    "provider_name": self.source_name,
+                    "source_type": "news",
+                    "author_handle": "deskwire-research",
+                    "engagement_score": None,
                     "channel": "news",
                     "title": f"{asset} market structure {'improves' if positive else 'faces a balance check'} as flows reset",
                     "summary": f"Desk commentary frames {asset} as {'constructive' if positive else 'fragile'} after the most recent market repricing phase.",
@@ -156,18 +247,16 @@ class DemoSignalProvider:
         return generated
 
 
-class RSSNewsSignalProvider:
+class RSSNewsSignalProvider(AssetAwareSignalProvider):
     source_name = "rss-news-provider"
-    ASSET_ALIASES = {
-        "BTC": ("bitcoin", "btc", "xbt", "blackrock etf", "spot btc"),
-        "ETH": ("ethereum", "eth", "ether", "staking", "l2"),
-        "SOL": ("solana", "sol", "jupiter", "memecoin", "validator"),
-    }
-    POSITIVE_TERMS = ("surge", "gain", "rally", "approval", "breakout", "strong", "higher", "bull", "inflow", "growth")
-    NEGATIVE_TERMS = ("drop", "fall", "risk", "hack", "bear", "outflow", "lower", "lawsuit", "pressure", "liquidation")
 
     def __init__(self, *, feed_urls: tuple[str, ...]) -> None:
         self.feed_urls = feed_urls
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.feed_urls:
+            return ProviderReadiness(False, "RSS mode requires BSM_RSS_FEED_URLS")
+        return ProviderReadiness(True)
 
     def generate(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
         if not self.feed_urls:
@@ -198,6 +287,10 @@ class RSSNewsSignalProvider:
                         "external_id": external_id,
                         "asset": asset,
                         "source": self._source_name(feed_url),
+                        "provider_name": self.source_name,
+                        "source_type": "news",
+                        "author_handle": None,
+                        "engagement_score": None,
                         "channel": "news",
                         "title": entry["title"][:180],
                         "summary": entry["summary"][:360],
@@ -214,7 +307,7 @@ class RSSNewsSignalProvider:
         return generated
 
     def _fetch_entries(self, feed_url: str) -> list[dict[str, str]]:
-        request = Request(feed_url, headers={"user-agent": "BotSocietyMarkets/0.4"})
+        request = Request(feed_url, headers={"user-agent": "BotSocietyMarkets/0.7"})
         with urlopen(request, timeout=20) as response:
             payload = response.read()
         root = ElementTree.fromstring(payload)
@@ -237,10 +330,6 @@ class RSSNewsSignalProvider:
             observed_at = self._parse_feed_timestamp(self._text(entry, "updated", "published"))
             entries.append({"title": self._clean_text(title), "summary": summary, "link": link, "observed_at": observed_at})
         return entries
-
-    @staticmethod
-    def _local_name(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1]
 
     def _find_child(self, node: ElementTree.Element, name: str) -> ElementTree.Element | None:
         for child in list(node):
@@ -271,48 +360,6 @@ class RSSNewsSignalProvider:
                     return text
         return None
 
-    @staticmethod
-    def _clean_text(value: str) -> str:
-        text = unescape(value)
-        text = TAG_RE.sub(" ", text)
-        return WHITESPACE_RE.sub(" ", text).strip()
-
-    def _infer_asset(self, text: str, tracked_assets) -> str | None:
-        scores: list[tuple[int, str]] = []
-        for asset, aliases in self.ASSET_ALIASES.items():
-            if asset not in tracked_assets:
-                continue
-            score = 0
-            for alias in aliases:
-                if " " in alias:
-                    score += 1 if alias in text else 0
-                else:
-                    score += 1 if re.search(rf"\b{re.escape(alias)}\b", text) else 0
-            if score:
-                scores.append((score, asset))
-        if not scores:
-            return None
-        scores.sort(reverse=True)
-        return scores[0][1]
-
-    def _infer_sentiment(self, text: str, snapshot: dict) -> float:
-        positive_hits = sum(text.count(term) for term in self.POSITIVE_TERMS)
-        negative_hits = sum(text.count(term) for term in self.NEGATIVE_TERMS)
-        lexical = (positive_hits - negative_hits) * 0.12
-        market_component = (float(snapshot["signal_bias"]) * 0.45) + (float(snapshot["trend_score"]) * 0.2)
-        return round(_clamp(lexical + market_component, -1.0, 1.0), 6)
-
-    def _infer_relevance(self, text: str, asset: str, snapshot: dict) -> float:
-        alias_hits = 0
-        for alias in self.ASSET_ALIASES.get(asset, ()):
-            if " " in alias:
-                alias_hits += 1 if alias in text else 0
-            else:
-                alias_hits += 1 if re.search(rf"\b{re.escape(alias)}\b", text) else 0
-        narrative_strength = min(0.18, 0.04 * alias_hits)
-        market_strength = min(0.16, abs(float(snapshot["trend_score"])) * 0.2)
-        return round(_clamp(0.58 + narrative_strength + market_strength, 0.45, 0.96), 6)
-
     def _build_external_id(self, feed_url: str, entry: dict[str, str]) -> str:
         digest = hashlib.sha1(f"{feed_url}|{entry['title']}|{entry['observed_at']}".encode("utf-8")).hexdigest()
         return f"rss-{digest[:20]}"
@@ -333,6 +380,122 @@ class RSSNewsSignalProvider:
                 return to_timestamp(parsedate_to_datetime(value))
             except (TypeError, ValueError, IndexError):
                 return to_timestamp(datetime.now(timezone.utc))
+
+
+class RedditSignalProvider(AssetAwareSignalProvider):
+    source_name = "reddit-oauth-provider"
+    TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
+    API_URL = "https://oauth.reddit.com"
+
+    def __init__(
+        self,
+        *,
+        client_id: str | None,
+        client_secret: str | None,
+        user_agent: str,
+        subreddits: tuple[str, ...],
+        post_limit: int,
+    ) -> None:
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.user_agent = user_agent
+        self.subreddits = subreddits
+        self.post_limit = post_limit
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.client_id or not self.client_secret:
+            return ProviderReadiness(False, "Reddit mode requires BSM_REDDIT_CLIENT_ID and BSM_REDDIT_CLIENT_SECRET")
+        if not self.subreddits:
+            return ProviderReadiness(False, "Reddit mode requires at least one subreddit in BSM_REDDIT_SUBREDDITS")
+        return ProviderReadiness(True)
+
+    def generate(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
+        if not self.client_id or not self.client_secret:
+            raise ValueError("Reddit signal provider requires client credentials")
+        if not self.subreddits:
+            raise ValueError("Reddit signal provider requires subreddit configuration")
+
+        token = self._get_access_token()
+        latest_snapshot_map = {snapshot["asset"]: snapshot for snapshot in market_batch}
+        batch_id = f"reddit-cycle-{cycle_index}"
+        generated: list[dict] = []
+        seen_ids: set[str] = set()
+
+        for subreddit in self.subreddits:
+            posts = self._fetch_posts(token, subreddit)
+            for post in posts:
+                title = self._clean_text(str(post.get("title") or "Untitled Reddit post"))
+                summary = self._clean_text(str(post.get("selftext") or title))
+                body = f" {title} {summary} ".lower()
+                asset = self._infer_asset(body, latest_snapshot_map.keys())
+                if not asset:
+                    continue
+                snapshot = latest_snapshot_map.get(asset)
+                if not snapshot:
+                    continue
+                external_id = f"reddit-{post.get('id')}"
+                if external_id in seen_ids:
+                    continue
+                seen_ids.add(external_id)
+                score = max(0, int(post.get("score") or 0))
+                comments = max(0, int(post.get("num_comments") or 0))
+                engagement_score = round(_clamp(math.log1p(score + (comments * 3)) / 8, 0.0, 1.0), 6)
+                generated.append(
+                    {
+                        "external_id": external_id,
+                        "asset": asset,
+                        "source": f"r/{subreddit}",
+                        "provider_name": self.source_name,
+                        "source_type": "social",
+                        "author_handle": f"u/{post.get('author') or 'unknown'}",
+                        "engagement_score": engagement_score,
+                        "channel": "social",
+                        "title": title[:180],
+                        "summary": summary[:360],
+                        "sentiment": self._infer_sentiment(body, snapshot, boost=1.1),
+                        "relevance": self._infer_relevance(body, asset, snapshot, engagement_bonus=min(0.14, engagement_score * 0.18)),
+                        "url": f"https://reddit.com{post.get('permalink') or ''}",
+                        "observed_at": to_timestamp(datetime.fromtimestamp(float(post.get('created_utc') or 0), tz=timezone.utc)),
+                        "ingest_batch_id": batch_id,
+                    }
+                )
+
+        if not generated:
+            raise ValueError("Reddit feeds did not yield tracked-asset signals for the configured universe")
+        return generated
+
+    def _get_access_token(self) -> str:
+        credentials = f"{self.client_id}:{self.client_secret}".encode("utf-8")
+        headers = {
+            "authorization": f"Basic {base64.b64encode(credentials).decode('ascii')}",
+            "user-agent": self.user_agent,
+            "content-type": "application/x-www-form-urlencoded",
+        }
+        request = Request(
+            self.TOKEN_URL,
+            data=urlencode({"grant_type": "client_credentials"}).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        token = payload.get("access_token")
+        if not token:
+            raise ValueError("Reddit access token was not returned")
+        return str(token)
+
+    def _fetch_posts(self, token: str, subreddit: str) -> list[dict]:
+        query = urlencode({"limit": str(self.post_limit), "raw_json": "1"})
+        headers = {
+            "authorization": f"Bearer {token}",
+            "user-agent": self.user_agent,
+            "accept": "application/json",
+        }
+        request = Request(f"{self.API_URL}/r/{subreddit}/hot?{query}", headers=headers)
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        children = payload.get("data", {}).get("children", [])
+        return [child.get("data", {}) for child in children if child.get("kind") == "t3"]
 
 
 

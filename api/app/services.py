@@ -41,7 +41,7 @@ from .models import (
 )
 from .notifications import NotificationDispatcher
 from .orchestration import PredictionOrchestrator
-from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider, RSSNewsSignalProvider
+from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider, RedditSignalProvider, RSSNewsSignalProvider
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
 from .seed import ensure_demo_user_state, seed_demo_dataset
@@ -135,6 +135,7 @@ class BotSocietyService:
                     "created_at": self._now(),
                     "password_hash": self.auth.hash_password(payload.password),
                     "is_active": True,
+                    "is_demo_user": False,
                 }
             )
         except IntegrityError as exc:
@@ -266,6 +267,7 @@ class BotSocietyService:
             display_name=user["display_name"],
             email=user["email"],
             tier=user["tier"],
+            is_demo_user=bool(user.get("is_demo_user")),
             follows=follows,
             watchlist=watchlist,
             alert_rules=alert_rules,
@@ -497,13 +499,20 @@ class BotSocietyService:
         return self.get_user_profile(user_slug)
 
     def get_provider_status(self) -> ProviderStatus:
+        market_readiness = self.market_provider.readiness()
+        signal_readiness = self.signal_provider.readiness()
         return ProviderStatus(
             market_provider_mode=self.settings.market_provider_mode,
             market_provider_source=self.market_provider_source,
+            market_provider_ready=market_readiness.ready,
+            market_provider_warning=market_readiness.warning,
             signal_provider_mode=self.settings.signal_provider_mode,
             signal_provider_source=self.signal_provider_source,
+            signal_provider_ready=signal_readiness.ready,
+            signal_provider_warning=signal_readiness.warning,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
             rss_feed_urls=list(self.settings.rss_feed_urls),
+            reddit_subreddits=list(self.settings.reddit_subreddits),
             market_fallback_active=self.market_provider_fallback,
             signal_fallback_active=self.signal_provider_fallback,
         )
@@ -784,6 +793,14 @@ class BotSocietyService:
     def _build_signal_provider(self):
         if self.settings.signal_provider_mode == "rss":
             return RSSNewsSignalProvider(feed_urls=self.settings.rss_feed_urls)
+        if self.settings.signal_provider_mode == "reddit":
+            return RedditSignalProvider(
+                client_id=self.settings.reddit_client_id,
+                client_secret=self.settings.reddit_client_secret,
+                user_agent=self.settings.reddit_user_agent,
+                subreddits=self.settings.reddit_subreddits,
+                post_limit=self.settings.reddit_post_limit,
+            )
         return self.demo_signal_provider
 
     @staticmethod
@@ -845,6 +862,7 @@ class BotSocietyService:
             display_name=user["display_name"],
             email=user["email"],
             tier=user["tier"],
+            is_demo_user=bool(user.get("is_demo_user")),
         )
 
     def _create_session_for_user(self, user_slug: str) -> tuple[AuthSessionSnapshot, str]:

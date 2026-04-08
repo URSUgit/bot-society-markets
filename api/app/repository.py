@@ -253,6 +253,7 @@ class BotSocietyRepository:
                 "tier": stmt.excluded.tier,
                 "password_hash": stmt.excluded.password_hash,
                 "is_active": stmt.excluded.is_active,
+                "is_demo_user": stmt.excluded.is_demo_user,
             },
         )
         with self.database.connect() as connection:
@@ -596,6 +597,7 @@ class BotSocietyRepository:
                 users_table.c.email,
                 users_table.c.tier,
                 users_table.c.is_active,
+                users_table.c.is_demo_user,
             )
             .join(users_table, users_table.c.slug == user_sessions_table.c.user_slug)
             .where(user_sessions_table.c.token_hash == token_hash)

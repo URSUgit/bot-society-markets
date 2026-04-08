@@ -18,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     inspect,
+    text,
 )
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -36,7 +37,7 @@ bots_table = Table(
     Column("thesis", Text, nullable=False),
     Column("risk_style", String(255), nullable=False),
     Column("asset_universe", String(255), nullable=False),
-    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
     Column("created_at", String(64), nullable=False),
 )
 
@@ -63,6 +64,10 @@ signals_table = Table(
     Column("external_id", String(255), nullable=False, unique=True),
     Column("asset", String(16), nullable=False),
     Column("source", String(255), nullable=False),
+    Column("provider_name", String(120), nullable=False, default="seed-provider", server_default="seed-provider"),
+    Column("source_type", String(32), nullable=False, default="news", server_default="news"),
+    Column("author_handle", String(255)),
+    Column("engagement_score", Float),
     Column("channel", String(64), nullable=False),
     Column("title", String(255), nullable=False),
     Column("summary", Text, nullable=False),
@@ -123,7 +128,8 @@ users_table = Table(
     Column("tier", String(64), nullable=False),
     Column("created_at", String(64), nullable=False),
     Column("password_hash", String(512)),
-    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("is_demo_user", Boolean, nullable=False, default=False, server_default=text("false")),
 )
 
 user_sessions_table = Table(
@@ -162,7 +168,7 @@ alert_rules_table = Table(
     Column("bot_slug", String(120), ForeignKey("bots.slug", ondelete="CASCADE")),
     Column("asset", String(16)),
     Column("min_confidence", Float, nullable=False),
-    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
     Column("created_at", String(64), nullable=False),
 )
 
@@ -174,7 +180,7 @@ notification_channels_table = Table(
     Column("channel_type", String(32), nullable=False),
     Column("target", Text, nullable=False),
     Column("secret", String(255)),
-    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
     Column("created_at", String(64), nullable=False),
     Column("last_delivered_at", String(64)),
     Column("last_error", Text),
@@ -214,6 +220,7 @@ alert_delivery_events_table = Table(
 )
 
 Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
+Index("idx_signals_source_type_observed_at", signals_table.c.source_type, signals_table.c.observed_at.desc())
 Index("idx_signals_observed_at", signals_table.c.observed_at.desc())
 Index("idx_predictions_published_at", predictions_table.c.published_at.desc())
 Index("idx_predictions_status", predictions_table.c.status, predictions_table.c.published_at.desc())
@@ -277,10 +284,20 @@ class Database:
         if not existing_tables:
             return
 
+        true_literal = "TRUE" if self.dialect_name == "postgresql" else "1"
+        false_literal = "FALSE" if self.dialect_name == "postgresql" else "0"
+
         column_statements = {
             "users": {
                 "password_hash": "ALTER TABLE users ADD COLUMN password_hash TEXT",
-                "is_active": "ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+                "is_active": f"ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT {true_literal}",
+                "is_demo_user": f"ALTER TABLE users ADD COLUMN is_demo_user BOOLEAN NOT NULL DEFAULT {false_literal}",
+            },
+            "signals": {
+                "provider_name": "ALTER TABLE signals ADD COLUMN provider_name TEXT NOT NULL DEFAULT 'seed-provider'",
+                "source_type": "ALTER TABLE signals ADD COLUMN source_type TEXT NOT NULL DEFAULT 'news'",
+                "author_handle": "ALTER TABLE signals ADD COLUMN author_handle TEXT",
+                "engagement_score": "ALTER TABLE signals ADD COLUMN engagement_score FLOAT",
             },
             "alert_delivery_events": {
                 "notification_channel_id": "ALTER TABLE alert_delivery_events ADD COLUMN notification_channel_id INTEGER",

@@ -7,6 +7,55 @@ const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", {
 let selectedBotSlug = null;
 let latestSnapshot = null;
 
+function workspaceEditable(snapshot = latestSnapshot) {
+  return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
+}
+
+function disabledAttr(disabled) {
+  return disabled ? 'disabled aria-disabled="true"' : "";
+}
+
+function requireEditable() {
+  if (workspaceEditable()) {
+    return true;
+  }
+  setStatus("Sign in to modify your personal workspace. Demo mode is read-only.");
+  return false;
+}
+
+function applyWorkspaceMode(snapshot = latestSnapshot) {
+  const canEdit = workspaceEditable(snapshot);
+  const workspaceNote = document.getElementById("workspace-mode-note");
+  const forms = ["watchlist-form", "alert-rule-form", "notification-channel-form"];
+
+  if (workspaceNote) {
+    if (canEdit) {
+      workspaceNote.textContent = `Signed in as ${snapshot?.user_profile?.display_name || "workspace user"}. Personal workspace changes are enabled.`;
+      workspaceNote.classList.remove("notice-warning");
+      workspaceNote.classList.add("notice-soft");
+    } else {
+      workspaceNote.textContent = "Demo workspace is read-only. Sign in or create an account to save follows, watchlist items, channels, and alert actions.";
+      workspaceNote.classList.remove("notice-soft");
+      workspaceNote.classList.add("notice-warning");
+    }
+  }
+
+  forms.forEach((formId) => {
+    const form = document.getElementById(formId);
+    if (!form) {
+      return;
+    }
+    form.querySelectorAll("input, select, button").forEach((field) => {
+      field.disabled = !canEdit;
+    });
+  });
+
+  const markAllButton = document.getElementById("mark-all-alerts-button");
+  if (markAllButton) {
+    markAllButton.disabled = !canEdit;
+  }
+}
+
 async function fetchJson(path, options = {}) {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -176,17 +225,28 @@ function renderProviderStatus(providerStatus) {
   const rssFeeds = providerStatus.rss_feed_urls?.length
     ? providerStatus.rss_feed_urls.map((feed) => `<li>${feed}</li>`).join("")
     : "<li>No RSS feeds configured</li>";
+  const redditFeeds = providerStatus.reddit_subreddits?.length
+    ? providerStatus.reddit_subreddits.map((subreddit) => `<li>r/${subreddit}</li>`).join("")
+    : "<li>No subreddits configured</li>";
   card.innerHTML = `
     <p><strong>Market mode:</strong> ${providerStatus.market_provider_mode}</p>
     <p><strong>Market source:</strong> ${providerStatus.market_provider_source}</p>
+    <p><strong>Market ready:</strong> ${providerStatus.market_provider_ready ? "yes" : "no"}</p>
+    ${providerStatus.market_provider_warning ? `<p class="error-text">${providerStatus.market_provider_warning}</p>` : ""}
     <p><strong>Signal mode:</strong> ${providerStatus.signal_provider_mode}</p>
     <p><strong>Signal source:</strong> ${providerStatus.signal_provider_source}</p>
+    <p><strong>Signal ready:</strong> ${providerStatus.signal_provider_ready ? "yes" : "no"}</p>
+    ${providerStatus.signal_provider_warning ? `<p class="error-text">${providerStatus.signal_provider_warning}</p>` : ""}
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
     <p><strong>Market fallback:</strong> ${providerStatus.market_fallback_active ? "yes" : "no"}</p>
     <p><strong>Signal fallback:</strong> ${providerStatus.signal_fallback_active ? "yes" : "no"}</p>
     <div class="provider-feed-list">
       <strong>RSS feeds</strong>
       <ul>${rssFeeds}</ul>
+    </div>
+    <div class="provider-feed-list">
+      <strong>Reddit subreddits</strong>
+      <ul>${redditFeeds}</ul>
     </div>
   `;
 }
@@ -245,8 +305,9 @@ function renderSignals(signals, targetId = "signal-list") {
       <div>
         <strong>${signal.asset} · ${signal.title}</strong>
         <p>${signal.summary}</p>
+        <p class="panel-note">${signal.provider_name}${signal.author_handle ? ` · ${signal.author_handle}` : ""}</p>
       </div>
-      <span>${signal.source} · ${fmtPercent(signal.relevance)}</span>
+      <span>${signal.source_type} · ${signal.source} · ${fmtPercent(signal.relevance)}${signal.engagement_score !== null ? ` · engagement ${fmtPercent(signal.engagement_score)}` : ""}</span>
     </li>
   `).join("");
 }
@@ -302,6 +363,7 @@ function renderNotificationChannels(profile, notificationHealth) {
     return;
   }
 
+  const canEdit = workspaceEditable();
   const healthMap = new Map((notificationHealth?.channels || []).map((channel) => [channel.channel_id, channel]));
   badge.textContent = `${profile.notification_channels.length} channel${profile.notification_channels.length === 1 ? "" : "s"}`;
 
@@ -314,7 +376,7 @@ function renderNotificationChannels(profile, notificationHealth) {
           <strong>${channel.channel_type.toUpperCase()} · ${channel.target}</strong>
           <p>${status}${channel.last_error ? ` · Last error: ${channel.last_error}` : ""}</p>
         </div>
-        <button class="button tertiary small-button" type="button" data-action="delete-channel" data-channel-id="${channel.id}">Remove</button>
+        <button class="button tertiary small-button" type="button" data-action="delete-channel" data-channel-id="${channel.id}" ${disabledAttr(!canEdit)}>Remove</button>
       </li>
     `;
   }).join("") || "<li><p>No notification channels configured yet.</p></li>";
@@ -356,6 +418,7 @@ function renderAlertInbox(profile) {
     return;
   }
 
+  const canEdit = workspaceEditable();
   summary.textContent = `${profile.unread_alert_count} unread alert${profile.unread_alert_count === 1 ? "" : "s"}`;
   list.innerHTML = profile.recent_alerts.map((alert) => `
     <li class="${alert.is_read ? "" : "is-unread"}">
@@ -367,7 +430,7 @@ function renderAlertInbox(profile) {
       </div>
       <div class="workspace-actions">
         <span>${fmtPercent(alert.confidence)} · ${alert.asset} · ${alert.delivery_status}</span>
-        ${alert.is_read ? "<span class=\"badge\">Read</span>" : `<button class="button tertiary small-button" type="button" data-action="mark-alert-read" data-alert-id="${alert.id}">Mark read</button>`}
+        ${alert.is_read ? "<span class=\"badge\">Read</span>" : `<button class="button tertiary small-button" type="button" data-action="mark-alert-read" data-alert-id="${alert.id}" ${disabledAttr(!canEdit)}>Mark read</button>`}
       </div>
     </li>
   `).join("") || "<li><p>No alert deliveries yet.</p></li>";
@@ -379,8 +442,10 @@ function renderUserProfile(profile, notificationHealth, authSession) {
   const watchlist = document.getElementById("watchlist-list");
   const alertRules = document.getElementById("alert-rule-list");
 
+  const canEdit = workspaceEditable({ auth_session: authSession, user_profile: profile });
+
   if (tier) {
-    tier.textContent = `${profile.display_name} · ${profile.tier}${authSession?.authenticated ? "" : " · demo workspace"}`;
+    tier.textContent = `${profile.display_name} · ${profile.tier}${canEdit ? "" : " · demo read-only"}`;
   }
 
   if (followList) {
@@ -390,7 +455,7 @@ function renderUserProfile(profile, notificationHealth, authSession) {
           <strong>${follow.name}</strong>
           <p>Score ${fmtScore(follow.score)}</p>
         </div>
-        <button class="button tertiary small-button" type="button" data-action="unfollow" data-bot-slug="${follow.bot_slug}">Remove</button>
+        <button class="button tertiary small-button" type="button" data-action="unfollow" data-bot-slug="${follow.bot_slug}" ${disabledAttr(!canEdit)}>Remove</button>
       </li>
     `).join("") || "<li><p>No followed bots yet.</p></li>";
   }
@@ -402,7 +467,7 @@ function renderUserProfile(profile, notificationHealth, authSession) {
           <strong>${item.asset}</strong>
           <p>${item.latest_price !== null ? fmtPrice(item.latest_price) : "No price"}${item.change_24h !== null ? ` · ${fmtSignedPercent(item.change_24h)}` : ""}</p>
         </div>
-        <button class="button tertiary small-button" type="button" data-action="remove-watch" data-asset="${item.asset}">Remove</button>
+        <button class="button tertiary small-button" type="button" data-action="remove-watch" data-asset="${item.asset}" ${disabledAttr(!canEdit)}>Remove</button>
       </li>
     `).join("") || "<li><p>No watchlist assets yet.</p></li>";
   }
@@ -414,7 +479,7 @@ function renderUserProfile(profile, notificationHealth, authSession) {
           <strong>${rule.bot_slug || rule.asset || "Rule"}</strong>
           <p>Min confidence ${fmtPercent(rule.min_confidence)}${rule.asset ? ` · ${rule.asset}` : ""}</p>
         </div>
-        <button class="button tertiary small-button" type="button" data-action="delete-alert-rule" data-rule-id="${rule.id}">Remove</button>
+        <button class="button tertiary small-button" type="button" data-action="delete-alert-rule" data-rule-id="${rule.id}" ${disabledAttr(!canEdit)}>Remove</button>
       </li>
     `).join("") || "<li><p>No alert rules yet.</p></li>";
   }
@@ -429,15 +494,17 @@ async function renderBotDetail(slug) {
     return;
   }
   const bot = await fetchJson(`/api/bots/${slug}`);
+  const canEdit = workspaceEditable();
   selectedBotSlug = slug;
   detail.innerHTML = `
     <p class="eyebrow">${bot.archetype}</p>
     <h3>${bot.name}</h3>
     <p>${bot.thesis}</p>
+    ${canEdit ? "" : '<p class="panel-note">Sign in to follow bots, manage watchlists, and create alert rules.</p>'}
     <div class="hero-actions compact-actions detail-actions">
-      <button class="button tertiary" type="button" data-action="${bot.is_followed ? "unfollow" : "follow"}" data-bot-slug="${bot.slug}">${bot.is_followed ? "Unfollow Bot" : "Follow Bot"}</button>
-      <button class="button tertiary" type="button" data-action="add-watch" data-asset="${bot.latest_asset || bot.asset_universe[0]}">Watch ${bot.latest_asset || bot.asset_universe[0]}</button>
-      <button class="button tertiary" type="button" data-action="add-alert-rule" data-asset="${bot.latest_asset || bot.asset_universe[0]}" data-confidence="0.68">Alert on ${bot.latest_asset || bot.asset_universe[0]}</button>
+      <button class="button tertiary" type="button" data-action="${bot.is_followed ? "unfollow" : "follow"}" data-bot-slug="${bot.slug}" ${disabledAttr(!canEdit)}>${bot.is_followed ? "Unfollow Bot" : "Follow Bot"}</button>
+      <button class="button tertiary" type="button" data-action="add-watch" data-asset="${bot.latest_asset || bot.asset_universe[0]}" ${disabledAttr(!canEdit)}>Watch ${bot.latest_asset || bot.asset_universe[0]}</button>
+      <button class="button tertiary" type="button" data-action="add-alert-rule" data-asset="${bot.latest_asset || bot.asset_universe[0]}" data-confidence="0.68" ${disabledAttr(!canEdit)}>Alert on ${bot.latest_asset || bot.asset_universe[0]}</button>
     </div>
     <dl class="detail-stats">
       <div><dt>Composite</dt><dd>${fmtScore(bot.score)}</dd></div>
@@ -464,6 +531,7 @@ async function loadDashboard() {
   renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
   renderNotificationHealth(snapshot.notification_health);
   renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
+  applyWorkspaceMode(snapshot);
 
   const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
   if (preferredSlug) {
@@ -609,6 +677,9 @@ function bindForms() {
   if (watchlistForm) {
     watchlistForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
       const assetInput = document.getElementById("watchlist-input");
       const asset = assetInput?.value?.trim()?.toUpperCase();
       if (!asset) {
@@ -626,6 +697,9 @@ function bindForms() {
   if (alertRuleForm) {
     alertRuleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
       const assetInput = document.getElementById("alert-asset-input");
       const confidenceInput = document.getElementById("alert-confidence-input");
       const asset = assetInput?.value?.trim()?.toUpperCase();
@@ -680,6 +754,9 @@ function bindForms() {
   if (notificationChannelForm) {
     notificationChannelForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
       const channelType = document.getElementById("channel-type-input")?.value;
       const target = document.getElementById("channel-target-input")?.value?.trim();
       const secret = document.getElementById("channel-secret-input")?.value?.trim();
@@ -718,6 +795,9 @@ function bindInteractions() {
 
     if (target.id === "mark-all-alerts-button") {
       event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
       await markAllAlertsRead();
       return;
     }
@@ -725,34 +805,58 @@ function bindInteractions() {
     const action = target.dataset.action;
     try {
       if (action === "follow") {
+        if (!requireEditable()) {
+          return;
+        }
         await followBot(target.dataset.botSlug);
         return;
       }
       if (action === "unfollow") {
+        if (!requireEditable()) {
+          return;
+        }
         await unfollowBot(target.dataset.botSlug);
         return;
       }
       if (action === "add-watch") {
+        if (!requireEditable()) {
+          return;
+        }
         await addWatchlist(target.dataset.asset);
         return;
       }
       if (action === "remove-watch") {
+        if (!requireEditable()) {
+          return;
+        }
         await removeWatchlist(target.dataset.asset);
         return;
       }
       if (action === "add-alert-rule") {
+        if (!requireEditable()) {
+          return;
+        }
         await addAlertRule(target.dataset.asset, target.dataset.confidence || 0.68);
         return;
       }
       if (action === "delete-alert-rule") {
+        if (!requireEditable()) {
+          return;
+        }
         await deleteAlertRule(target.dataset.ruleId);
         return;
       }
       if (action === "mark-alert-read") {
+        if (!requireEditable()) {
+          return;
+        }
         await markAlertRead(target.dataset.alertId);
         return;
       }
       if (action === "delete-channel") {
+        if (!requireEditable()) {
+          return;
+        }
         await deleteNotificationChannel(target.dataset.channelId);
         return;
       }

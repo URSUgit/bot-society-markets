@@ -56,6 +56,7 @@ Included today:
 - demo ingestion providers plus optional CoinGecko market mode and RSS news signal mode with safe fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
+- a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
 - notification retry scheduling, retry jobs, and per-channel observability for outbound alert delivery
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
@@ -183,7 +184,20 @@ $env:BSM_COINGECKO_API_KEY = "your-key-here"
 
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"
+
+$env:BSM_SIGNAL_PROVIDER = "reddit"
+$env:BSM_REDDIT_CLIENT_ID = "your-client-id"
+$env:BSM_REDDIT_CLIENT_SECRET = "your-client-secret"
+$env:BSM_REDDIT_USER_AGENT = "BotSocietyMarkets/0.7"
+$env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
+$env:BSM_REDDIT_POST_LIMIT = "15"
 ```
+
+Runtime behavior:
+
+- anonymous visitors land in a seeded shared demo workspace
+- demo mode is intentionally read-only
+- account creation or sign-in unlocks a private personal workspace for saved follows, watchlists, rules, inbox actions, and notification channels
 
 ## Verification
 
