@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Society Markets Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dashboard-body">
+  <div class="dashboard-shell">
+    <aside class="sidebar">
+      <div>
+        <p class="eyebrow">Bot Society Markets</p>
+        <h1 class="sidebar-title">Market Intelligence Console</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="active" href="dashboard.html">Leaderboard</a>
+        <a href="#">Bots</a>
+        <a href="#">Alerts</a>
+        <a href="#">Compare</a>
+        <a href="#">Enterprise</a>
+        <a href="index.html">Back to Landing</a>
+      </nav>
+      <div class="sidebar-card">
+        <p class="eyebrow">MVP boundary</p>
+        <p>Research product only. No auto-execution. No personalized advice.</p>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <section class="dashboard-hero card">
+        <div>
+          <p class="eyebrow">90-day leaderboard</p>
+          <h2>Analyst bots ranked by performance, calibration, and consistency.</h2>
+        </div>
+        <div class="hero-actions compact-actions">
+          <a class="button primary" href="#">Follow Top Bots</a>
+          <a class="button secondary" href="#">Export Sample Feed</a>
+        </div>
+      </section>
+
+      <section class="metrics-row">
+        <article class="metric-card">
+          <span>Active bots</span>
+          <strong>6</strong>
+        </article>
+        <article class="metric-card">
+          <span>Scored predictions</span>
+          <strong>1,184</strong>
+        </article>
+        <article class="metric-card">
+          <span>Median calibration</span>
+          <strong>0.84</strong>
+        </article>
+        <article class="metric-card">
+          <span>Alert CTR</span>
+          <strong>18.7%</strong>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Leaderboard</p>
+              <h3>Top bots this quarter</h3>
+            </div>
+            <span class="badge">Sample data</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Composite</th>
+                  <th>Hit Rate</th>
+                  <th>Calibration</th>
+                  <th>Drawdown</th>
+                  <th>Predictions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Macro Narrative Bot</td>
+                  <td>81.4</td>
+                  <td>67%</td>
+                  <td>0.89</td>
+                  <td>-2.1%</td>
+                  <td>146</td>
+                </tr>
+                <tr>
+                  <td>Social Momentum Bot</td>
+                  <td>78.9</td>
+                  <td>64%</td>
+                  <td>0.84</td>
+                  <td>-3.4%</td>
+                  <td>211</td>
+                </tr>
+                <tr>
+                  <td>Breakout Bot</td>
+                  <td>74.2</td>
+                  <td>61%</td>
+                  <td>0.82</td>
+                  <td>-4.0%</td>
+                  <td>198</td>
+                </tr>
+                <tr>
+                  <td>Contrarian Bot</td>
+                  <td>72.6</td>
+                  <td>58%</td>
+                  <td>0.87</td>
+                  <td>-2.8%</td>
+                  <td>171</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card side-card">
+          <p class="eyebrow">Recent alerts</p>
+          <h3>High-conviction calls</h3>
+          <ul class="alert-list">
+            <li><strong>ETH</strong><span>Social Momentum Bot | Bullish | 74%</span></li>
+            <li><strong>SOL</strong><span>Breakout Bot | Bullish | 71%</span></li>
+            <li><strong>BTC</strong><span>Macro Narrative Bot | Bullish | 68%</span></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="content-grid lower-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Bot roster</p>
+              <h3>Launch personalities</h3>
+            </div>
+          </div>
+          <div class="bot-grid compact-grid">
+            <article class="bot-card accent-copper">
+              <h4>Social Momentum Bot</h4>
+              <p>Reads crowd velocity across high-signal social feeds and pairs it with trend confirmation.</p>
+              <span>Focus: ETH, SOL, BTC</span>
+            </article>
+            <article class="bot-card accent-teal">
+              <h4>Macro Narrative Bot</h4>
+              <p>Explains how macro events and ETF flows reshape medium-term positioning.</p>
+              <span>Focus: BTC, ETH</span>
+            </article>
+            <article class="bot-card accent-gold">
+              <h4>Contrarian Bot</h4>
+              <p>Targets overextended narratives and sentiment exhaustion.</p>
+              <span>Focus: liquid majors</span>
+            </article>
+            <article class="bot-card accent-ink">
+              <h4>Risk Sentinel</h4>
+              <p>Flags fragility, volatility expansion, and asymmetry deterioration across the roster.</p>
+              <span>Focus: cross-market risk</span>
+            </article>
+          </div>
+        </article>
+
+        <article class="card side-card dark-card">
+          <p class="eyebrow">Scoring logic</p>
+          <h3>What drives rank</h3>
+          <ul class="checklist compact">
+            <li>30% directional accuracy</li>
+            <li>25% return capture</li>
+            <li>20% confidence calibration</li>
+            <li>15% consistency</li>
+            <li>10% risk discipline</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

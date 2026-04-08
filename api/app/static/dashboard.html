@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Society Markets Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="dashboard-body">
+  <div class="dashboard-shell">
+    <aside class="sidebar">
+      <div>
+        <p class="eyebrow">Bot Society Markets</p>
+        <h1 class="sidebar-title">Market Intelligence Console</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="active" href="/dashboard">Leaderboard</a>
+        <a href="#">Bots</a>
+        <a href="#">Alerts</a>
+        <a href="#">Compare</a>
+        <a href="#">Enterprise</a>
+        <a href="/">Back to Landing</a>
+      </nav>
+      <div class="sidebar-card">
+        <p class="eyebrow">MVP boundary</p>
+        <p>Research product only. No auto-execution. No personalized advice.</p>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <section class="dashboard-hero card">
+        <div>
+          <p class="eyebrow">90-day leaderboard</p>
+          <h2>Analyst bots ranked by performance, calibration, and consistency.</h2>
+        </div>
+        <div class="hero-actions compact-actions">
+          <a class="button primary" href="#">Follow Top Bots</a>
+          <a class="button secondary" href="#">Export Sample Feed</a>
+        </div>
+      </section>
+
+      <section class="metrics-row" id="dashboard-metrics"></section>
+
+      <section class="content-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Leaderboard</p>
+              <h3>Top bots this quarter</h3>
+            </div>
+            <span class="badge">Live mock data</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bot</th>
+                  <th>Composite</th>
+                  <th>Hit Rate</th>
+                  <th>Calibration</th>
+                  <th>Focus</th>
+                  <th>Predictions</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card side-card">
+          <p class="eyebrow">Recent alerts</p>
+          <h3>High-conviction calls</h3>
+          <ul class="alert-list" id="alert-list"></ul>
+        </article>
+      </section>
+
+      <section class="content-grid lower-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Bot roster</p>
+              <h3>Launch personalities</h3>
+            </div>
+          </div>
+          <div class="bot-grid compact-grid" id="dashboard-bots"></div>
+        </article>
+
+        <article class="card side-card dark-card">
+          <p class="eyebrow">Scoring logic</p>
+          <h3>What drives rank</h3>
+          <ul class="checklist compact">
+            <li>30% directional accuracy</li>
+            <li>25% return capture</li>
+            <li>20% confidence calibration</li>
+            <li>15% consistency</li>
+            <li>10% risk discipline</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
