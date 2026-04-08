@@ -198,6 +198,10 @@ alert_delivery_events_table = Table(
     Column("channel", String(32), nullable=False),
     Column("channel_target", Text, nullable=False),
     Column("delivery_status", String(32), nullable=False),
+    Column("attempt_count", Integer, nullable=False, default=1, server_default="1"),
+    Column("last_attempt_at", String(64)),
+    Column("next_attempt_at", String(64)),
+    Column("error_detail", Text),
     Column("created_at", String(64), nullable=False),
     Column("read_at", String(64)),
     UniqueConstraint(
@@ -217,6 +221,11 @@ Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
 Index("idx_alert_rules_user", alert_rules_table.c.user_slug, alert_rules_table.c.created_at.desc())
 Index("idx_notification_channels_user", notification_channels_table.c.user_slug, notification_channels_table.c.created_at.desc())
 Index("idx_alert_delivery_events_user", alert_delivery_events_table.c.user_slug, alert_delivery_events_table.c.created_at.desc())
+Index(
+    "idx_alert_delivery_events_retry",
+    alert_delivery_events_table.c.delivery_status,
+    alert_delivery_events_table.c.next_attempt_at,
+)
 Index(
     "idx_alert_delivery_events_unread",
     alert_delivery_events_table.c.user_slug,
@@ -276,6 +285,10 @@ class Database:
             "alert_delivery_events": {
                 "notification_channel_id": "ALTER TABLE alert_delivery_events ADD COLUMN notification_channel_id INTEGER",
                 "channel_target": "ALTER TABLE alert_delivery_events ADD COLUMN channel_target TEXT NOT NULL DEFAULT 'in_app'",
+                "attempt_count": "ALTER TABLE alert_delivery_events ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 1",
+                "last_attempt_at": "ALTER TABLE alert_delivery_events ADD COLUMN last_attempt_at TEXT",
+                "next_attempt_at": "ALTER TABLE alert_delivery_events ADD COLUMN next_attempt_at TEXT",
+                "error_detail": "ALTER TABLE alert_delivery_events ADD COLUMN error_detail TEXT",
             },
         }
 

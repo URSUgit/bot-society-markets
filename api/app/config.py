@@ -39,7 +39,7 @@ def _default_database_path() -> Path:
 @dataclass(slots=True)
 class Settings:
     project_name: str = "Bot Society Markets"
-    version: str = "0.5.0"
+    version: str = "0.6.0"
     database_path: Path = field(default_factory=_default_database_path)
     database_url: str | None = None
     seed_demo_data: bool = True
@@ -63,6 +63,9 @@ class Settings:
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
     outbound_timeout_seconds: int = 10
+    notification_retry_limit: int = 25
+    notification_max_attempts: int = 4
+    notification_retry_base_seconds: int = 300
 
 
 def _split_csv_env(value: str) -> tuple[str, ...]:
@@ -98,6 +101,9 @@ def get_settings() -> Settings:
     alert_inbox_limit = max(1, min(50, int(os.getenv("BSM_ALERT_INBOX_LIMIT", "10"))))
     session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
     outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
+    notification_retry_limit = max(1, int(os.getenv("BSM_NOTIFICATION_RETRY_LIMIT", "25")))
+    notification_max_attempts = max(1, int(os.getenv("BSM_NOTIFICATION_MAX_ATTEMPTS", "4")))
+    notification_retry_base_seconds = max(30, int(os.getenv("BSM_NOTIFICATION_RETRY_BASE_SECONDS", "300")))
 
     return Settings(
         database_path=database_path,
@@ -121,4 +127,7 @@ def get_settings() -> Settings:
         smtp_from_email=os.getenv("BSM_SMTP_FROM_EMAIL") or None,
         smtp_use_tls=_env_bool("BSM_SMTP_USE_TLS", True),
         outbound_timeout_seconds=outbound_timeout_seconds,
+        notification_retry_limit=notification_retry_limit,
+        notification_max_attempts=notification_max_attempts,
+        notification_retry_base_seconds=notification_retry_base_seconds,
     )

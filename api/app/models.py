@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 Direction = Literal["bullish", "bearish", "neutral"]
 PredictionStatus = Literal["pending", "scored"]
 NotificationChannelType = Literal["email", "webhook"]
+NotificationDeliveryStatus = Literal["delivered", "retry_scheduled", "failed", "exhausted"]
 
 
 class Summary(BaseModel):
@@ -144,7 +145,11 @@ class AlertDelivery(BaseModel):
     message: str
     channel: str
     channel_target: str
-    delivery_status: str
+    delivery_status: NotificationDeliveryStatus
+    attempt_count: int = Field(ge=0)
+    last_attempt_at: str | None = None
+    next_attempt_at: str | None = None
+    error_detail: str | None = None
     created_at: str
     read_at: str | None = None
     is_read: bool = False
@@ -155,6 +160,34 @@ class AlertInbox(BaseModel):
     alerts: list[AlertDelivery]
 
 
+class NotificationChannelHealth(BaseModel):
+    channel_id: int
+    channel_type: NotificationChannelType
+    target: str
+    is_active: bool
+    delivered_count: int = Field(ge=0)
+    retry_scheduled_count: int = Field(ge=0)
+    exhausted_count: int = Field(ge=0)
+    last_delivered_at: str | None = None
+    last_error: str | None = None
+
+
+class NotificationHealthSnapshot(BaseModel):
+    active_channels: int = Field(ge=0)
+    delivered_last_24h: int = Field(ge=0)
+    retry_queue_depth: int = Field(ge=0)
+    exhausted_deliveries: int = Field(ge=0)
+    last_delivery_at: str | None = None
+    channels: list[NotificationChannelHealth]
+
+
+class NotificationRetryResult(BaseModel):
+    scanned_events: int = Field(ge=0)
+    delivered: int = Field(ge=0)
+    rescheduled: int = Field(ge=0)
+    exhausted: int = Field(ge=0)
+
+
 class DashboardSnapshot(BaseModel):
     summary: Summary
     assets: list[AssetSnapshot]
@@ -162,7 +195,9 @@ class DashboardSnapshot(BaseModel):
     recent_predictions: list[PredictionView]
     recent_signals: list[SignalView]
     latest_operation: OperationSnapshot | None = None
+    auth_session: AuthSessionSnapshot
     user_profile: "UserProfile"
+    notification_health: NotificationHealthSnapshot
     provider_status: ProviderStatus
 
 
@@ -180,6 +215,7 @@ class CycleResult(BaseModel):
     recent_predictions: list[PredictionView]
     provider_status: ProviderStatus
     alert_inbox: AlertInbox
+    notification_health: NotificationHealthSnapshot
 
 
 class FollowedBot(BaseModel):

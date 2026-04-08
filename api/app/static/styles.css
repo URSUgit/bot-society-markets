@@ -729,6 +729,10 @@ th {
   gap: 18px;
 }
 
+.workspace-grid-large {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .workspace-card {
   padding: 20px;
   border-radius: 22px;
@@ -799,6 +803,16 @@ th {
   color: var(--text);
 }
 
+.inline-form select,
+.stack-form input,
+.stack-form select {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
 .compact-form input {
   width: 86px;
 }
@@ -837,8 +851,63 @@ th {
   overflow-wrap: anywhere;
 }
 
+.panel-stack {
+  display: grid;
+  gap: 24px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 18px;
+}
+
+.stack-form {
+  display: grid;
+  gap: 12px;
+}
+
+.stack-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 0.95rem;
+}
+
+.compact-stack-form {
+  margin-bottom: 14px;
+}
+
+.auth-session-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--line);
+}
+
+.compact-detail-stats {
+  gap: 8px;
+}
+
+.workspace-span-two {
+  grid-column: span 2;
+}
+
+.workspace-health-list {
+  margin-top: 14px;
+}
+
+.error-text {
+  color: #aa4b2c;
+}
+
 @media (max-width: 1080px) {
+  .auth-grid,
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-span-two {
+    grid-column: auto;
   }
 }

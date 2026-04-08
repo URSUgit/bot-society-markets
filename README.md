@@ -50,15 +50,18 @@ Included today:
 
 - a FastAPI application with structured product endpoints
 - SQLAlchemy-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, user state, sessions, notification channels, and alert deliveries
+- Alembic migration scaffolding plus operational database upgrade and copy commands
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
 - demo ingestion providers plus optional CoinGecko market mode and RSS news signal mode with safe fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
-- a working dashboard with follows, watchlist items, alert rules, alert inbox state, provider status, pipeline controls, and authenticated workspace support
-- operational job entrypoints for bootstrap, provider-status, run-cycle, and worker execution
+- a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
+- notification retry scheduling, retry jobs, and per-channel observability for outbound alert delivery
+- operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
 - Docker assets for reproducible container deployment
+- desktop shortcut installation for one-click Windows startup
 
 ## Product Surface
 
@@ -78,6 +81,7 @@ Key endpoints include:
 - `POST /api/auth/logout`
 - `GET /api/me`
 - `GET /api/me/alerts`
+- `GET /api/me/notification-health`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
@@ -85,6 +89,7 @@ Key endpoints include:
 - `POST /api/me/alert-rules`
 - `GET /api/system/providers`
 - `POST /api/admin/run-cycle`
+- `POST /api/admin/retry-notifications`
 
 ## Run Locally
 
@@ -102,6 +107,7 @@ Then open `http://127.0.0.1:8000`.
 Double-click:
 
 - [launch-dashboard.bat](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.bat)
+- or use the installed desktop shortcut: `Bot Society Markets Dashboard`
 
 Or run:
 
@@ -111,10 +117,15 @@ Or run:
 
 The launcher will:
 
-- create `.venv` if it does not exist
-- install/update Python dependencies only when needed
-- start the local API server
+- prefer the Docker + Postgres stack on port `8010`
+- fall back to the local Python launcher if Docker is unavailable
 - open the dashboard in your default browser
+
+To install or refresh the desktop shortcuts:
+
+```powershell
+.\install-shortcuts.ps1
+```
 
 ## Operational Commands
 
@@ -122,6 +133,9 @@ The launcher will:
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
 python -m api.app.jobs run-cycle
+python -m api.app.jobs retry-notifications
+python -m api.app.jobs notification-health
+python -m api.app.jobs db-upgrade
 python -m api.app.jobs worker --cycles 1 --interval-seconds 300
 ```
 
@@ -155,6 +169,9 @@ $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_WORKER_INTERVAL_SECONDS = "900"
 $env:BSM_WORKER_MAX_CYCLES = "0"
+$env:BSM_NOTIFICATION_RETRY_LIMIT = "25"
+$env:BSM_NOTIFICATION_MAX_ATTEMPTS = "4"
+$env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
 ```
 
 Optional live provider setup:

@@ -15,6 +15,7 @@
       </div>
       <nav class="sidebar-nav">
         <a class="active" href="#leaderboard-section">Leaderboard</a>
+        <a href="#account-section">Account</a>
         <a href="#workspace-section">Workspace</a>
         <a href="#alerts-section">Alert Inbox</a>
         <a href="#assets-section">Assets</a>
@@ -44,16 +45,74 @@
       <section class="metrics-row" id="dashboard-metrics"></section>
       <p class="notice" id="cycle-status"></p>
 
+      <section class="content-grid" id="account-section">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Workspace access</p>
+              <h3>Start in demo mode or sign in for a personal workspace</h3>
+            </div>
+            <span class="badge" id="auth-status-badge">Checking session</span>
+          </div>
+          <div class="auth-grid">
+            <article class="workspace-card auth-summary-card">
+              <h4>Current session</h4>
+              <p class="workspace-subtitle" id="auth-note">Loading account state...</p>
+              <div class="auth-session-card" id="auth-session-card"></div>
+              <div class="hero-actions compact-actions" id="auth-actions"></div>
+            </article>
+            <article class="workspace-card auth-form-card" id="login-card">
+              <div class="workspace-head">
+                <h4>Sign in</h4>
+                <span class="badge">Existing account</span>
+              </div>
+              <form id="login-form" class="stack-form">
+                <label>
+                  <span>Email</span>
+                  <input id="login-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
+                </label>
+                <button class="button tertiary" type="submit">Sign In</button>
+              </form>
+            </article>
+            <article class="workspace-card auth-form-card" id="register-card">
+              <div class="workspace-head">
+                <h4>Create account</h4>
+                <span class="badge">Personal workspace</span>
+              </div>
+              <form id="register-form" class="stack-form">
+                <label>
+                  <span>Name</span>
+                  <input id="register-name" name="display_name" type="text" autocomplete="name" placeholder="Alpha Research" required>
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input id="register-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
+                </label>
+                <button class="button tertiary" type="submit">Create Account</button>
+              </form>
+            </article>
+          </div>
+        </article>
+      </section>
+
       <section class="content-grid" id="workspace-section">
         <article class="card wide-card">
           <div class="section-head">
             <div>
               <p class="eyebrow">User workspace</p>
-              <h3>Follows, watchlist, alert rules, and inbox state</h3>
+              <h3>Follows, watchlist, rules, channels, and inbox state</h3>
             </div>
             <span class="badge" id="workspace-tier">Loading tier</span>
           </div>
-          <div class="workspace-grid">
+          <div class="workspace-grid workspace-grid-large">
             <article class="workspace-card">
               <h4>Followed Bots</h4>
               <ul class="workspace-list" id="follow-list"></ul>
@@ -81,6 +140,31 @@
             </article>
             <article class="workspace-card">
               <div class="workspace-head">
+                <h4>Notification Channels</h4>
+                <span class="badge" id="channel-count-badge">0 channels</span>
+              </div>
+              <form id="notification-channel-form" class="stack-form compact-stack-form">
+                <label>
+                  <span>Channel</span>
+                  <select id="channel-type-input" name="channel_type">
+                    <option value="webhook">Webhook</option>
+                    <option value="email">Email</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Target</span>
+                  <input id="channel-target-input" name="target" type="text" placeholder="https://example.com/webhook or name@example.com" required>
+                </label>
+                <label>
+                  <span>Secret or signature</span>
+                  <input id="channel-secret-input" name="secret" type="text" placeholder="Optional shared secret">
+                </label>
+                <button class="button tertiary" type="submit">Add Channel</button>
+              </form>
+              <ul class="workspace-list" id="notification-channel-list"></ul>
+            </article>
+            <article class="workspace-card workspace-span-two">
+              <div class="workspace-head">
                 <h4>Alert Inbox</h4>
                 <button class="button tertiary small-button" id="mark-all-alerts-button" type="button">Mark all read</button>
               </div>
@@ -90,11 +174,24 @@
           </div>
         </article>
 
-        <article class="card side-card" id="provider-section">
-          <p class="eyebrow">Provider status</p>
-          <h3>Runtime source configuration</h3>
-          <div class="operation-card" id="provider-card"></div>
-        </article>
+        <div class="panel-stack">
+          <article class="card side-card" id="provider-section">
+            <p class="eyebrow">Provider status</p>
+            <h3>Runtime source configuration</h3>
+            <div class="operation-card" id="provider-card"></div>
+          </article>
+          <article class="card side-card" id="notification-health-section">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Delivery health</p>
+                <h3>Notification retry queue and channel health</h3>
+              </div>
+              <button class="button tertiary small-button" id="retry-notifications-button" type="button">Retry now</button>
+            </div>
+            <div class="operation-card" id="notification-health-card"></div>
+            <ul class="workspace-list workspace-health-list" id="notification-health-list"></ul>
+          </article>
+        </div>
       </section>
 
       <section class="content-grid" id="assets-section">

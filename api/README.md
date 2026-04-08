@@ -7,6 +7,7 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `app/main.py` - FastAPI application and route registration
 - `app/config.py` - runtime settings, provider modes, and worker configuration
 - `app/database.py` - SQLAlchemy schema, migrations for legacy SQLite data, and database connection management
+- `app/db_ops.py` - Alembic helpers and database copy utilities
 - `app/repository.py` - persistence layer for bots, market data, signals, predictions, pipeline runs, user state, and alert deliveries
 - `app/providers.py` - demo providers, optional CoinGecko market adapter, and optional RSS signal ingestion
 - `app/orchestration.py` - bot prediction generation logic
@@ -29,8 +30,13 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
 - `GET /api/signals`
+- `GET /api/auth/session`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
 - `GET /api/me`
 - `GET /api/me/alerts`
+- `GET /api/me/notification-health`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
@@ -38,6 +44,7 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `POST /api/me/alert-rules`
 - `GET /api/system/providers`
 - `POST /api/admin/run-cycle`
+- `POST /api/admin/retry-notifications`
 
 ## Current Scope
 
@@ -48,9 +55,11 @@ The current build includes:
 - scored historical predictions for the launch bot roster
 - persisted user state for follows, watchlist items, alert rules, notification channels, in-app alerts, and authenticated sessions
 - a repeatable pipeline cycle that ingests fresh batches, creates new pending predictions, and delivers alert events
+- retry scheduling plus delivery-health tracking for failed outbound notification attempts
 - optional live market data through CoinGecko configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
 - a worker loop for scheduled cycle execution
+- Alembic-backed schema upgrade flow for Postgres-oriented environments
 
 ## Run Locally
 
@@ -69,6 +78,9 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
 python -m api.app.jobs run-cycle
+python -m api.app.jobs retry-notifications
+python -m api.app.jobs notification-health
+python -m api.app.jobs db-upgrade
 python -m api.app.jobs worker --cycles 1 --interval-seconds 300
 ```
 
@@ -78,8 +90,9 @@ The repository includes a one-click launcher:
 
 - [launch-dashboard.bat](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.bat)
 - [launch-dashboard.ps1](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.ps1)
+- [install-shortcuts.ps1](C:\Users\ionut\OneDrive\Documents\New project\install-shortcuts.ps1)
 
-It will provision the virtual environment if needed, install dependencies, start the API, and open the dashboard automatically.
+It now prefers Docker + Postgres on port `8010`, falls back to the local Python launcher when needed, and can install desktop shortcuts for a one-click start experience.
 
 ## Environment Variables
 
@@ -90,6 +103,9 @@ $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_WORKER_INTERVAL_SECONDS = "900"
 $env:BSM_WORKER_MAX_CYCLES = "0"
 $env:BSM_ALERT_INBOX_LIMIT = "10"
+$env:BSM_NOTIFICATION_RETRY_LIMIT = "25"
+$env:BSM_NOTIFICATION_MAX_ATTEMPTS = "4"
+$env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
 ```
 
 Optional live provider setup:
@@ -127,8 +143,8 @@ docker run --rm -p 8000:8000 bot-society-markets
 
 The Compose stack uses Postgres, sets `BSM_DATABASE_URL` automatically, and defaults the host port to `8010` so it can coexist with a local dev server on `8000`.
 
-## Next Targets
+## Current Next Targets
 
-- add Alembic migrations for managed Postgres environments
-- add delivery retries and notification observability
+- move from a baseline Alembic migration to revision-per-feature migrations
 - add provider-level provenance scoring and source quality controls
+- expand notifications beyond in-app plus single email/webhook channels

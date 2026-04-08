@@ -1,18 +1,22 @@
 const fmtPercent = (value, digits = 0) => `${(Number(value) * 100).toFixed(digits)}%`;
 const fmtScore = (value) => Number(value).toFixed(1);
-const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: value > 1000 ? 0 : 2 }).format(Number(value));
+const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
+const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
 
 let selectedBotSlug = null;
+let latestSnapshot = null;
 
 async function fetchJson(path, options = {}) {
   const response = await fetch(path, {
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
     ...options,
   });
+
   if (!response.ok) {
     let message = `Failed to load ${path}`;
     try {
@@ -24,6 +28,10 @@ async function fetchJson(path, options = {}) {
       console.error(error);
     }
     throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return null;
   }
   return response.json();
 }
@@ -59,7 +67,7 @@ function renderLanding(snapshot) {
   }
 
   if (providerBadge) {
-    providerBadge.textContent = `${snapshot.provider_status.market_provider_source}`;
+    providerBadge.textContent = snapshot.provider_status.market_provider_source;
   }
 
   if (providerNote) {
@@ -155,6 +163,7 @@ function renderOperation(operation) {
     <p><strong>Signals ingested:</strong> ${operation.ingested_signals}</p>
     <p><strong>Predictions created:</strong> ${operation.generated_predictions}</p>
     <p><strong>Predictions scored:</strong> ${operation.scored_predictions}</p>
+    <p><strong>Completed:</strong> ${fmtDateTime(operation.completed_at || operation.started_at)}</p>
     <p>${operation.message}</p>
   `;
 }
@@ -242,6 +251,104 @@ function renderSignals(signals, targetId = "signal-list") {
   `).join("");
 }
 
+function renderAuthPanel(authSession, profile) {
+  const badge = document.getElementById("auth-status-badge");
+  const note = document.getElementById("auth-note");
+  const sessionCard = document.getElementById("auth-session-card");
+  const actions = document.getElementById("auth-actions");
+  const loginCard = document.getElementById("login-card");
+  const registerCard = document.getElementById("register-card");
+
+  if (!badge || !note || !sessionCard || !actions || !loginCard || !registerCard) {
+    return;
+  }
+
+  if (authSession?.authenticated && authSession.user) {
+    badge.textContent = "Signed in";
+    note.textContent = `You are working in the ${authSession.user.display_name} workspace.`;
+    sessionCard.innerHTML = `
+      <dl class="detail-stats compact-detail-stats">
+        <div><dt>Name</dt><dd>${authSession.user.display_name}</dd></div>
+        <div><dt>Email</dt><dd>${authSession.user.email}</dd></div>
+        <div><dt>Tier</dt><dd>${authSession.user.tier}</dd></div>
+        <div><dt>Workspace</dt><dd>${profile.slug}</dd></div>
+      </dl>
+    `;
+    actions.innerHTML = '<button class="button tertiary" type="button" data-action="logout">Sign Out</button>';
+    loginCard.hidden = true;
+    registerCard.hidden = true;
+    return;
+  }
+
+  badge.textContent = "Demo mode";
+  note.textContent = "You are viewing the seeded demo workspace. Sign in to get a personal workspace with private follows, channels, and alerts.";
+  sessionCard.innerHTML = `
+    <dl class="detail-stats compact-detail-stats">
+      <div><dt>Workspace</dt><dd>${profile.display_name}</dd></div>
+      <div><dt>Tier</dt><dd>${profile.tier}</dd></div>
+      <div><dt>Email</dt><dd>${profile.email}</dd></div>
+      <div><dt>Mode</dt><dd>Shared demo</dd></div>
+    </dl>
+  `;
+  actions.innerHTML = "";
+  loginCard.hidden = false;
+  registerCard.hidden = false;
+}
+
+function renderNotificationChannels(profile, notificationHealth) {
+  const list = document.getElementById("notification-channel-list");
+  const badge = document.getElementById("channel-count-badge");
+  if (!list || !badge) {
+    return;
+  }
+
+  const healthMap = new Map((notificationHealth?.channels || []).map((channel) => [channel.channel_id, channel]));
+  badge.textContent = `${profile.notification_channels.length} channel${profile.notification_channels.length === 1 ? "" : "s"}`;
+
+  list.innerHTML = profile.notification_channels.map((channel) => {
+    const health = healthMap.get(channel.id);
+    const status = health?.retry_scheduled_count ? `${health.retry_scheduled_count} pending retries` : (channel.last_delivered_at ? `Delivered ${fmtDateTime(channel.last_delivered_at)}` : "No successful deliveries yet");
+    return `
+      <li>
+        <div>
+          <strong>${channel.channel_type.toUpperCase()} · ${channel.target}</strong>
+          <p>${status}${channel.last_error ? ` · Last error: ${channel.last_error}` : ""}</p>
+        </div>
+        <button class="button tertiary small-button" type="button" data-action="delete-channel" data-channel-id="${channel.id}">Remove</button>
+      </li>
+    `;
+  }).join("") || "<li><p>No notification channels configured yet.</p></li>";
+}
+
+function renderNotificationHealth(notificationHealth) {
+  const card = document.getElementById("notification-health-card");
+  const list = document.getElementById("notification-health-list");
+  if (!card || !list || !notificationHealth) {
+    return;
+  }
+
+  card.innerHTML = `
+    <p><strong>Active channels:</strong> ${notificationHealth.active_channels}</p>
+    <p><strong>Delivered in last 24h:</strong> ${notificationHealth.delivered_last_24h}</p>
+    <p><strong>Retry queue:</strong> ${notificationHealth.retry_queue_depth}</p>
+    <p><strong>Exhausted deliveries:</strong> ${notificationHealth.exhausted_deliveries}</p>
+    <p><strong>Last external delivery:</strong> ${fmtDateTime(notificationHealth.last_delivery_at)}</p>
+  `;
+
+  list.innerHTML = notificationHealth.channels.map((channel) => `
+    <li>
+      <div>
+        <strong>${channel.channel_type.toUpperCase()} · ${channel.target}</strong>
+        <p>${channel.delivered_count} delivered · ${channel.retry_scheduled_count} queued · ${channel.exhausted_count} exhausted</p>
+      </div>
+      <div class="workspace-actions">
+        <span>${channel.last_delivered_at ? `Last ok ${fmtDateTime(channel.last_delivered_at)}` : "Awaiting first delivery"}</span>
+        ${channel.last_error ? `<span class="error-text">${channel.last_error}</span>` : "<span class=\"badge\">Healthy</span>"}
+      </div>
+    </li>
+  `).join("") || "<li><p>No external channels configured yet.</p></li>";
+}
+
 function renderAlertInbox(profile) {
   const summary = document.getElementById("alert-inbox-summary");
   const list = document.getElementById("alert-inbox-list");
@@ -255,23 +362,25 @@ function renderAlertInbox(profile) {
       <div>
         <strong>${alert.title}</strong>
         <p>${alert.message}</p>
+        ${alert.error_detail ? `<p class="error-text">Delivery error: ${alert.error_detail}</p>` : ""}
+        ${alert.next_attempt_at ? `<p class="panel-note">Next retry ${fmtDateTime(alert.next_attempt_at)}</p>` : ""}
       </div>
       <div class="workspace-actions">
-        <span>${fmtPercent(alert.confidence)} · ${alert.asset}</span>
+        <span>${fmtPercent(alert.confidence)} · ${alert.asset} · ${alert.delivery_status}</span>
         ${alert.is_read ? "<span class=\"badge\">Read</span>" : `<button class="button tertiary small-button" type="button" data-action="mark-alert-read" data-alert-id="${alert.id}">Mark read</button>`}
       </div>
     </li>
   `).join("") || "<li><p>No alert deliveries yet.</p></li>";
 }
 
-function renderUserProfile(profile) {
+function renderUserProfile(profile, notificationHealth, authSession) {
   const tier = document.getElementById("workspace-tier");
   const followList = document.getElementById("follow-list");
   const watchlist = document.getElementById("watchlist-list");
   const alertRules = document.getElementById("alert-rule-list");
 
   if (tier) {
-    tier.textContent = `${profile.display_name} · ${profile.tier}`;
+    tier.textContent = `${profile.display_name} · ${profile.tier}${authSession?.authenticated ? "" : " · demo workspace"}`;
   }
 
   if (followList) {
@@ -310,6 +419,7 @@ function renderUserProfile(profile) {
     `).join("") || "<li><p>No alert rules yet.</p></li>";
   }
 
+  renderNotificationChannels(profile, notificationHealth);
   renderAlertInbox(profile);
 }
 
@@ -343,6 +453,7 @@ async function renderBotDetail(slug) {
 
 async function loadDashboard() {
   const snapshot = await fetchJson("/api/dashboard");
+  latestSnapshot = snapshot;
   renderMetrics(snapshot.summary);
   renderAssets(snapshot.assets);
   renderOperation(snapshot.latest_operation);
@@ -350,7 +461,9 @@ async function loadDashboard() {
   renderLeaderboard(snapshot.leaderboard, snapshot.user_profile);
   renderPredictions(snapshot.recent_predictions);
   renderSignals(snapshot.recent_signals);
-  renderUserProfile(snapshot.user_profile);
+  renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
+  renderNotificationHealth(snapshot.notification_health);
+  renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
 
   const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
   if (preferredSlug) {
@@ -370,6 +483,25 @@ async function runCycle() {
     setStatus(`Pipeline cycle completed. ${result.alert_inbox.unread_count} unread alerts currently in inbox.`);
   } catch (error) {
     setStatus(`Pipeline cycle failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function retryNotifications() {
+  const button = document.getElementById("retry-notifications-button");
+  setStatus("Retrying failed external notifications...");
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const result = await fetchJson("/api/admin/retry-notifications", { method: "POST" });
+    await loadDashboard();
+    setStatus(`Retry pass finished. Scanned ${result.scanned_events}, delivered ${result.delivered}, rescheduled ${result.rescheduled}, exhausted ${result.exhausted}.`);
+  } catch (error) {
+    setStatus(`Retry pass failed: ${error.message}`);
   } finally {
     if (button) {
       button.disabled = false;
@@ -426,9 +558,53 @@ async function markAllAlertsRead() {
   await loadDashboard();
 }
 
+async function addNotificationChannel(channelType, target, secret) {
+  await fetchJson("/api/me/notification-channels", {
+    method: "POST",
+    body: JSON.stringify({
+      channel_type: channelType,
+      target,
+      secret: secret || null,
+    }),
+  });
+  await loadDashboard();
+}
+
+async function deleteNotificationChannel(channelId) {
+  await fetchJson(`/api/me/notification-channels/${channelId}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
+async function loginUser(email, password) {
+  await fetchJson("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  await loadDashboard();
+  setStatus("Signed in successfully.");
+}
+
+async function registerUser(displayName, email, password) {
+  await fetchJson("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ display_name: displayName, email, password }),
+  });
+  await loadDashboard();
+  setStatus("Account created and signed in.");
+}
+
+async function logoutUser() {
+  await fetchJson("/api/auth/logout", { method: "POST" });
+  await loadDashboard();
+  setStatus("Signed out. You are back in demo mode.");
+}
+
 function bindForms() {
   const watchlistForm = document.getElementById("watchlist-form");
   const alertRuleForm = document.getElementById("alert-rule-form");
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const notificationChannelForm = document.getElementById("notification-channel-form");
 
   if (watchlistForm) {
     watchlistForm.addEventListener("submit", async (event) => {
@@ -438,8 +614,12 @@ function bindForms() {
       if (!asset) {
         return;
       }
-      await addWatchlist(asset);
-      assetInput.value = "";
+      try {
+        await addWatchlist(asset);
+        assetInput.value = "";
+      } catch (error) {
+        setStatus(error.message);
+      }
     });
   }
 
@@ -453,8 +633,66 @@ function bindForms() {
       if (!asset) {
         return;
       }
-      await addAlertRule(asset, confidence);
-      assetInput.value = "";
+      try {
+        await addAlertRule(asset, confidence);
+        assetInput.value = "";
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("login-email")?.value?.trim();
+      const password = document.getElementById("login-password")?.value || "";
+      if (!email || !password) {
+        return;
+      }
+      try {
+        await loginUser(email, password);
+        loginForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const displayName = document.getElementById("register-name")?.value?.trim();
+      const email = document.getElementById("register-email")?.value?.trim();
+      const password = document.getElementById("register-password")?.value || "";
+      if (!displayName || !email || !password) {
+        return;
+      }
+      try {
+        await registerUser(displayName, email, password);
+        registerForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (notificationChannelForm) {
+    notificationChannelForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const channelType = document.getElementById("channel-type-input")?.value;
+      const target = document.getElementById("channel-target-input")?.value?.trim();
+      const secret = document.getElementById("channel-secret-input")?.value?.trim();
+      if (!channelType || !target) {
+        return;
+      }
+      try {
+        await addNotificationChannel(channelType, target, secret);
+        notificationChannelForm.reset();
+        document.getElementById("channel-type-input").value = "webhook";
+      } catch (error) {
+        setStatus(error.message);
+      }
     });
   }
 }
@@ -472,6 +710,12 @@ function bindInteractions() {
       return;
     }
 
+    if (target.id === "retry-notifications-button") {
+      event.preventDefault();
+      await retryNotifications();
+      return;
+    }
+
     if (target.id === "mark-all-alerts-button") {
       event.preventDefault();
       await markAllAlertsRead();
@@ -479,32 +723,45 @@ function bindInteractions() {
     }
 
     const action = target.dataset.action;
-    if (action === "follow") {
-      await followBot(target.dataset.botSlug);
-      return;
-    }
-    if (action === "unfollow") {
-      await unfollowBot(target.dataset.botSlug);
-      return;
-    }
-    if (action === "add-watch") {
-      await addWatchlist(target.dataset.asset);
-      return;
-    }
-    if (action === "remove-watch") {
-      await removeWatchlist(target.dataset.asset);
-      return;
-    }
-    if (action === "add-alert-rule") {
-      await addAlertRule(target.dataset.asset, target.dataset.confidence || 0.68);
-      return;
-    }
-    if (action === "delete-alert-rule") {
-      await deleteAlertRule(target.dataset.ruleId);
-      return;
-    }
-    if (action === "mark-alert-read") {
-      await markAlertRead(target.dataset.alertId);
+    try {
+      if (action === "follow") {
+        await followBot(target.dataset.botSlug);
+        return;
+      }
+      if (action === "unfollow") {
+        await unfollowBot(target.dataset.botSlug);
+        return;
+      }
+      if (action === "add-watch") {
+        await addWatchlist(target.dataset.asset);
+        return;
+      }
+      if (action === "remove-watch") {
+        await removeWatchlist(target.dataset.asset);
+        return;
+      }
+      if (action === "add-alert-rule") {
+        await addAlertRule(target.dataset.asset, target.dataset.confidence || 0.68);
+        return;
+      }
+      if (action === "delete-alert-rule") {
+        await deleteAlertRule(target.dataset.ruleId);
+        return;
+      }
+      if (action === "mark-alert-read") {
+        await markAlertRead(target.dataset.alertId);
+        return;
+      }
+      if (action === "delete-channel") {
+        await deleteNotificationChannel(target.dataset.channelId);
+        return;
+      }
+      if (action === "logout") {
+        await logoutUser();
+        return;
+      }
+    } catch (error) {
+      setStatus(error.message);
       return;
     }
 

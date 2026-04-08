@@ -425,11 +425,18 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._row(connection.execute(stmt))
 
-    def list_alert_deliveries(self, user_slug: str, limit: int = 10, unread_only: bool = False) -> list[dict[str, Any]]:
+    def list_alert_deliveries(
+        self,
+        user_slug: str,
+        limit: int | None = 10,
+        unread_only: bool = False,
+    ) -> list[dict[str, Any]]:
         stmt = select(alert_delivery_events_table).where(alert_delivery_events_table.c.user_slug == user_slug)
         if unread_only:
             stmt = stmt.where(alert_delivery_events_table.c.read_at.is_(None))
-        stmt = stmt.order_by(desc(alert_delivery_events_table.c.created_at), desc(alert_delivery_events_table.c.id)).limit(limit)
+        stmt = stmt.order_by(desc(alert_delivery_events_table.c.created_at), desc(alert_delivery_events_table.c.id))
+        if limit is not None:
+            stmt = stmt.limit(limit)
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
@@ -508,6 +515,39 @@ class BotSocietyRepository:
             .where(and_(notification_channels_table.c.user_slug == user_slug, notification_channels_table.c.id == channel_id))
             .values(**values)
         )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def list_retryable_alert_deliveries(self, now: str, *, limit: int = 25) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                alert_delivery_events_table,
+                notification_channels_table.c.channel_type.label("notification_channel_type"),
+                notification_channels_table.c.target.label("notification_channel_target"),
+                notification_channels_table.c.secret.label("notification_channel_secret"),
+                notification_channels_table.c.is_active.label("notification_channel_is_active"),
+            )
+            .join(
+                notification_channels_table,
+                notification_channels_table.c.id == alert_delivery_events_table.c.notification_channel_id,
+            )
+            .where(
+                and_(
+                    alert_delivery_events_table.c.notification_channel_id.is_not(None),
+                    alert_delivery_events_table.c.delivery_status.in_(("retry_scheduled", "failed")),
+                    alert_delivery_events_table.c.next_attempt_at.is_not(None),
+                    alert_delivery_events_table.c.next_attempt_at <= now,
+                    notification_channels_table.c.is_active.is_(True),
+                )
+            )
+            .order_by(alert_delivery_events_table.c.next_attempt_at.asc(), alert_delivery_events_table.c.id.asc())
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def update_alert_delivery_event(self, alert_id: int, payload: dict[str, Any]) -> None:
+        stmt = update(alert_delivery_events_table).where(alert_delivery_events_table.c.id == alert_id).values(**payload)
         with self.database.connect() as connection:
             connection.execute(stmt)
 

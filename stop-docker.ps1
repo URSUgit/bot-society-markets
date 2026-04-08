@@ -6,10 +6,10 @@ $dockerCandidates = @(
     (Join-Path $dockerInstallBin 'docker.exe')
 )
 
-if (Test-Path $dockerInstallBin -and -not (($env:PATH -split ';') -contains $dockerInstallBin)) {
+if ((Test-Path $dockerInstallBin) -and -not (($env:PATH -split ';') -contains $dockerInstallBin)) {
     $env:PATH = "$env:PATH;$dockerInstallBin"
 }
-if (Test-Path $dockerPluginBin -and -not (($env:PATH -split ';') -contains $dockerPluginBin)) {
+if ((Test-Path $dockerPluginBin) -and -not (($env:PATH -split ';') -contains $dockerPluginBin)) {
     $env:PATH = "$env:PATH;$dockerPluginBin"
 }
 

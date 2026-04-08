@@ -25,6 +25,8 @@ from .models import (
     LandingSnapshot,
     NotificationChannel,
     NotificationChannelCreate,
+    NotificationHealthSnapshot,
+    NotificationRetryResult,
     OperationSnapshot,
     PredictionView,
     ProviderStatusEnvelope,
@@ -214,6 +216,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profile = get_service(request).get_user_profile(current_user_slug(request) or active_settings.default_user_slug)
         return profile.notification_channels
 
+    @app.get("/api/me/notification-health", response_model=NotificationHealthSnapshot)
+    def notification_health(request: Request) -> NotificationHealthSnapshot:
+        return get_service(request).get_notification_health(current_user_slug(request) or active_settings.default_user_slug)
+
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
         return run_validated(lambda: get_service(request).add_notification_channel(current_user_slug(request) or active_settings.default_user_slug, payload))
@@ -229,6 +235,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:
         return get_service(request).run_pipeline_cycle()
+
+    @app.post("/api/admin/retry-notifications", response_model=NotificationRetryResult)
+    def retry_notifications(request: Request) -> NotificationRetryResult:
+        return get_service(request).retry_failed_notifications()
 
     @app.get("/")
     def landing() -> FileResponse:

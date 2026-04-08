@@ -6,8 +6,9 @@ Use the Windows launcher when you want the fastest local Python experience:
 
 - `launch-dashboard.bat`
 - `launch-dashboard.ps1`
+- `install-shortcuts.ps1`
 
-The launcher will create `.venv`, install dependencies from `requirements.txt`, start the API server, wait for `/health`, and open `/dashboard` in your browser.
+The launcher now prefers Docker + Postgres on port `8010`, falls back to the local Python runtime if Docker is unavailable, and opens `/dashboard` in your browser. `install-shortcuts.ps1` refreshes the desktop links for the start and stop flows.
 
 ## Local Docker Stack
 
@@ -80,6 +81,22 @@ Included deployment assets:
 
 The current Render setup is appropriate for demos and previews. It still uses SQLite in ephemeral storage, so data can reset when the instance restarts or is replaced. For a more production-like local environment, use Docker Compose with Postgres.
 
+## Database Operations
+
+Operational commands now include a baseline Alembic migration flow:
+
+```powershell
+python -m api.app.jobs db-upgrade
+python -m api.app.jobs db-copy --source-path api/data/bot_society_markets.db --target-url "postgresql+psycopg://..."
+```
+
+Recommended workflow for a more durable hosted environment:
+
+1. point `BSM_DATABASE_URL` to Postgres
+2. run `python -m api.app.jobs db-upgrade`
+3. optionally copy demo data into the target database with `db-copy`
+4. deploy the API and worker against the same Postgres instance
+
 ## Container Path
 
 The repository now includes a Docker image definition for teams that prefer container-first deployment targets.
@@ -97,5 +114,5 @@ For a durable hosted environment, the next production move should be:
 
 1. move the hosted environment to managed Postgres
 2. split API and worker into separate services
-3. add delivery retries and notification observability
-4. add provider provenance and source-quality controls
+3. add provider provenance and source-quality controls
+4. add revision-per-feature Alembic migrations

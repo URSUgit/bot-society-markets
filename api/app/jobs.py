@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from .config import get_settings
 from .database import Database
+from .db_ops import copy_database, upgrade_database
 from .services import BotSocietyService
 from .worker import PipelineWorker
 
@@ -18,12 +20,66 @@ def build_service() -> BotSocietyService:
 
 
 
+def _database_locator(url: str | None, path: str | None) -> Database:
+    if url:
+        return Database(url=url)
+    if path:
+        return Database(path=Path(path))
+    raise ValueError("A database URL or path is required")
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bot Society Markets operational jobs")
-    parser.add_argument("command", choices=["bootstrap", "run-cycle", "provider-status", "worker"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "bootstrap",
+            "run-cycle",
+            "provider-status",
+            "worker",
+            "retry-notifications",
+            "notification-health",
+            "db-upgrade",
+            "db-copy",
+        ],
+    )
     parser.add_argument("--interval-seconds", type=int, default=None)
     parser.add_argument("--cycles", type=int, default=None)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--revision", type=str, default="head")
+    parser.add_argument("--database-url", type=str, default=None)
+    parser.add_argument("--source-url", type=str, default=None)
+    parser.add_argument("--target-url", type=str, default=None)
+    parser.add_argument("--source-path", type=str, default=None)
+    parser.add_argument("--target-path", type=str, default=None)
+    parser.add_argument("--no-truncate-target", action="store_true")
     args = parser.parse_args()
+
+    if args.command == "db-upgrade":
+        target_url = args.database_url or get_settings().database_url
+        upgrade_database(args.revision, database_url=target_url)
+        print(f"Database upgraded to {args.revision}.")
+        return
+
+    if args.command == "db-copy":
+        source_database = _database_locator(args.source_url, args.source_path)
+        target_database = _database_locator(args.target_url, args.target_path)
+        try:
+            summary = copy_database(
+                source_database,
+                target_database,
+                truncate_target=not args.no_truncate_target,
+            )
+        finally:
+            source_database.dispose()
+            target_database.dispose()
+        print(
+            f"Copied {summary.total_rows} row(s) from {summary.source_url} to {summary.target_url}."
+        )
+        for table_name, count in summary.copied_rows.items():
+            print(f"  {table_name}: {count}")
+        return
 
     service = build_service()
     settings = service.settings
@@ -52,6 +108,27 @@ def main() -> None:
             f"market_fallback_active={status.market_fallback_active} "
             f"signal_fallback_active={status.signal_fallback_active}"
         )
+        return
+
+    if args.command == "retry-notifications":
+        result = service.retry_failed_notifications(limit=args.limit)
+        print(
+            f"Notification retry scan complete. scanned={result.scanned_events} delivered={result.delivered} "
+            f"rescheduled={result.rescheduled} exhausted={result.exhausted}"
+        )
+        return
+
+    if args.command == "notification-health":
+        health = service.get_notification_health(settings.default_user_slug)
+        print(
+            f"active_channels={health.active_channels} delivered_last_24h={health.delivered_last_24h} "
+            f"retry_queue_depth={health.retry_queue_depth} exhausted_deliveries={health.exhausted_deliveries}"
+        )
+        for channel in health.channels:
+            print(
+                f"  channel={channel.channel_type}:{channel.target} delivered={channel.delivered_count} "
+                f"retry_scheduled={channel.retry_scheduled_count} exhausted={channel.exhausted_count}"
+            )
         return
 
     if args.command == "worker":

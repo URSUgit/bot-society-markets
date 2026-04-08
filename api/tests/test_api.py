@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -14,7 +15,10 @@ from api.app.main import create_app
 def build_client(settings: Settings | None = None):
     with TemporaryDirectory() as temp_dir:
         database_path = Path(temp_dir) / "bot-society-markets-test.db"
-        app = create_app(settings or Settings(database_path=database_path))
+        active_settings = settings or Settings(database_path=database_path)
+        if active_settings.database_url is None:
+            active_settings.database_path = database_path
+        app = create_app(active_settings)
         with TestClient(app) as client:
             yield client
 
@@ -36,9 +40,11 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["assets"]
         assert payload["recent_predictions"]
         assert payload["latest_operation"]["cycle_type"] == "bootstrap"
+        assert payload["auth_session"]["authenticated"] is False
         assert payload["user_profile"]["follows"]
         assert payload["user_profile"]["recent_alerts"]
         assert payload["user_profile"]["unread_alert_count"] >= 1
+        assert "notification_health" in payload
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
 
@@ -155,6 +161,43 @@ def test_auth_and_notification_channels_flow() -> None:
         )
         assert login_response.status_code == 200
         assert login_response.json()["authenticated"] is True
+
+        notification_health = client.get("/api/me/notification-health")
+        assert notification_health.status_code == 200
+        assert notification_health.json()["active_channels"] == 1
+
+
+def test_notification_retry_flow_and_health() -> None:
+    with build_client(Settings(notification_retry_base_seconds=0)) as client:
+        channel_response = client.post(
+            "/api/me/notification-channels",
+            json={"channel_type": "webhook", "target": "https://example.com/webhook"},
+        )
+        assert channel_response.status_code == 200
+
+        with patch("api.app.notifications.NotificationDispatcher.dispatch", return_value=(False, "Webhook timeout")):
+            cycle_response = client.post("/api/admin/run-cycle")
+        assert cycle_response.status_code == 200
+
+        health_response = client.get("/api/me/notification-health")
+        assert health_response.status_code == 200
+        health_payload = health_response.json()
+        assert health_payload["retry_queue_depth"] >= 1
+
+        retry_candidates = [
+            alert for alert in client.get("/api/me/alerts").json()["alerts"] if alert["delivery_status"] == "retry_scheduled"
+        ]
+        assert retry_candidates
+
+        with patch("api.app.notifications.NotificationDispatcher.dispatch", return_value=(True, None)):
+            retry_response = client.post("/api/admin/retry-notifications")
+        assert retry_response.status_code == 200
+        retry_payload = retry_response.json()
+        assert retry_payload["delivered"] >= 1
+
+        health_after_retry = client.get("/api/me/notification-health")
+        assert health_after_retry.status_code == 200
+        assert health_after_retry.json()["retry_queue_depth"] == 0
 
 
 def test_validation_rejects_unknown_assets() -> None:

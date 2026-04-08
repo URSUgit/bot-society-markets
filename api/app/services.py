@@ -26,7 +26,10 @@ from .models import (
     FollowedBot,
     LandingSnapshot,
     NotificationChannel,
+    NotificationChannelHealth,
     NotificationChannelCreate,
+    NotificationHealthSnapshot,
+    NotificationRetryResult,
     OperationSnapshot,
     PredictionView,
     ProviderStatus,
@@ -271,6 +274,152 @@ class BotSocietyService:
             unread_alert_count=alert_inbox.unread_count,
         )
 
+    def get_notification_health(self, user_slug: str) -> NotificationHealthSnapshot:
+        repository = BotSocietyRepository(self.database)
+        channels = repository.list_notification_channels(user_slug)
+        deliveries = repository.list_alert_deliveries(user_slug, limit=None)
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(hours=24)
+
+        delivered_last_24h = 0
+        retry_queue_depth = 0
+        exhausted_deliveries = 0
+        last_delivery_at: str | None = None
+        channel_health_map: dict[int, dict[str, object]] = {}
+
+        for channel in channels:
+            channel_health_map[int(channel["id"])] = {
+                "channel_id": int(channel["id"]),
+                "channel_type": channel["channel_type"],
+                "target": channel["target"],
+                "is_active": bool(channel["is_active"]),
+                "delivered_count": 0,
+                "retry_scheduled_count": 0,
+                "exhausted_count": 0,
+                "last_delivered_at": channel.get("last_delivered_at"),
+                "last_error": channel.get("last_error"),
+            }
+
+        for delivery in deliveries:
+            status = str(delivery["delivery_status"])
+            channel_id = delivery.get("notification_channel_id")
+            created_at = parse_timestamp(delivery["created_at"])
+            if channel_id is not None and status == "delivered" and created_at >= since:
+                delivered_last_24h += 1
+            if channel_id is not None and status == "retry_scheduled":
+                retry_queue_depth += 1
+            if channel_id is not None and status == "exhausted":
+                exhausted_deliveries += 1
+
+            last_attempt_at = delivery.get("last_attempt_at") or delivery["created_at"]
+            if channel_id is not None and status == "delivered" and (last_delivery_at is None or last_attempt_at > last_delivery_at):
+                last_delivery_at = last_attempt_at
+
+            if channel_id is None or channel_id not in channel_health_map:
+                continue
+            channel_health = channel_health_map[int(channel_id)]
+            if status == "delivered":
+                channel_health["delivered_count"] = int(channel_health["delivered_count"]) + 1
+            elif status == "retry_scheduled":
+                channel_health["retry_scheduled_count"] = int(channel_health["retry_scheduled_count"]) + 1
+            elif status == "exhausted":
+                channel_health["exhausted_count"] = int(channel_health["exhausted_count"]) + 1
+                if delivery.get("error_detail"):
+                    channel_health["last_error"] = delivery["error_detail"]
+
+        channel_health = [
+            NotificationChannelHealth(**payload)
+            for payload in sorted(channel_health_map.values(), key=lambda item: str(item["target"]).lower())
+        ]
+        return NotificationHealthSnapshot(
+            active_channels=sum(1 for channel in channels if bool(channel["is_active"])),
+            delivered_last_24h=delivered_last_24h,
+            retry_queue_depth=retry_queue_depth,
+            exhausted_deliveries=exhausted_deliveries,
+            last_delivery_at=last_delivery_at,
+            channels=channel_health,
+        )
+
+    def retry_failed_notifications(self, limit: int | None = None) -> NotificationRetryResult:
+        repository = BotSocietyRepository(self.database)
+        scan_limit = min(limit or self.settings.notification_retry_limit, self.settings.notification_retry_limit)
+        retryable = repository.list_retryable_alert_deliveries(self._now(), limit=scan_limit)
+        delivered = 0
+        rescheduled = 0
+        exhausted = 0
+
+        for event in retryable:
+            channel = {
+                "id": event["notification_channel_id"],
+                "channel_type": event["notification_channel_type"],
+                "target": event["notification_channel_target"],
+                "secret": event.get("notification_channel_secret"),
+            }
+            payload = {
+                "title": event["title"],
+                "message": event["message"],
+                "prediction_id": event["prediction_id"],
+                "bot_slug": event["bot_slug"],
+                "asset": event["asset"],
+                "direction": event["direction"],
+                "confidence": event["confidence"],
+                "rule_id": event["rule_id"],
+            }
+            attempt_count = int(event.get("attempt_count") or 0) + 1
+            attempted_at = self._now()
+            success, error = self.dispatcher.dispatch(channel, payload)
+
+            if success:
+                delivered += 1
+                repository.update_notification_channel_delivery(
+                    str(event["user_slug"]),
+                    int(event["notification_channel_id"]),
+                    delivered_at=attempted_at,
+                    error=None,
+                )
+                repository.update_alert_delivery_event(
+                    int(event["id"]),
+                    {
+                        "delivery_status": "delivered",
+                        "attempt_count": attempt_count,
+                        "last_attempt_at": attempted_at,
+                        "next_attempt_at": None,
+                        "error_detail": None,
+                    },
+                )
+                continue
+
+            final_status, next_attempt_at = self._next_delivery_state(attempt_count)
+            if final_status == "retry_scheduled":
+                rescheduled += 1
+            else:
+                exhausted += 1
+
+            repository.update_notification_channel_delivery(
+                str(event["user_slug"]),
+                int(event["notification_channel_id"]),
+                delivered_at=None,
+                error=error,
+            )
+            repository.update_alert_delivery_event(
+                int(event["id"]),
+                {
+                    "delivery_status": final_status,
+                    "attempt_count": attempt_count,
+                    "last_attempt_at": attempted_at,
+                    "next_attempt_at": next_attempt_at,
+                    "error_detail": error,
+                    "message": event["message"],
+                },
+            )
+
+        return NotificationRetryResult(
+            scanned_events=len(retryable),
+            delivered=delivered,
+            rescheduled=rescheduled,
+            exhausted=exhausted,
+        )
+
     def follow_bot(self, user_slug: str, bot_slug: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         if not repository.get_bot(bot_slug):
@@ -368,7 +517,9 @@ class BotSocietyService:
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             latest_operation=self._latest_operation(repository),
+            auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
             user_profile=self.get_user_profile(user_slug),
+            notification_health=self.get_notification_health(user_slug),
             provider_status=self.get_provider_status(),
         )
 
@@ -469,6 +620,7 @@ class BotSocietyService:
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             provider_status=self.get_provider_status(),
             alert_inbox=self.get_alert_inbox(self.settings.default_user_slug),
+            notification_health=self.get_notification_health(self.settings.default_user_slug),
         )
 
     def _deliver_alerts_for_predictions(self, repository: BotSocietyRepository, predictions: list[dict]) -> int:
@@ -520,6 +672,10 @@ class BotSocietyService:
                         "channel": "in_app",
                         "channel_target": "workspace-inbox",
                         "delivery_status": "delivered",
+                        "attempt_count": 1,
+                        "last_attempt_at": created_at,
+                        "next_attempt_at": None,
+                        "error_detail": None,
                     }
                 )
                 outbound_payload = {
@@ -536,6 +692,7 @@ class BotSocietyService:
                 }
                 for channel in channels_by_user.get(rule["user_slug"], []):
                     delivered, error = self.dispatcher.dispatch(channel, outbound_payload)
+                    delivery_status, next_attempt_at = ("delivered", None) if delivered else self._next_delivery_state(1)
                     repository.update_notification_channel_delivery(
                         rule["user_slug"],
                         int(channel["id"]),
@@ -548,8 +705,12 @@ class BotSocietyService:
                             "notification_channel_id": channel["id"],
                             "channel": channel["channel_type"],
                             "channel_target": channel["target"],
-                            "delivery_status": "delivered" if delivered else "failed",
-                            "message": message if delivered else f"{message} Delivery error: {error}",
+                            "delivery_status": delivery_status,
+                            "attempt_count": 1,
+                            "last_attempt_at": created_at,
+                            "next_attempt_at": next_attempt_at,
+                            "error_detail": error,
+                            "message": message,
                         }
                     )
             total_events += repository.upsert_alert_delivery_events(events)
@@ -669,6 +830,13 @@ class BotSocietyService:
         target_text = " and ".join(target) if target else "alert rule"
         threshold = int(round(float(rule["min_confidence"]) * 100))
         return f"{target_text} at {threshold}% min confidence"
+
+    def _next_delivery_state(self, attempt_count: int) -> tuple[str, str | None]:
+        if attempt_count >= self.settings.notification_max_attempts:
+            return "exhausted", None
+        retry_delay = self.settings.notification_retry_base_seconds * max(1, 2 ** (attempt_count - 1))
+        next_attempt = datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
+        return "retry_scheduled", to_timestamp(next_attempt)
 
     @staticmethod
     def _to_user_identity(user: dict) -> UserIdentity:
