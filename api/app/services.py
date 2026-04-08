@@ -1,8 +1,13 @@
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
 
+from sqlalchemy.exc import IntegrityError
+
+from .auth import AuthManager
 from .config import Settings
 from .database import Database
 from .models import (
@@ -11,20 +16,27 @@ from .models import (
     AlertRule,
     AlertRuleCreate,
     AssetSnapshot,
+    AuthLoginRequest,
+    AuthRegisterRequest,
+    AuthSessionSnapshot,
     BotDetail,
     BotSummary,
     CycleResult,
     DashboardSnapshot,
     FollowedBot,
     LandingSnapshot,
+    NotificationChannel,
+    NotificationChannelCreate,
     OperationSnapshot,
     PredictionView,
     ProviderStatus,
     SignalView,
     Summary,
+    UserIdentity,
     UserProfile,
     WatchlistItem,
 )
+from .notifications import NotificationDispatcher
 from .orchestration import PredictionOrchestrator
 from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider, RSSNewsSignalProvider
 from .repository import BotSocietyRepository
@@ -32,11 +44,15 @@ from .scoring import ScoringEngine, clamp
 from .seed import ensure_demo_user_state, seed_demo_dataset
 from .utils import parse_timestamp, to_timestamp
 
+SLUG_RE = re.compile(r"[^a-z0-9]+")
+
 
 class BotSocietyService:
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
         self.settings = settings
+        self.auth = AuthManager()
+        self.dispatcher = NotificationDispatcher(settings)
         self.demo_market_provider = DemoMarketProvider()
         self.demo_signal_provider = DemoSignalProvider()
         self.market_provider = self._build_market_provider()
@@ -52,6 +68,7 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
         ensure_demo_user_state(repository)
+        repository.delete_expired_sessions(self._now())
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
         alert_deliveries = self._deliver_alerts_for_predictions(repository, repository.list_predictions(limit=12))
@@ -67,14 +84,79 @@ class BotSocietyService:
                     "scored_predictions": scored,
                     "message": (
                         "Seeded demo market data, user state, historical signals, and scored the initial prediction archive. "
-                        f"Initialized {alert_deliveries} in-app alert deliveries."
+                        f"Initialized {alert_deliveries} alert deliveries."
                     ),
                 }
             )
 
-    def get_summary(self) -> Summary:
+    def resolve_user_slug(self, session_token: str | None, *, fallback_to_demo: bool = True) -> str | None:
+        if not session_token:
+            return self.settings.default_user_slug if fallback_to_demo else None
         repository = BotSocietyRepository(self.database)
-        bots = self._build_bot_summaries(repository, self.settings.default_user_slug)
+        token_hash = self.auth.hash_session_token(session_token)
+        session = repository.get_session(token_hash)
+        if not session:
+            return self.settings.default_user_slug if fallback_to_demo else None
+        if not bool(session["is_active"]):
+            repository.delete_session(token_hash)
+            return self.settings.default_user_slug if fallback_to_demo else None
+        if parse_timestamp(session["expires_at"]) <= datetime.now(timezone.utc):
+            repository.delete_session(token_hash)
+            return self.settings.default_user_slug if fallback_to_demo else None
+        repository.touch_session(token_hash, last_seen_at=self._now(), expires_at=self._session_expires_at())
+        return str(session["user_slug"])
+
+    def get_session_snapshot(self, session_token: str | None) -> AuthSessionSnapshot:
+        user_slug = self.resolve_user_slug(session_token, fallback_to_demo=False)
+        if not user_slug:
+            return AuthSessionSnapshot(authenticated=False, user=None)
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(user_slug)
+        if not user:
+            return AuthSessionSnapshot(authenticated=False, user=None)
+        return AuthSessionSnapshot(authenticated=True, user=self._to_user_identity(user))
+
+    def register_user(self, payload: AuthRegisterRequest) -> tuple[AuthSessionSnapshot, str]:
+        repository = BotSocietyRepository(self.database)
+        email = payload.email.strip().lower()
+        if repository.get_user_by_email(email):
+            raise ValueError("An account with that email already exists")
+        slug = self._generate_user_slug(repository, payload.display_name, email)
+        try:
+            repository.create_user(
+                {
+                    "slug": slug,
+                    "display_name": payload.display_name.strip(),
+                    "email": email,
+                    "tier": "starter",
+                    "created_at": self._now(),
+                    "password_hash": self.auth.hash_password(payload.password),
+                    "is_active": True,
+                }
+            )
+        except IntegrityError as exc:
+            raise ValueError("Unable to create account with that email") from exc
+        return self._create_session_for_user(slug)
+
+    def login_user(self, payload: AuthLoginRequest) -> tuple[AuthSessionSnapshot, str]:
+        repository = BotSocietyRepository(self.database)
+        email = payload.email.strip().lower()
+        user = repository.get_user_by_email(email)
+        if not user or not self.auth.verify_password(payload.password, user.get("password_hash")):
+            raise ValueError("Invalid email or password")
+        if not bool(user.get("is_active", True)):
+            raise ValueError("This account is inactive")
+        return self._create_session_for_user(str(user["slug"]))
+
+    def logout_session(self, session_token: str | None) -> None:
+        if not session_token:
+            return
+        repository = BotSocietyRepository(self.database)
+        repository.delete_session(self.auth.hash_session_token(session_token))
+
+    def get_summary(self, user_slug: str | None = None) -> Summary:
+        repository = BotSocietyRepository(self.database)
+        bots = self._build_bot_summaries(repository, user_slug)
         predictions = repository.list_predictions(limit=500)
         assets = repository.list_assets()
         signals = repository.list_recent_signals(limit=100)
@@ -112,51 +194,51 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         return [self._to_prediction_model(row) for row in repository.list_predictions(limit=limit, status=status)]
 
-    def get_leaderboard(self) -> list[BotSummary]:
+    def get_leaderboard(self, user_slug: str | None = None) -> list[BotSummary]:
         repository = BotSocietyRepository(self.database)
-        return self._build_bot_summaries(repository, self.settings.default_user_slug)
+        return self._build_bot_summaries(repository, user_slug)
 
-    def get_bot_detail(self, slug: str) -> BotDetail | None:
+    def get_bot_detail(self, slug: str, user_slug: str | None = None) -> BotDetail | None:
         repository = BotSocietyRepository(self.database)
-        summaries = self._build_bot_summaries(repository, self.settings.default_user_slug)
+        summaries = self._build_bot_summaries(repository, user_slug)
         summary = next((bot for bot in summaries if bot.slug == slug), None)
         if not summary:
             return None
         recent_predictions = [self._to_prediction_model(row) for row in repository.list_predictions(bot_slug=slug, limit=8)]
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
 
-    def get_alert_inbox(self, unread_only: bool = False) -> AlertInbox:
+    def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
         alerts = [
             self._to_alert_model(row)
             for row in repository.list_alert_deliveries(
-                self.settings.default_user_slug,
+                user_slug,
                 limit=self.settings.alert_inbox_limit,
                 unread_only=unread_only,
             )
         ]
         return AlertInbox(
-            unread_count=repository.count_unread_alert_deliveries(self.settings.default_user_slug),
+            unread_count=repository.count_unread_alert_deliveries(user_slug),
             alerts=alerts,
         )
 
-    def mark_alert_read(self, alert_id: int) -> AlertInbox:
+    def mark_alert_read(self, user_slug: str, alert_id: int) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
-        repository.mark_alert_delivery_read(self.settings.default_user_slug, alert_id, self._now())
-        return self.get_alert_inbox()
+        repository.mark_alert_delivery_read(user_slug, alert_id, self._now())
+        return self.get_alert_inbox(user_slug)
 
-    def mark_all_alerts_read(self) -> AlertInbox:
+    def mark_all_alerts_read(self, user_slug: str) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
-        repository.mark_all_alert_deliveries_read(self.settings.default_user_slug, self._now())
-        return self.get_alert_inbox()
+        repository.mark_all_alert_deliveries_read(user_slug, self._now())
+        return self.get_alert_inbox(user_slug)
 
-    def get_user_profile(self) -> UserProfile:
+    def get_user_profile(self, user_slug: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
-        user = repository.get_user(self.settings.default_user_slug)
+        user = repository.get_user(user_slug)
         if not user:
-            raise ValueError(f"User {self.settings.default_user_slug} is not available")
+            raise ValueError(f"User {user_slug} is not available")
 
-        leaderboard_map = {bot.slug: bot for bot in self._build_bot_summaries(repository, self.settings.default_user_slug)}
+        leaderboard_map = {bot.slug: bot for bot in self._build_bot_summaries(repository, user_slug)}
         follows = [
             FollowedBot(
                 bot_slug=row["bot_slug"],
@@ -164,51 +246,57 @@ class BotSocietyService:
                 score=leaderboard_map[row["bot_slug"]].score if row["bot_slug"] in leaderboard_map else 0.0,
                 created_at=row["created_at"],
             )
-            for row in repository.list_user_follows(self.settings.default_user_slug)
+            for row in repository.list_user_follows(user_slug)
         ]
-        watchlist = [WatchlistItem(**row) for row in repository.list_watchlist_items(self.settings.default_user_slug)]
+        watchlist = [WatchlistItem(**row) for row in repository.list_watchlist_items(user_slug)]
         alert_rules = [
             AlertRule(**{**row, "is_active": bool(row["is_active"])})
-            for row in repository.list_alert_rules(self.settings.default_user_slug)
+            for row in repository.list_alert_rules(user_slug)
         ]
-        alert_inbox = self.get_alert_inbox()
+        notification_channels = [
+            NotificationChannel(**{**row, "is_active": bool(row["is_active"])})
+            for row in repository.list_notification_channels(user_slug)
+        ]
+        alert_inbox = self.get_alert_inbox(user_slug)
         return UserProfile(
             slug=user["slug"],
             display_name=user["display_name"],
+            email=user["email"],
             tier=user["tier"],
             follows=follows,
             watchlist=watchlist,
             alert_rules=alert_rules,
             recent_alerts=alert_inbox.alerts,
+            notification_channels=notification_channels,
             unread_alert_count=alert_inbox.unread_count,
         )
 
-    def follow_bot(self, bot_slug: str) -> UserProfile:
+    def follow_bot(self, user_slug: str, bot_slug: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         if not repository.get_bot(bot_slug):
             raise ValueError(f"Unknown bot slug: {bot_slug}")
-        repository.create_follow(self.settings.default_user_slug, bot_slug, self._now())
-        return self.get_user_profile()
+        repository.create_follow(user_slug, bot_slug, self._now())
+        return self.get_user_profile(user_slug)
 
-    def unfollow_bot(self, bot_slug: str) -> UserProfile:
+    def unfollow_bot(self, user_slug: str, bot_slug: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
-        repository.delete_follow(self.settings.default_user_slug, bot_slug)
-        return self.get_user_profile()
+        repository.delete_follow(user_slug, bot_slug)
+        return self.get_user_profile(user_slug)
 
-    def add_watchlist_asset(self, asset: str) -> UserProfile:
+    def add_watchlist_asset(self, user_slug: str, asset: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         normalized_asset = asset.upper()
         if normalized_asset not in repository.list_assets():
             raise ValueError(f"Unknown asset: {normalized_asset}")
-        repository.create_watchlist_item(self.settings.default_user_slug, normalized_asset, self._now())
-        return self.get_user_profile()
+        repository.create_watchlist_item(user_slug, normalized_asset, self._now())
+        return self.get_user_profile(user_slug)
 
-    def remove_watchlist_asset(self, asset: str) -> UserProfile:
+    def remove_watchlist_asset(self, user_slug: str, asset: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
-        repository.delete_watchlist_item(self.settings.default_user_slug, asset.upper())
-        return self.get_user_profile()
+        repository.delete_watchlist_item(user_slug, asset.upper())
+        return self.get_user_profile(user_slug)
 
-    def add_alert_rule(self, payload: AlertRuleCreate) -> UserProfile:
+    def add_alert_rule(self, user_slug: str, payload: AlertRuleCreate) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         asset = payload.asset.upper() if payload.asset else None
         if asset and asset not in repository.list_assets():
@@ -217,20 +305,47 @@ class BotSocietyService:
             raise ValueError(f"Unknown bot slug: {payload.bot_slug}")
         repository.create_alert_rule(
             {
-                "user_slug": self.settings.default_user_slug,
+                "user_slug": user_slug,
                 "bot_slug": payload.bot_slug,
                 "asset": asset,
                 "min_confidence": payload.min_confidence,
-                "is_active": 1,
+                "is_active": True,
                 "created_at": self._now(),
             }
         )
-        return self.get_user_profile()
+        return self.get_user_profile(user_slug)
 
-    def delete_alert_rule(self, rule_id: int) -> UserProfile:
+    def delete_alert_rule(self, user_slug: str, rule_id: int) -> UserProfile:
         repository = BotSocietyRepository(self.database)
-        repository.delete_alert_rule(self.settings.default_user_slug, rule_id)
-        return self.get_user_profile()
+        repository.delete_alert_rule(user_slug, rule_id)
+        return self.get_user_profile(user_slug)
+
+    def add_notification_channel(self, user_slug: str, payload: NotificationChannelCreate) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        existing_channels = repository.list_notification_channels(user_slug)
+        if any(channel["channel_type"] == payload.channel_type for channel in existing_channels):
+            raise ValueError(f"{payload.channel_type.title()} notifications are already configured for this workspace")
+        try:
+            repository.create_notification_channel(
+                {
+                    "user_slug": user_slug,
+                    "channel_type": payload.channel_type,
+                    "target": payload.target,
+                    "secret": payload.secret,
+                    "is_active": True,
+                    "created_at": self._now(),
+                    "last_delivered_at": None,
+                    "last_error": None,
+                }
+            )
+        except IntegrityError as exc:
+            raise ValueError("That notification channel already exists") from exc
+        return self.get_user_profile(user_slug)
+
+    def delete_notification_channel(self, user_slug: str, channel_id: int) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        repository.delete_notification_channel(user_slug, channel_id)
+        return self.get_user_profile(user_slug)
 
     def get_provider_status(self) -> ProviderStatus:
         return ProviderStatus(
@@ -244,25 +359,25 @@ class BotSocietyService:
             signal_fallback_active=self.signal_provider_fallback,
         )
 
-    def get_dashboard_snapshot(self) -> DashboardSnapshot:
+    def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
         return DashboardSnapshot(
-            summary=self.get_summary(),
+            summary=self.get_summary(user_slug),
             assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
+            leaderboard=self._build_bot_summaries(repository, user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             latest_operation=self._latest_operation(repository),
-            user_profile=self.get_user_profile(),
+            user_profile=self.get_user_profile(user_slug),
             provider_status=self.get_provider_status(),
         )
 
-    def get_landing_snapshot(self) -> LandingSnapshot:
+    def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
         repository = BotSocietyRepository(self.database)
         return LandingSnapshot(
-            summary=self.get_summary(),
+            summary=self.get_summary(user_slug),
             assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug)[:4],
+            leaderboard=self._build_bot_summaries(repository, user_slug)[:4],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=4)],
             provider_status=self.get_provider_status(),
         )
@@ -340,7 +455,10 @@ class BotSocietyService:
                 "generated_predictions": created_predictions,
                 "scored_predictions": scored_predictions,
                 "message": " ".join(
-                    [*message_prefixes, f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, and delivered {delivered_alerts} in-app alerts."]
+                    [
+                        *message_prefixes,
+                        f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, and delivered {delivered_alerts} alerts.",
+                    ]
                 ).strip(),
             }
         )
@@ -350,7 +468,7 @@ class BotSocietyService:
             leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             provider_status=self.get_provider_status(),
-            alert_inbox=self.get_alert_inbox(),
+            alert_inbox=self.get_alert_inbox(self.settings.default_user_slug),
         )
 
     def _deliver_alerts_for_predictions(self, repository: BotSocietyRepository, predictions: list[dict]) -> int:
@@ -360,9 +478,15 @@ class BotSocietyService:
         if not active_rules:
             return 0
 
-        events: list[dict] = []
+        channels_by_user = {
+            rule["user_slug"]: repository.list_active_notification_channels(rule["user_slug"])
+            for rule in active_rules
+        }
+
         created_at = self._now()
+        total_events = 0
         for prediction in predictions:
+            events: list[dict] = []
             for rule in active_rules:
                 if rule["bot_slug"] and rule["bot_slug"] != prediction["bot_slug"]:
                     continue
@@ -371,27 +495,65 @@ class BotSocietyService:
                 if float(prediction["confidence"]) < float(rule["min_confidence"]):
                     continue
                 scope = self._alert_scope(rule)
+                title = f"{prediction['bot_name']} issued a {prediction['direction']} {prediction['asset']} call"
+                message = (
+                    f"{prediction['bot_name']} published a {prediction['horizon_label'].lower()} view on {prediction['asset']} with "
+                    f"{int(round(float(prediction['confidence']) * 100))}% confidence. Matched {scope}."
+                )
+                base_event = {
+                    "user_slug": rule["user_slug"],
+                    "rule_id": rule["id"],
+                    "prediction_id": prediction["id"],
+                    "bot_slug": prediction["bot_slug"],
+                    "asset": prediction["asset"],
+                    "direction": prediction["direction"],
+                    "confidence": prediction["confidence"],
+                    "title": title,
+                    "message": message,
+                    "created_at": created_at,
+                    "read_at": None,
+                }
                 events.append(
                     {
-                        "user_slug": rule["user_slug"],
-                        "rule_id": rule["id"],
-                        "prediction_id": prediction["id"],
-                        "bot_slug": prediction["bot_slug"],
-                        "asset": prediction["asset"],
-                        "direction": prediction["direction"],
-                        "confidence": prediction["confidence"],
-                        "title": f"{prediction['bot_name']} issued a {prediction['direction']} {prediction['asset']} call",
-                        "message": (
-                            f"{prediction['bot_name']} published a {prediction['horizon_label'].lower()} view on {prediction['asset']} with "
-                            f"{int(round(float(prediction['confidence']) * 100))}% confidence. Matched {scope}."
-                        ),
+                        **base_event,
+                        "notification_channel_id": None,
                         "channel": "in_app",
+                        "channel_target": "workspace-inbox",
                         "delivery_status": "delivered",
-                        "created_at": created_at,
-                        "read_at": None,
                     }
                 )
-        return repository.upsert_alert_delivery_events(events)
+                outbound_payload = {
+                    "title": title,
+                    "message": message,
+                    "prediction_id": prediction["id"],
+                    "bot_slug": prediction["bot_slug"],
+                    "bot_name": prediction["bot_name"],
+                    "asset": prediction["asset"],
+                    "direction": prediction["direction"],
+                    "confidence": prediction["confidence"],
+                    "published_at": prediction["published_at"],
+                    "rule_id": rule["id"],
+                }
+                for channel in channels_by_user.get(rule["user_slug"], []):
+                    delivered, error = self.dispatcher.dispatch(channel, outbound_payload)
+                    repository.update_notification_channel_delivery(
+                        rule["user_slug"],
+                        int(channel["id"]),
+                        delivered_at=created_at if delivered else None,
+                        error=error,
+                    )
+                    events.append(
+                        {
+                            **base_event,
+                            "notification_channel_id": channel["id"],
+                            "channel": channel["channel_type"],
+                            "channel_target": channel["target"],
+                            "delivery_status": "delivered" if delivered else "failed",
+                            "message": message if delivered else f"{message} Delivery error: {error}",
+                        }
+                    )
+            total_events += repository.upsert_alert_delivery_events(events)
+        return total_events
 
     def _build_bot_summaries(self, repository: BotSocietyRepository, user_slug: str | None = None) -> list[BotSummary]:
         bots = repository.list_bots()
@@ -507,6 +669,46 @@ class BotSocietyService:
         target_text = " and ".join(target) if target else "alert rule"
         threshold = int(round(float(rule["min_confidence"]) * 100))
         return f"{target_text} at {threshold}% min confidence"
+
+    @staticmethod
+    def _to_user_identity(user: dict) -> UserIdentity:
+        return UserIdentity(
+            slug=user["slug"],
+            display_name=user["display_name"],
+            email=user["email"],
+            tier=user["tier"],
+        )
+
+    def _create_session_for_user(self, user_slug: str) -> tuple[AuthSessionSnapshot, str]:
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError("Unable to start a session for that account")
+        now = self._now()
+        session_token = self.auth.new_session_token()
+        repository.create_session(
+            {
+                "token_hash": session_token.token_hash,
+                "user_slug": user_slug,
+                "created_at": now,
+                "expires_at": self._session_expires_at(),
+                "last_seen_at": now,
+            }
+        )
+        return AuthSessionSnapshot(authenticated=True, user=self._to_user_identity(user)), session_token.raw_token
+
+    def _generate_user_slug(self, repository: BotSocietyRepository, display_name: str, email: str) -> str:
+        base = display_name.strip().lower() or email.split("@", 1)[0].lower()
+        base = SLUG_RE.sub("-", base).strip("-") or email.split("@", 1)[0].lower()
+        candidate = base[:80]
+        suffix = 1
+        while repository.get_user(candidate):
+            suffix += 1
+            candidate = f"{base[:72]}-{suffix}"
+        return candidate
+
+    def _session_expires_at(self) -> str:
+        return to_timestamp(datetime.now(timezone.utc) + timedelta(hours=self.settings.session_ttl_hours))
 
     @staticmethod
     def _now() -> str:

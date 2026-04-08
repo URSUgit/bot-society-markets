@@ -39,8 +39,9 @@ def _default_database_path() -> Path:
 @dataclass(slots=True)
 class Settings:
     project_name: str = "Bot Society Markets"
-    version: str = "0.4.0"
+    version: str = "0.5.0"
     database_path: Path = field(default_factory=_default_database_path)
+    database_url: str | None = None
     seed_demo_data: bool = True
     scoring_version: str = "v1"
     default_user_slug: str = "demo-operator"
@@ -53,17 +54,29 @@ class Settings:
     worker_interval_seconds: int = 900
     worker_max_cycles: int = 0
     alert_inbox_limit: int = 10
-
+    auth_cookie_name: str = "bsm_session"
+    session_ttl_hours: int = 168
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+    outbound_timeout_seconds: int = 10
 
 
 def _split_csv_env(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    return os.getenv(name, str(default)).lower() not in {"0", "false", "no"}
+
 
 def get_settings() -> Settings:
     database_path = Path(os.getenv("BSM_DATABASE_PATH", str(_default_database_path())))
-    seed_demo_data = os.getenv("BSM_SEED_DEMO_DATA", "true").lower() not in {"0", "false", "no"}
+    database_url = os.getenv("BSM_DATABASE_URL") or None
+    seed_demo_data = _env_bool("BSM_SEED_DEMO_DATA", True)
 
     market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", "demo").lower()
     if market_provider_mode not in {"demo", "coingecko"}:
@@ -83,9 +96,12 @@ def get_settings() -> Settings:
     worker_interval_seconds = max(30, int(os.getenv("BSM_WORKER_INTERVAL_SECONDS", "900")))
     worker_max_cycles = max(0, int(os.getenv("BSM_WORKER_MAX_CYCLES", "0")))
     alert_inbox_limit = max(1, min(50, int(os.getenv("BSM_ALERT_INBOX_LIMIT", "10"))))
+    session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
+    outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
 
     return Settings(
         database_path=database_path,
+        database_url=database_url,
         seed_demo_data=seed_demo_data,
         market_provider_mode=market_provider_mode,
         signal_provider_mode=signal_provider_mode,
@@ -96,4 +112,13 @@ def get_settings() -> Settings:
         worker_interval_seconds=worker_interval_seconds,
         worker_max_cycles=worker_max_cycles,
         alert_inbox_limit=alert_inbox_limit,
+        auth_cookie_name=os.getenv("BSM_AUTH_COOKIE_NAME", "bsm_session"),
+        session_ttl_hours=session_ttl_hours,
+        smtp_host=os.getenv("BSM_SMTP_HOST") or None,
+        smtp_port=max(1, int(os.getenv("BSM_SMTP_PORT", "587"))),
+        smtp_username=os.getenv("BSM_SMTP_USERNAME") or None,
+        smtp_password=os.getenv("BSM_SMTP_PASSWORD") or None,
+        smtp_from_email=os.getenv("BSM_SMTP_FROM_EMAIL") or None,
+        smtp_use_tls=_env_bool("BSM_SMTP_USE_TLS", True),
+        outbound_timeout_seconds=outbound_timeout_seconds,
     )

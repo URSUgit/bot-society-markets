@@ -3,149 +3,158 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from .database import Database
+from sqlalchemy import and_, delete, desc, func, select, update
+from sqlalchemy.exc import IntegrityError
+
+from .database import (
+    Database,
+    alert_delivery_events_table,
+    alert_rules_table,
+    bots_table,
+    market_snapshots_table,
+    notification_channels_table,
+    pipeline_runs_table,
+    predictions_table,
+    signals_table,
+    user_follows_table,
+    user_sessions_table,
+    users_table,
+    watchlist_items_table,
+)
 
 
 class BotSocietyRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
+    @staticmethod
+    def _rows(result) -> list[dict[str, Any]]:
+        return [dict(row) for row in result.mappings().all()]
+
+    @staticmethod
+    def _row(result) -> dict[str, Any] | None:
+        row = result.mappings().first()
+        return dict(row) if row else None
+
     def is_seeded(self) -> bool:
         with self.database.connect() as connection:
-            row = connection.execute("SELECT COUNT(*) AS count FROM bots").fetchone()
-        return bool(row["count"])
+            count = connection.execute(select(func.count()).select_from(bots_table)).scalar_one()
+        return bool(count)
 
     def upsert_bots(self, bots: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO bots (
-            slug, name, archetype, focus, horizon_label, thesis, risk_style, asset_universe, created_at
-        ) VALUES (
-            :slug, :name, :archetype, :focus, :horizon_label, :thesis, :risk_style, :asset_universe, :created_at
+        bot_list = list(bots)
+        if not bot_list:
+            return
+        stmt = self.database.upsert_insert(bots_table).values(bot_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[bots_table.c.slug],
+            set_={
+                "name": stmt.excluded.name,
+                "archetype": stmt.excluded.archetype,
+                "focus": stmt.excluded.focus,
+                "horizon_label": stmt.excluded.horizon_label,
+                "thesis": stmt.excluded.thesis,
+                "risk_style": stmt.excluded.risk_style,
+                "asset_universe": stmt.excluded.asset_universe,
+                "is_active": stmt.excluded.is_active,
+            },
         )
-        ON CONFLICT(slug) DO UPDATE SET
-            name = excluded.name,
-            archetype = excluded.archetype,
-            focus = excluded.focus,
-            horizon_label = excluded.horizon_label,
-            thesis = excluded.thesis,
-            risk_style = excluded.risk_style,
-            asset_universe = excluded.asset_universe
-        """
         with self.database.connect() as connection:
-            connection.executemany(query, list(bots))
+            connection.execute(stmt)
 
     def upsert_market_snapshots(self, snapshots: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO market_snapshots (
-            asset, as_of, price, change_24h, volume_24h, volatility, trend_score, signal_bias, source
-        ) VALUES (
-            :asset, :as_of, :price, :change_24h, :volume_24h, :volatility, :trend_score, :signal_bias, :source
+        snapshot_list = list(snapshots)
+        if not snapshot_list:
+            return
+        stmt = self.database.upsert_insert(market_snapshots_table).values(snapshot_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[market_snapshots_table.c.asset, market_snapshots_table.c.as_of],
+            set_={
+                "price": stmt.excluded.price,
+                "change_24h": stmt.excluded.change_24h,
+                "volume_24h": stmt.excluded.volume_24h,
+                "volatility": stmt.excluded.volatility,
+                "trend_score": stmt.excluded.trend_score,
+                "signal_bias": stmt.excluded.signal_bias,
+                "source": stmt.excluded.source,
+            },
         )
-        ON CONFLICT(asset, as_of) DO UPDATE SET
-            price = excluded.price,
-            change_24h = excluded.change_24h,
-            volume_24h = excluded.volume_24h,
-            volatility = excluded.volatility,
-            trend_score = excluded.trend_score,
-            signal_bias = excluded.signal_bias,
-            source = excluded.source
-        """
         with self.database.connect() as connection:
-            connection.executemany(query, list(snapshots))
+            connection.execute(stmt)
 
     def upsert_signals(self, signals: Iterable[dict[str, Any]]) -> int:
-        query = """
-        INSERT INTO signals (
-            external_id, asset, source, channel, title, summary, sentiment, relevance, url, observed_at, ingest_batch_id
-        ) VALUES (
-            :external_id, :asset, :source, :channel, :title, :summary, :sentiment, :relevance, :url, :observed_at, :ingest_batch_id
-        )
-        ON CONFLICT(external_id) DO NOTHING
-        """
         signal_list = list(signals)
         if not signal_list:
             return 0
+        stmt = self.database.upsert_insert(signals_table).values(signal_list)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[signals_table.c.external_id])
         with self.database.connect() as connection:
-            before = connection.total_changes
-            connection.executemany(query, signal_list)
-            return connection.total_changes - before
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def insert_predictions(self, predictions: Iterable[dict[str, Any]]) -> int:
-        query = """
-        INSERT INTO predictions (
-            bot_slug, asset, direction, confidence, horizon_days, horizon_label, thesis,
-            trigger_conditions, invalidation, source_signal_ids, published_at, status, start_price
-        ) VALUES (
-            :bot_slug, :asset, :direction, :confidence, :horizon_days, :horizon_label, :thesis,
-            :trigger_conditions, :invalidation, :source_signal_ids, :published_at, :status, :start_price
-        )
-        """
         prediction_list = list(predictions)
         if not prediction_list:
             return 0
         with self.database.connect() as connection:
-            before = connection.total_changes
-            connection.executemany(query, prediction_list)
-            return connection.total_changes - before
+            result = connection.execute(predictions_table.insert(), prediction_list)
+            return max(0, result.rowcount or len(prediction_list))
 
     def list_bots(self) -> list[dict[str, Any]]:
+        stmt = select(bots_table).where(bots_table.c.is_active.is_(True)).order_by(bots_table.c.name)
         with self.database.connect() as connection:
-            rows = connection.execute("SELECT * FROM bots WHERE is_active = 1 ORDER BY name").fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def get_bot(self, slug: str) -> dict[str, Any] | None:
+        stmt = select(bots_table).where(bots_table.c.slug == slug)
         with self.database.connect() as connection:
-            row = connection.execute("SELECT * FROM bots WHERE slug = ?", (slug,)).fetchone()
-        return dict(row) if row else None
+            return self._row(connection.execute(stmt))
 
     def list_latest_market_snapshots(self) -> list[dict[str, Any]]:
-        query = """
-        SELECT ms.*
-        FROM market_snapshots ms
-        JOIN (
-            SELECT asset, MAX(as_of) AS max_as_of
-            FROM market_snapshots
-            GROUP BY asset
-        ) latest
-            ON latest.asset = ms.asset AND latest.max_as_of = ms.as_of
-        ORDER BY ms.asset
-        """
+        latest = (
+            select(
+                market_snapshots_table.c.asset,
+                func.max(market_snapshots_table.c.as_of).label("max_as_of"),
+            )
+            .group_by(market_snapshots_table.c.asset)
+            .subquery()
+        )
+        stmt = (
+            select(market_snapshots_table)
+            .join(
+                latest,
+                and_(
+                    latest.c.asset == market_snapshots_table.c.asset,
+                    latest.c.max_as_of == market_snapshots_table.c.as_of,
+                ),
+            )
+            .order_by(market_snapshots_table.c.asset)
+        )
         with self.database.connect() as connection:
-            rows = connection.execute(query).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_market_history(self, asset: str) -> list[dict[str, Any]]:
+        stmt = select(market_snapshots_table).where(market_snapshots_table.c.asset == asset).order_by(market_snapshots_table.c.as_of)
         with self.database.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM market_snapshots WHERE asset = ? ORDER BY as_of",
-                (asset,),
-            ).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_assets(self) -> list[str]:
+        stmt = select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
         with self.database.connect() as connection:
-            rows = connection.execute("SELECT DISTINCT asset FROM market_snapshots ORDER BY asset").fetchall()
-        return [row["asset"] for row in rows]
+            return list(connection.execute(stmt).scalars().all())
 
     def list_recent_signals(self, limit: int = 12, asset: str | None = None) -> list[dict[str, Any]]:
-        query = "SELECT * FROM signals"
-        params: list[Any] = []
+        stmt = select(signals_table)
         if asset:
-            query += " WHERE asset = ?"
-            params.append(asset)
-        query += " ORDER BY observed_at DESC LIMIT ?"
-        params.append(limit)
+            stmt = stmt.where(signals_table.c.asset == asset)
+        stmt = stmt.order_by(desc(signals_table.c.observed_at), desc(signals_table.c.id)).limit(limit)
         with self.database.connect() as connection:
-            rows = connection.execute(query, tuple(params)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def count_signals_since(self, observed_at: str) -> int:
+        stmt = select(func.count()).select_from(signals_table).where(signals_table.c.observed_at >= observed_at)
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT COUNT(*) AS count FROM signals WHERE observed_at >= ?",
-                (observed_at,),
-            ).fetchone()
-        return int(row["count"])
+            return int(connection.execute(stmt).scalar_one())
 
     def list_predictions(
         self,
@@ -154,304 +163,422 @@ class BotSocietyRepository:
         bot_slug: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        query = """
-        SELECT predictions.*, bots.name AS bot_name
-        FROM predictions
-        JOIN bots ON bots.slug = predictions.bot_slug
-        """
-        conditions: list[str] = []
-        params: list[Any] = []
+        stmt = (
+            select(predictions_table, bots_table.c.name.label("bot_name"))
+            .join(bots_table, bots_table.c.slug == predictions_table.c.bot_slug)
+        )
         if status:
-            conditions.append("predictions.status = ?")
-            params.append(status)
+            stmt = stmt.where(predictions_table.c.status == status)
         if bot_slug:
-            conditions.append("predictions.bot_slug = ?")
-            params.append(bot_slug)
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY predictions.published_at DESC, predictions.id DESC LIMIT ?"
-        params.append(limit)
+            stmt = stmt.where(predictions_table.c.bot_slug == bot_slug)
+        stmt = stmt.order_by(desc(predictions_table.c.published_at), desc(predictions_table.c.id)).limit(limit)
         with self.database.connect() as connection:
-            rows = connection.execute(query, tuple(params)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_predictions_by_published_at(self, published_at: str, limit: int = 50) -> list[dict[str, Any]]:
-        query = """
-        SELECT predictions.*, bots.name AS bot_name
-        FROM predictions
-        JOIN bots ON bots.slug = predictions.bot_slug
-        WHERE predictions.published_at = ?
-        ORDER BY predictions.confidence DESC, predictions.id DESC
-        LIMIT ?
-        """
+        stmt = (
+            select(predictions_table, bots_table.c.name.label("bot_name"))
+            .join(bots_table, bots_table.c.slug == predictions_table.c.bot_slug)
+            .where(predictions_table.c.published_at == published_at)
+            .order_by(desc(predictions_table.c.confidence), desc(predictions_table.c.id))
+            .limit(limit)
+        )
         with self.database.connect() as connection:
-            rows = connection.execute(query, (published_at, limit)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_prediction_rows_for_scoring(self) -> list[dict[str, Any]]:
+        stmt = (
+            select(predictions_table)
+            .where(predictions_table.c.status == "pending")
+            .order_by(predictions_table.c.published_at, predictions_table.c.id)
+        )
         with self.database.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM predictions WHERE status = 'pending' ORDER BY published_at, id"
-            ).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def latest_prediction_for_bot(self, bot_slug: str) -> dict[str, Any] | None:
+        stmt = (
+            select(predictions_table)
+            .where(predictions_table.c.bot_slug == bot_slug)
+            .order_by(desc(predictions_table.c.published_at), desc(predictions_table.c.id))
+            .limit(1)
+        )
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM predictions WHERE bot_slug = ? ORDER BY published_at DESC, id DESC LIMIT 1",
-                (bot_slug,),
-            ).fetchone()
-        return dict(row) if row else None
+            return self._row(connection.execute(stmt))
 
     def bot_has_pending_prediction(self, bot_slug: str) -> bool:
+        stmt = select(func.count()).select_from(predictions_table).where(
+            and_(predictions_table.c.bot_slug == bot_slug, predictions_table.c.status == "pending")
+        )
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT COUNT(*) AS count FROM predictions WHERE bot_slug = ? AND status = 'pending'",
-                (bot_slug,),
-            ).fetchone()
-        return bool(row["count"])
+            return bool(connection.execute(stmt).scalar_one())
 
     def update_prediction_score(self, prediction_id: int, payload: dict[str, Any]) -> None:
-        payload = {**payload, "id": prediction_id}
-        query = """
-        UPDATE predictions
-        SET status = :status,
-            start_price = :start_price,
-            end_price = :end_price,
-            market_return = :market_return,
-            strategy_return = :strategy_return,
-            max_adverse_excursion = :max_adverse_excursion,
-            score = :score,
-            calibration_score = :calibration_score,
-            directional_success = :directional_success,
-            scoring_version = :scoring_version
-        WHERE id = :id
-        """
+        stmt = (
+            update(predictions_table)
+            .where(predictions_table.c.id == prediction_id)
+            .values(**payload)
+        )
         with self.database.connect() as connection:
-            connection.execute(query, payload)
+            connection.execute(stmt)
 
     def insert_pipeline_run(self, payload: dict[str, Any]) -> int:
-        query = """
-        INSERT INTO pipeline_runs (
-            cycle_type, status, started_at, completed_at,
-            ingested_signals, generated_predictions, scored_predictions, message
-        ) VALUES (
-            :cycle_type, :status, :started_at, :completed_at,
-            :ingested_signals, :generated_predictions, :scored_predictions, :message
-        )
-        """
+        stmt = pipeline_runs_table.insert().values(**payload)
         with self.database.connect() as connection:
-            cursor = connection.execute(query, payload)
-            return int(cursor.lastrowid)
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
 
     def get_latest_pipeline_run(self) -> dict[str, Any] | None:
+        stmt = select(pipeline_runs_table).order_by(desc(pipeline_runs_table.c.started_at), desc(pipeline_runs_table.c.id)).limit(1)
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM pipeline_runs ORDER BY started_at DESC, id DESC LIMIT 1"
-            ).fetchone()
-        return dict(row) if row else None
+            return self._row(connection.execute(stmt))
 
     def count_pipeline_runs(self, cycle_type: str | None = None) -> int:
+        stmt = select(func.count()).select_from(pipeline_runs_table)
+        if cycle_type:
+            stmt = stmt.where(pipeline_runs_table.c.cycle_type == cycle_type)
         with self.database.connect() as connection:
-            if cycle_type:
-                row = connection.execute(
-                    "SELECT COUNT(*) AS count FROM pipeline_runs WHERE cycle_type = ?",
-                    (cycle_type,),
-                ).fetchone()
-            else:
-                row = connection.execute("SELECT COUNT(*) AS count FROM pipeline_runs").fetchone()
-        return int(row["count"])
+            return int(connection.execute(stmt).scalar_one())
 
     def upsert_users(self, users: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO users (slug, display_name, email, tier, created_at)
-        VALUES (:slug, :display_name, :email, :tier, :created_at)
-        ON CONFLICT(slug) DO UPDATE SET
-            display_name = excluded.display_name,
-            email = excluded.email,
-            tier = excluded.tier
-        """
+        user_list = list(users)
+        if not user_list:
+            return
+        stmt = self.database.upsert_insert(users_table).values(user_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[users_table.c.slug],
+            set_={
+                "display_name": stmt.excluded.display_name,
+                "email": stmt.excluded.email,
+                "tier": stmt.excluded.tier,
+                "password_hash": stmt.excluded.password_hash,
+                "is_active": stmt.excluded.is_active,
+            },
+        )
         with self.database.connect() as connection:
-            connection.executemany(query, list(users))
+            connection.execute(stmt)
+
+    def create_user(self, payload: dict[str, Any]) -> None:
+        with self.database.connect() as connection:
+            connection.execute(users_table.insert().values(**payload))
+
+    def get_user(self, slug: str) -> dict[str, Any] | None:
+        stmt = select(users_table).where(users_table.c.slug == slug)
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        stmt = select(users_table).where(func.lower(users_table.c.email) == email.lower())
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
 
     def upsert_user_follows(self, follows: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO user_follows (user_slug, bot_slug, created_at)
-        VALUES (:user_slug, :bot_slug, :created_at)
-        ON CONFLICT(user_slug, bot_slug) DO NOTHING
-        """
+        follow_list = list(follows)
+        if not follow_list:
+            return
+        stmt = self.database.upsert_insert(user_follows_table).values(follow_list)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[user_follows_table.c.user_slug, user_follows_table.c.bot_slug])
         with self.database.connect() as connection:
-            connection.executemany(query, list(follows))
+            connection.execute(stmt)
 
     def upsert_watchlist_items(self, items: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO watchlist_items (user_slug, asset, created_at)
-        VALUES (:user_slug, :asset, :created_at)
-        ON CONFLICT(user_slug, asset) DO NOTHING
-        """
+        item_list = list(items)
+        if not item_list:
+            return
+        stmt = self.database.upsert_insert(watchlist_items_table).values(item_list)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[watchlist_items_table.c.user_slug, watchlist_items_table.c.asset])
         with self.database.connect() as connection:
-            connection.executemany(query, list(items))
+            connection.execute(stmt)
 
     def upsert_alert_rules(self, rules: Iterable[dict[str, Any]]) -> None:
-        query = """
-        INSERT INTO alert_rules (user_slug, bot_slug, asset, min_confidence, is_active, created_at)
-        VALUES (:user_slug, :bot_slug, :asset, :min_confidence, :is_active, :created_at)
-        """
+        rule_list = list(rules)
+        if not rule_list:
+            return
         with self.database.connect() as connection:
-            connection.executemany(query, list(rules))
+            connection.execute(alert_rules_table.insert(), rule_list)
+
+    def upsert_notification_channels(self, channels: Iterable[dict[str, Any]]) -> None:
+        channel_list = list(channels)
+        if not channel_list:
+            return
+        stmt = self.database.upsert_insert(notification_channels_table).values(channel_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[notification_channels_table.c.user_slug, notification_channels_table.c.channel_type, notification_channels_table.c.target],
+            set_={
+                "secret": stmt.excluded.secret,
+                "is_active": stmt.excluded.is_active,
+                "last_delivered_at": stmt.excluded.last_delivered_at,
+                "last_error": stmt.excluded.last_error,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
 
     def upsert_alert_delivery_events(self, events: Iterable[dict[str, Any]]) -> int:
-        query = """
-        INSERT INTO alert_delivery_events (
-            user_slug, rule_id, prediction_id, bot_slug, asset, direction, confidence,
-            title, message, channel, delivery_status, created_at, read_at
-        ) VALUES (
-            :user_slug, :rule_id, :prediction_id, :bot_slug, :asset, :direction, :confidence,
-            :title, :message, :channel, :delivery_status, :created_at, :read_at
-        )
-        ON CONFLICT(user_slug, rule_id, prediction_id, channel) DO NOTHING
-        """
         event_list = list(events)
         if not event_list:
             return 0
+        stmt = self.database.upsert_insert(alert_delivery_events_table).values(event_list)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=[
+                alert_delivery_events_table.c.user_slug,
+                alert_delivery_events_table.c.rule_id,
+                alert_delivery_events_table.c.prediction_id,
+                alert_delivery_events_table.c.channel,
+            ]
+        )
         with self.database.connect() as connection:
-            before = connection.total_changes
-            connection.executemany(query, event_list)
-            return connection.total_changes - before
-
-    def get_user(self, slug: str) -> dict[str, Any] | None:
-        with self.database.connect() as connection:
-            row = connection.execute("SELECT * FROM users WHERE slug = ?", (slug,)).fetchone()
-        return dict(row) if row else None
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def list_user_follows(self, user_slug: str) -> list[dict[str, Any]]:
-        query = """
-        SELECT user_follows.user_slug, user_follows.bot_slug, user_follows.created_at, bots.name, bots.slug, bots.focus
-        FROM user_follows
-        JOIN bots ON bots.slug = user_follows.bot_slug
-        WHERE user_follows.user_slug = ?
-        ORDER BY user_follows.created_at ASC
-        """
+        stmt = (
+            select(
+                user_follows_table.c.user_slug,
+                user_follows_table.c.bot_slug,
+                user_follows_table.c.created_at,
+                bots_table.c.name,
+                bots_table.c.focus,
+            )
+            .join(bots_table, bots_table.c.slug == user_follows_table.c.bot_slug)
+            .where(user_follows_table.c.user_slug == user_slug)
+            .order_by(user_follows_table.c.created_at.asc())
+        )
         with self.database.connect() as connection:
-            rows = connection.execute(query, (user_slug,)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_watchlist_items(self, user_slug: str) -> list[dict[str, Any]]:
-        query = """
-        SELECT watchlist_items.user_slug, watchlist_items.asset, watchlist_items.created_at,
-               market_snapshots.price AS latest_price, market_snapshots.change_24h
-        FROM watchlist_items
-        LEFT JOIN (
-            SELECT ms.*
-            FROM market_snapshots ms
-            JOIN (
-                SELECT asset, MAX(as_of) AS max_as_of
-                FROM market_snapshots
-                GROUP BY asset
-            ) latest
-                ON latest.asset = ms.asset AND latest.max_as_of = ms.as_of
-        ) market_snapshots ON market_snapshots.asset = watchlist_items.asset
-        WHERE watchlist_items.user_slug = ?
-        ORDER BY watchlist_items.created_at ASC
-        """
+        latest = (
+            select(
+                market_snapshots_table.c.asset,
+                func.max(market_snapshots_table.c.as_of).label("max_as_of"),
+            )
+            .group_by(market_snapshots_table.c.asset)
+            .subquery()
+        )
+        latest_snapshots = (
+            select(market_snapshots_table)
+            .join(
+                latest,
+                and_(
+                    latest.c.asset == market_snapshots_table.c.asset,
+                    latest.c.max_as_of == market_snapshots_table.c.as_of,
+                ),
+            )
+            .subquery()
+        )
+        stmt = (
+            select(
+                watchlist_items_table.c.user_slug,
+                watchlist_items_table.c.asset,
+                watchlist_items_table.c.created_at,
+                latest_snapshots.c.price.label("latest_price"),
+                latest_snapshots.c.change_24h,
+            )
+            .outerjoin(latest_snapshots, latest_snapshots.c.asset == watchlist_items_table.c.asset)
+            .where(watchlist_items_table.c.user_slug == user_slug)
+            .order_by(watchlist_items_table.c.created_at.asc())
+        )
         with self.database.connect() as connection:
-            rows = connection.execute(query, (user_slug,)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_alert_rules(self, user_slug: str) -> list[dict[str, Any]]:
+        stmt = select(alert_rules_table).where(alert_rules_table.c.user_slug == user_slug).order_by(alert_rules_table.c.created_at.asc())
         with self.database.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM alert_rules WHERE user_slug = ? ORDER BY created_at ASC",
-                (user_slug,),
-            ).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def list_active_alert_rules(self, user_slug: str | None = None) -> list[dict[str, Any]]:
-        query = "SELECT * FROM alert_rules WHERE is_active = 1"
-        params: list[Any] = []
+        stmt = select(alert_rules_table).where(alert_rules_table.c.is_active.is_(True))
         if user_slug:
-            query += " AND user_slug = ?"
-            params.append(user_slug)
-        query += " ORDER BY created_at ASC"
+            stmt = stmt.where(alert_rules_table.c.user_slug == user_slug)
+        stmt = stmt.order_by(alert_rules_table.c.created_at.asc())
         with self.database.connect() as connection:
-            rows = connection.execute(query, tuple(params)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
+
+    def list_notification_channels(self, user_slug: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(notification_channels_table)
+            .where(notification_channels_table.c.user_slug == user_slug)
+            .order_by(notification_channels_table.c.created_at.asc(), notification_channels_table.c.id.asc())
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def list_active_notification_channels(self, user_slug: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(notification_channels_table)
+            .where(
+                and_(
+                    notification_channels_table.c.user_slug == user_slug,
+                    notification_channels_table.c.is_active.is_(True),
+                )
+            )
+            .order_by(notification_channels_table.c.created_at.asc(), notification_channels_table.c.id.asc())
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_notification_channel(self, user_slug: str, channel_id: int) -> dict[str, Any] | None:
+        stmt = select(notification_channels_table).where(
+            and_(notification_channels_table.c.user_slug == user_slug, notification_channels_table.c.id == channel_id)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
 
     def list_alert_deliveries(self, user_slug: str, limit: int = 10, unread_only: bool = False) -> list[dict[str, Any]]:
-        query = "SELECT * FROM alert_delivery_events WHERE user_slug = ?"
-        params: list[Any] = [user_slug]
+        stmt = select(alert_delivery_events_table).where(alert_delivery_events_table.c.user_slug == user_slug)
         if unread_only:
-            query += " AND read_at IS NULL"
-        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
-        params.append(limit)
+            stmt = stmt.where(alert_delivery_events_table.c.read_at.is_(None))
+        stmt = stmt.order_by(desc(alert_delivery_events_table.c.created_at), desc(alert_delivery_events_table.c.id)).limit(limit)
         with self.database.connect() as connection:
-            rows = connection.execute(query, tuple(params)).fetchall()
-        return [dict(row) for row in rows]
+            return self._rows(connection.execute(stmt))
 
     def count_unread_alert_deliveries(self, user_slug: str) -> int:
+        stmt = select(func.count()).select_from(alert_delivery_events_table).where(
+            and_(alert_delivery_events_table.c.user_slug == user_slug, alert_delivery_events_table.c.read_at.is_(None))
+        )
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT COUNT(*) AS count FROM alert_delivery_events WHERE user_slug = ? AND read_at IS NULL",
-                (user_slug,),
-            ).fetchone()
-        return int(row["count"])
+            return int(connection.execute(stmt).scalar_one())
 
     def create_follow(self, user_slug: str, bot_slug: str, created_at: str) -> None:
+        stmt = self.database.upsert_insert(user_follows_table).values(
+            user_slug=user_slug,
+            bot_slug=bot_slug,
+            created_at=created_at,
+        )
+        stmt = stmt.on_conflict_do_nothing(index_elements=[user_follows_table.c.user_slug, user_follows_table.c.bot_slug])
         with self.database.connect() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO user_follows (user_slug, bot_slug, created_at) VALUES (?, ?, ?)",
-                (user_slug, bot_slug, created_at),
-            )
+            connection.execute(stmt)
 
     def delete_follow(self, user_slug: str, bot_slug: str) -> None:
+        stmt = delete(user_follows_table).where(and_(user_follows_table.c.user_slug == user_slug, user_follows_table.c.bot_slug == bot_slug))
         with self.database.connect() as connection:
-            connection.execute(
-                "DELETE FROM user_follows WHERE user_slug = ? AND bot_slug = ?",
-                (user_slug, bot_slug),
-            )
+            connection.execute(stmt)
 
     def create_watchlist_item(self, user_slug: str, asset: str, created_at: str) -> None:
+        stmt = self.database.upsert_insert(watchlist_items_table).values(user_slug=user_slug, asset=asset, created_at=created_at)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[watchlist_items_table.c.user_slug, watchlist_items_table.c.asset])
         with self.database.connect() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO watchlist_items (user_slug, asset, created_at) VALUES (?, ?, ?)",
-                (user_slug, asset, created_at),
-            )
+            connection.execute(stmt)
 
     def delete_watchlist_item(self, user_slug: str, asset: str) -> None:
+        stmt = delete(watchlist_items_table).where(and_(watchlist_items_table.c.user_slug == user_slug, watchlist_items_table.c.asset == asset))
         with self.database.connect() as connection:
-            connection.execute(
-                "DELETE FROM watchlist_items WHERE user_slug = ? AND asset = ?",
-                (user_slug, asset),
-            )
+            connection.execute(stmt)
 
     def create_alert_rule(self, payload: dict[str, Any]) -> int:
-        query = """
-        INSERT INTO alert_rules (user_slug, bot_slug, asset, min_confidence, is_active, created_at)
-        VALUES (:user_slug, :bot_slug, :asset, :min_confidence, :is_active, :created_at)
-        """
+        stmt = alert_rules_table.insert().values(**payload)
         with self.database.connect() as connection:
-            cursor = connection.execute(query, payload)
-            return int(cursor.lastrowid)
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
 
     def delete_alert_rule(self, user_slug: str, rule_id: int) -> None:
+        stmt = delete(alert_rules_table).where(and_(alert_rules_table.c.user_slug == user_slug, alert_rules_table.c.id == rule_id))
         with self.database.connect() as connection:
-            connection.execute(
-                "DELETE FROM alert_rules WHERE user_slug = ? AND id = ?",
-                (user_slug, rule_id),
-            )
+            connection.execute(stmt)
+
+    def create_notification_channel(self, payload: dict[str, Any]) -> int:
+        stmt = notification_channels_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def delete_notification_channel(self, user_slug: str, channel_id: int) -> None:
+        stmt = delete(notification_channels_table).where(
+            and_(notification_channels_table.c.user_slug == user_slug, notification_channels_table.c.id == channel_id)
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def update_notification_channel_delivery(
+        self,
+        user_slug: str,
+        channel_id: int,
+        *,
+        delivered_at: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        values: dict[str, Any] = {"last_error": error}
+        if delivered_at:
+            values["last_delivered_at"] = delivered_at
+        stmt = (
+            update(notification_channels_table)
+            .where(and_(notification_channels_table.c.user_slug == user_slug, notification_channels_table.c.id == channel_id))
+            .values(**values)
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
 
     def mark_alert_delivery_read(self, user_slug: str, alert_id: int, read_at: str) -> None:
+        stmt = (
+            update(alert_delivery_events_table)
+            .where(and_(alert_delivery_events_table.c.user_slug == user_slug, alert_delivery_events_table.c.id == alert_id))
+            .values(read_at=func.coalesce(alert_delivery_events_table.c.read_at, read_at))
+        )
         with self.database.connect() as connection:
-            connection.execute(
-                "UPDATE alert_delivery_events SET read_at = COALESCE(read_at, ?) WHERE user_slug = ? AND id = ?",
-                (read_at, user_slug, alert_id),
-            )
+            connection.execute(stmt)
 
     def mark_all_alert_deliveries_read(self, user_slug: str, read_at: str) -> int:
+        stmt = (
+            update(alert_delivery_events_table)
+            .where(and_(alert_delivery_events_table.c.user_slug == user_slug, alert_delivery_events_table.c.read_at.is_(None)))
+            .values(read_at=read_at)
+        )
         with self.database.connect() as connection:
-            before = connection.total_changes
-            connection.execute(
-                "UPDATE alert_delivery_events SET read_at = ? WHERE user_slug = ? AND read_at IS NULL",
-                (read_at, user_slug),
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def create_session(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(user_sessions_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[user_sessions_table.c.token_hash],
+            set_={
+                "user_slug": stmt.excluded.user_slug,
+                "created_at": stmt.excluded.created_at,
+                "expires_at": stmt.excluded.expires_at,
+                "last_seen_at": stmt.excluded.last_seen_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def get_session(self, token_hash: str) -> dict[str, Any] | None:
+        stmt = (
+            select(
+                user_sessions_table.c.token_hash,
+                user_sessions_table.c.user_slug,
+                user_sessions_table.c.created_at,
+                user_sessions_table.c.expires_at,
+                user_sessions_table.c.last_seen_at,
+                users_table.c.display_name,
+                users_table.c.email,
+                users_table.c.tier,
+                users_table.c.is_active,
             )
-            return connection.total_changes - before
+            .join(users_table, users_table.c.slug == user_sessions_table.c.user_slug)
+            .where(user_sessions_table.c.token_hash == token_hash)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def touch_session(self, token_hash: str, *, last_seen_at: str, expires_at: str) -> None:
+        stmt = (
+            update(user_sessions_table)
+            .where(user_sessions_table.c.token_hash == token_hash)
+            .values(last_seen_at=last_seen_at, expires_at=expires_at)
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def delete_session(self, token_hash: str) -> None:
+        stmt = delete(user_sessions_table).where(user_sessions_table.c.token_hash == token_hash)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def delete_expired_sessions(self, now: str) -> int:
+        stmt = delete(user_sessions_table).where(user_sessions_table.c.expires_at < now)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)

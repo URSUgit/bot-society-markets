@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 Direction = Literal["bullish", "bearish", "neutral"]
 PredictionStatus = Literal["pending", "scored"]
+NotificationChannelType = Literal["email", "webhook"]
 
 
 class Summary(BaseModel):
@@ -118,10 +119,22 @@ class ProviderStatus(BaseModel):
     signal_fallback_active: bool = False
 
 
+class NotificationChannel(BaseModel):
+    id: int
+    user_slug: str
+    channel_type: NotificationChannelType
+    target: str
+    is_active: bool
+    created_at: str
+    last_delivered_at: str | None = None
+    last_error: str | None = None
+
+
 class AlertDelivery(BaseModel):
     id: int
     user_slug: str
     rule_id: int | None = None
+    notification_channel_id: int | None = None
     prediction_id: int
     bot_slug: str
     asset: str
@@ -130,6 +143,7 @@ class AlertDelivery(BaseModel):
     title: str
     message: str
     channel: str
+    channel_target: str
     delivery_status: str
     created_at: str
     read_at: str | None = None
@@ -204,6 +218,22 @@ class AlertRuleCreate(BaseModel):
         return self
 
 
+class NotificationChannelCreate(BaseModel):
+    channel_type: NotificationChannelType
+    target: str = Field(min_length=3, max_length=320)
+    secret: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "NotificationChannelCreate":
+        normalized = self.target.strip()
+        if self.channel_type == "webhook" and not normalized.lower().startswith(("http://", "https://")):
+            raise ValueError("Webhook targets must start with http:// or https://")
+        if self.channel_type == "email" and "@" not in normalized:
+            raise ValueError("Email targets must contain @")
+        self.target = normalized
+        return self
+
+
 class FollowBotRequest(BaseModel):
     bot_slug: str
 
@@ -212,14 +242,39 @@ class WatchlistAssetRequest(BaseModel):
     asset: str
 
 
+class UserIdentity(BaseModel):
+    slug: str
+    display_name: str
+    email: str
+    tier: str
+
+
+class AuthRegisterRequest(BaseModel):
+    display_name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthLoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthSessionSnapshot(BaseModel):
+    authenticated: bool
+    user: UserIdentity | None = None
+
+
 class UserProfile(BaseModel):
     slug: str
     display_name: str
+    email: str
     tier: str
     follows: list[FollowedBot]
     watchlist: list[WatchlistItem]
     alert_rules: list[AlertRule]
     recent_alerts: list[AlertDelivery]
+    notification_channels: list[NotificationChannel] = Field(default_factory=list)
     unread_alert_count: int = Field(ge=0)
 
 

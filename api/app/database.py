@@ -1,177 +1,289 @@
 from __future__ import annotations
 
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS bots (
-    slug TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    archetype TEXT NOT NULL,
-    focus TEXT NOT NULL,
-    horizon_label TEXT NOT NULL,
-    thesis TEXT NOT NULL,
-    risk_style TEXT NOT NULL,
-    asset_universe TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL
-);
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    inspect,
+)
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Connection, Engine
 
-CREATE TABLE IF NOT EXISTS market_snapshots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset TEXT NOT NULL,
-    as_of TEXT NOT NULL,
-    price REAL NOT NULL,
-    change_24h REAL NOT NULL,
-    volume_24h REAL NOT NULL,
-    volatility REAL NOT NULL,
-    trend_score REAL NOT NULL,
-    signal_bias REAL NOT NULL,
-    source TEXT NOT NULL,
-    UNIQUE(asset, as_of)
-);
+metadata = MetaData()
 
-CREATE TABLE IF NOT EXISTS signals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    external_id TEXT NOT NULL UNIQUE,
-    asset TEXT NOT NULL,
-    source TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    sentiment REAL NOT NULL,
-    relevance REAL NOT NULL,
-    url TEXT NOT NULL,
-    observed_at TEXT NOT NULL,
-    ingest_batch_id TEXT NOT NULL
-);
+bots_table = Table(
+    "bots",
+    metadata,
+    Column("slug", String(120), primary_key=True),
+    Column("name", String(255), nullable=False),
+    Column("archetype", String(255), nullable=False),
+    Column("focus", String(255), nullable=False),
+    Column("horizon_label", String(255), nullable=False),
+    Column("thesis", Text, nullable=False),
+    Column("risk_style", String(255), nullable=False),
+    Column("asset_universe", String(255), nullable=False),
+    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("created_at", String(64), nullable=False),
+)
 
-CREATE TABLE IF NOT EXISTS predictions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    bot_slug TEXT NOT NULL,
-    asset TEXT NOT NULL,
-    direction TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    horizon_days INTEGER NOT NULL,
-    horizon_label TEXT NOT NULL,
-    thesis TEXT NOT NULL,
-    trigger_conditions TEXT NOT NULL,
-    invalidation TEXT NOT NULL,
-    source_signal_ids TEXT NOT NULL,
-    published_at TEXT NOT NULL,
-    status TEXT NOT NULL,
-    start_price REAL,
-    end_price REAL,
-    market_return REAL,
-    strategy_return REAL,
-    max_adverse_excursion REAL,
-    score REAL,
-    calibration_score REAL,
-    directional_success INTEGER,
-    scoring_version TEXT,
-    FOREIGN KEY(bot_slug) REFERENCES bots(slug)
-);
+market_snapshots_table = Table(
+    "market_snapshots",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("asset", String(16), nullable=False),
+    Column("as_of", String(64), nullable=False),
+    Column("price", Float, nullable=False),
+    Column("change_24h", Float, nullable=False),
+    Column("volume_24h", Float, nullable=False),
+    Column("volatility", Float, nullable=False),
+    Column("trend_score", Float, nullable=False),
+    Column("signal_bias", Float, nullable=False),
+    Column("source", String(120), nullable=False),
+    UniqueConstraint("asset", "as_of", name="uq_market_snapshots_asset_as_of"),
+)
 
-CREATE TABLE IF NOT EXISTS pipeline_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cycle_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    started_at TEXT NOT NULL,
-    completed_at TEXT,
-    ingested_signals INTEGER NOT NULL DEFAULT 0,
-    generated_predictions INTEGER NOT NULL DEFAULT 0,
-    scored_predictions INTEGER NOT NULL DEFAULT 0,
-    message TEXT NOT NULL
-);
+signals_table = Table(
+    "signals",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("external_id", String(255), nullable=False, unique=True),
+    Column("asset", String(16), nullable=False),
+    Column("source", String(255), nullable=False),
+    Column("channel", String(64), nullable=False),
+    Column("title", String(255), nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("sentiment", Float, nullable=False),
+    Column("relevance", Float, nullable=False),
+    Column("url", Text, nullable=False),
+    Column("observed_at", String(64), nullable=False),
+    Column("ingest_batch_id", String(255), nullable=False),
+)
 
-CREATE TABLE IF NOT EXISTS users (
-    slug TEXT PRIMARY KEY,
-    display_name TEXT NOT NULL,
-    email TEXT,
-    tier TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
+predictions_table = Table(
+    "predictions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("bot_slug", String(120), ForeignKey("bots.slug"), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("direction", String(16), nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("horizon_days", Integer, nullable=False),
+    Column("horizon_label", String(120), nullable=False),
+    Column("thesis", Text, nullable=False),
+    Column("trigger_conditions", Text, nullable=False),
+    Column("invalidation", Text, nullable=False),
+    Column("source_signal_ids", Text, nullable=False),
+    Column("published_at", String(64), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("start_price", Float),
+    Column("end_price", Float),
+    Column("market_return", Float),
+    Column("strategy_return", Float),
+    Column("max_adverse_excursion", Float),
+    Column("score", Float),
+    Column("calibration_score", Float),
+    Column("directional_success", Boolean),
+    Column("scoring_version", String(32)),
+)
 
-CREATE TABLE IF NOT EXISTS user_follows (
-    user_slug TEXT NOT NULL,
-    bot_slug TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY(user_slug, bot_slug),
-    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
-    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE
-);
+pipeline_runs_table = Table(
+    "pipeline_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("cycle_type", String(64), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("started_at", String(64), nullable=False),
+    Column("completed_at", String(64)),
+    Column("ingested_signals", Integer, nullable=False, default=0, server_default="0"),
+    Column("generated_predictions", Integer, nullable=False, default=0, server_default="0"),
+    Column("scored_predictions", Integer, nullable=False, default=0, server_default="0"),
+    Column("message", Text, nullable=False),
+)
 
-CREATE TABLE IF NOT EXISTS watchlist_items (
-    user_slug TEXT NOT NULL,
-    asset TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY(user_slug, asset),
-    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE
-);
+users_table = Table(
+    "users",
+    metadata,
+    Column("slug", String(120), primary_key=True),
+    Column("display_name", String(255), nullable=False),
+    Column("email", String(320), nullable=False, unique=True),
+    Column("tier", String(64), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    Column("password_hash", String(512)),
+    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+)
 
-CREATE TABLE IF NOT EXISTS alert_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_slug TEXT NOT NULL,
-    bot_slug TEXT,
-    asset TEXT,
-    min_confidence REAL NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
-    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE
-);
+user_sessions_table = Table(
+    "user_sessions",
+    metadata,
+    Column("token_hash", String(128), primary_key=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    Column("expires_at", String(64), nullable=False),
+    Column("last_seen_at", String(64), nullable=False),
+)
 
-CREATE TABLE IF NOT EXISTS alert_delivery_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_slug TEXT NOT NULL,
-    rule_id INTEGER,
-    prediction_id INTEGER NOT NULL,
-    bot_slug TEXT NOT NULL,
-    asset TEXT NOT NULL,
-    direction TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    delivery_status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    read_at TEXT,
-    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
-    FOREIGN KEY(rule_id) REFERENCES alert_rules(id) ON DELETE SET NULL,
-    FOREIGN KEY(prediction_id) REFERENCES predictions(id) ON DELETE CASCADE,
-    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE,
-    UNIQUE(user_slug, rule_id, prediction_id, channel)
-);
+user_follows_table = Table(
+    "user_follows",
+    metadata,
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("bot_slug", String(120), ForeignKey("bots.slug", ondelete="CASCADE"), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "bot_slug", name="uq_user_follows_user_bot"),
+)
 
-CREATE INDEX IF NOT EXISTS idx_market_snapshots_asset_as_of ON market_snapshots(asset, as_of DESC);
-CREATE INDEX IF NOT EXISTS idx_signals_observed_at ON signals(observed_at DESC);
-CREATE INDEX IF NOT EXISTS idx_predictions_published_at ON predictions(published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_predictions_status ON predictions(status, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_alert_rules_user ON alert_rules(user_slug, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user ON alert_delivery_events(user_slug, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_unread ON alert_delivery_events(user_slug, read_at, created_at DESC);
-"""
+watchlist_items_table = Table(
+    "watchlist_items",
+    metadata,
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "asset", name="uq_watchlist_items_user_asset"),
+)
+
+alert_rules_table = Table(
+    "alert_rules",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("bot_slug", String(120), ForeignKey("bots.slug", ondelete="CASCADE")),
+    Column("asset", String(16)),
+    Column("min_confidence", Float, nullable=False),
+    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("created_at", String(64), nullable=False),
+)
+
+notification_channels_table = Table(
+    "notification_channels",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("channel_type", String(32), nullable=False),
+    Column("target", Text, nullable=False),
+    Column("secret", String(255)),
+    Column("is_active", Boolean, nullable=False, default=True, server_default="1"),
+    Column("created_at", String(64), nullable=False),
+    Column("last_delivered_at", String(64)),
+    Column("last_error", Text),
+    UniqueConstraint("user_slug", "channel_type", "target", name="uq_notification_channels_user_type_target"),
+)
+
+alert_delivery_events_table = Table(
+    "alert_delivery_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("rule_id", Integer, ForeignKey("alert_rules.id", ondelete="SET NULL")),
+    Column("notification_channel_id", Integer, ForeignKey("notification_channels.id", ondelete="SET NULL")),
+    Column("prediction_id", Integer, ForeignKey("predictions.id", ondelete="CASCADE"), nullable=False),
+    Column("bot_slug", String(120), ForeignKey("bots.slug", ondelete="CASCADE"), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("direction", String(16), nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("title", String(255), nullable=False),
+    Column("message", Text, nullable=False),
+    Column("channel", String(32), nullable=False),
+    Column("channel_target", Text, nullable=False),
+    Column("delivery_status", String(32), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    Column("read_at", String(64)),
+    UniqueConstraint(
+        "user_slug",
+        "rule_id",
+        "prediction_id",
+        "channel",
+        name="uq_alert_delivery_event_scope",
+    ),
+)
+
+Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
+Index("idx_signals_observed_at", signals_table.c.observed_at.desc())
+Index("idx_predictions_published_at", predictions_table.c.published_at.desc())
+Index("idx_predictions_status", predictions_table.c.status, predictions_table.c.published_at.desc())
+Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
+Index("idx_alert_rules_user", alert_rules_table.c.user_slug, alert_rules_table.c.created_at.desc())
+Index("idx_notification_channels_user", notification_channels_table.c.user_slug, notification_channels_table.c.created_at.desc())
+Index("idx_alert_delivery_events_user", alert_delivery_events_table.c.user_slug, alert_delivery_events_table.c.created_at.desc())
+Index(
+    "idx_alert_delivery_events_unread",
+    alert_delivery_events_table.c.user_slug,
+    alert_delivery_events_table.c.read_at,
+    alert_delivery_events_table.c.created_at.desc(),
+)
+
+
+def _sqlite_url_for_path(path: Path) -> str:
+    return f"sqlite:///{path.resolve().as_posix()}"
 
 
 class Database:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path | None = None, url: str | None = None) -> None:
         self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.url = url or _sqlite_url_for_path(path or Path("api/data/bot_society_markets.db"))
+        if self.url.startswith("sqlite:///"):
+            sqlite_path = path or Path(self.url.removeprefix("sqlite:///"))
+            sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        self.engine: Engine = create_engine(self.url, future=True)
+
+    @property
+    def dialect_name(self) -> str:
+        return self.engine.dialect.name
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        try:
+    def connect(self) -> Iterator[Connection]:
+        with self.engine.begin() as connection:
+            if self.dialect_name == "sqlite":
+                connection.exec_driver_sql("PRAGMA foreign_keys = ON")
             yield connection
-            connection.commit()
-        finally:
-            connection.close()
 
     def initialize(self) -> None:
+        metadata.create_all(self.engine)
+        self._migrate_existing_schema()
+        metadata.create_all(self.engine)
+
+    def dispose(self) -> None:
+        self.engine.dispose()
+
+    def upsert_insert(self, table: Table):
+        if self.dialect_name == "postgresql":
+            return postgresql_insert(table)
+        return sqlite_insert(table)
+
+    def _migrate_existing_schema(self) -> None:
+        inspector = inspect(self.engine)
+        existing_tables = set(inspector.get_table_names())
+        if not existing_tables:
+            return
+
+        column_statements = {
+            "users": {
+                "password_hash": "ALTER TABLE users ADD COLUMN password_hash TEXT",
+                "is_active": "ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+            },
+            "alert_delivery_events": {
+                "notification_channel_id": "ALTER TABLE alert_delivery_events ADD COLUMN notification_channel_id INTEGER",
+                "channel_target": "ALTER TABLE alert_delivery_events ADD COLUMN channel_target TEXT NOT NULL DEFAULT 'in_app'",
+            },
+        }
+
         with self.connect() as connection:
-            connection.executescript(SCHEMA_SQL)
+            for table_name, statements in column_statements.items():
+                if table_name not in existing_tables:
+                    continue
+                existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+                for column_name, statement in statements.items():
+                    if column_name not in existing_columns:
+                        connection.exec_driver_sql(statement)

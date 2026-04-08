@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -9,15 +10,13 @@ from api.app.config import Settings
 from api.app.main import create_app
 
 
-
-def build_client(settings: Settings | None = None) -> TestClient:
-    temp_dir = TemporaryDirectory()
-    database_path = Path(temp_dir.name) / "bot-society-markets-test.db"
-    app = create_app(settings or Settings(database_path=database_path))
-    client = TestClient(app)
-    client._temp_dir = temp_dir  # type: ignore[attr-defined]
-    return client
-
+@contextmanager
+def build_client(settings: Settings | None = None):
+    with TemporaryDirectory() as temp_dir:
+        database_path = Path(temp_dir) / "bot-society-markets-test.db"
+        app = create_app(settings or Settings(database_path=database_path))
+        with TestClient(app) as client:
+            yield client
 
 
 def test_healthcheck() -> None:
@@ -25,7 +24,6 @@ def test_healthcheck() -> None:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
-
 
 
 def test_dashboard_snapshot_has_professional_data() -> None:
@@ -43,7 +41,6 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["user_profile"]["unread_alert_count"] >= 1
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
-
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -65,7 +62,6 @@ def test_bot_detail_and_cycle_flow() -> None:
         assert pending_response.status_code == 200
         pending_payload = pending_response.json()
         assert len(pending_payload) >= 6
-
 
 
 def test_user_workspace_mutations() -> None:
@@ -91,7 +87,6 @@ def test_user_workspace_mutations() -> None:
         assert any(rule["asset"] == "BTC" for rule in alert_response.json()["alert_rules"])
 
 
-
 def test_alert_inbox_endpoints_support_read_flow() -> None:
     with build_client() as client:
         inbox_response = client.get("/api/me/alerts")
@@ -115,6 +110,51 @@ def test_alert_inbox_endpoints_support_read_flow() -> None:
         assert read_all_response.status_code == 200
         assert read_all_response.json()["unread_count"] == 0
 
+
+def test_auth_and_notification_channels_flow() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Alpha Research",
+                "email": "alpha@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        register_payload = register_response.json()
+        assert register_payload["authenticated"] is True
+        assert register_payload["user"]["email"] == "alpha@example.com"
+
+        session_response = client.get("/api/auth/session")
+        assert session_response.status_code == 200
+        assert session_response.json()["authenticated"] is True
+
+        me_response = client.get("/api/me")
+        assert me_response.status_code == 200
+        assert me_response.json()["email"] == "alpha@example.com"
+
+        channel_response = client.post(
+            "/api/me/notification-channels",
+            json={"channel_type": "webhook", "target": "https://example.com/webhook"},
+        )
+        assert channel_response.status_code == 200
+        assert len(channel_response.json()["notification_channels"]) == 1
+
+        logout_response = client.post("/api/auth/logout")
+        assert logout_response.status_code == 200
+        assert logout_response.json()["authenticated"] is False
+
+        post_logout_session = client.get("/api/auth/session")
+        assert post_logout_session.status_code == 200
+        assert post_logout_session.json()["authenticated"] is False
+
+        login_response = client.post(
+            "/api/auth/login",
+            json={"email": "alpha@example.com", "password": "SuperSecure123"},
+        )
+        assert login_response.status_code == 200
+        assert login_response.json()["authenticated"] is True
 
 
 def test_validation_rejects_unknown_assets() -> None:

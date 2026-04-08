@@ -11,7 +11,7 @@ from .worker import PipelineWorker
 
 def build_service() -> BotSocietyService:
     settings = get_settings()
-    database = Database(settings.database_path)
+    database = Database(path=settings.database_path, url=settings.database_url)
     service = BotSocietyService(database, settings)
     service.bootstrap()
     return service

@@ -3,10 +3,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
@@ -15,12 +14,17 @@ from .models import (
     AlertInbox,
     AlertRuleCreate,
     AssetSnapshot,
+    AuthLoginRequest,
+    AuthRegisterRequest,
+    AuthSessionSnapshot,
     BotDetail,
     BotSummary,
     CycleResult,
     DashboardSnapshot,
     FollowBotRequest,
     LandingSnapshot,
+    NotificationChannel,
+    NotificationChannelCreate,
     OperationSnapshot,
     PredictionView,
     ProviderStatusEnvelope,
@@ -35,17 +39,19 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
 
-
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
-    database = Database(active_settings.database_path)
+    database = Database(path=active_settings.database_path, url=active_settings.database_url)
     service = BotSocietyService(database, active_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         service.bootstrap()
         app.state.bot_society_service = service
-        yield
+        try:
+            yield
+        finally:
+            database.dispose()
 
     app = FastAPI(
         title=active_settings.project_name,
@@ -66,6 +72,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_service(request: Request) -> BotSocietyService:
         return request.app.state.bot_society_service
 
+    def current_user_slug(request: Request, *, fallback_to_demo: bool = True) -> str | None:
+        return get_service(request).resolve_user_slug(
+            request.cookies.get(active_settings.auth_cookie_name),
+            fallback_to_demo=fallback_to_demo,
+        )
+
+    def set_session_cookie(response: Response, token: str) -> None:
+        response.set_cookie(
+            key=active_settings.auth_cookie_name,
+            value=token,
+            httponly=True,
+            samesite="lax",
+            max_age=active_settings.session_ttl_hours * 3600,
+        )
+
+    def clear_session_cookie(response: Response) -> None:
+        response.delete_cookie(active_settings.auth_cookie_name)
+
     def run_validated(action):
         try:
             return action()
@@ -76,17 +100,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthcheck() -> dict[str, str]:
         return {"status": "ok", "service": "bot-society-markets"}
 
+    @app.get("/api/auth/session", response_model=AuthSessionSnapshot)
+    def auth_session(request: Request) -> AuthSessionSnapshot:
+        return get_service(request).get_session_snapshot(request.cookies.get(active_settings.auth_cookie_name))
+
+    @app.post("/api/auth/register", response_model=AuthSessionSnapshot)
+    def auth_register(payload: AuthRegisterRequest, request: Request, response: Response) -> AuthSessionSnapshot:
+        session, token = run_validated(lambda: get_service(request).register_user(payload))
+        set_session_cookie(response, token)
+        return session
+
+    @app.post("/api/auth/login", response_model=AuthSessionSnapshot)
+    def auth_login(payload: AuthLoginRequest, request: Request, response: Response) -> AuthSessionSnapshot:
+        session, token = run_validated(lambda: get_service(request).login_user(payload))
+        set_session_cookie(response, token)
+        return session
+
+    @app.post("/api/auth/logout", response_model=AuthSessionSnapshot)
+    def auth_logout(request: Request, response: Response) -> AuthSessionSnapshot:
+        get_service(request).logout_session(request.cookies.get(active_settings.auth_cookie_name))
+        clear_session_cookie(response)
+        return AuthSessionSnapshot(authenticated=False, user=None)
+
     @app.get("/api/landing", response_model=LandingSnapshot)
     def landing_snapshot(request: Request) -> LandingSnapshot:
-        return get_service(request).get_landing_snapshot()
+        return get_service(request).get_landing_snapshot(current_user_slug(request))
 
     @app.get("/api/dashboard", response_model=DashboardSnapshot)
     def dashboard_snapshot(request: Request) -> DashboardSnapshot:
-        return get_service(request).get_dashboard_snapshot()
+        return get_service(request).get_dashboard_snapshot(current_user_slug(request) or active_settings.default_user_slug)
 
     @app.get("/api/summary", response_model=Summary)
     def summary(request: Request) -> Summary:
-        return get_service(request).get_summary()
+        return get_service(request).get_summary(current_user_slug(request))
 
     @app.get("/api/assets", response_model=list[AssetSnapshot])
     def assets(request: Request) -> list[AssetSnapshot]:
@@ -94,18 +140,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/bots", response_model=list[BotSummary])
     def bots(request: Request) -> list[BotSummary]:
-        return get_service(request).get_leaderboard()
+        return get_service(request).get_leaderboard(current_user_slug(request))
 
     @app.get("/api/bots/{slug}", response_model=BotDetail)
     def bot_detail(slug: str, request: Request) -> BotDetail:
-        bot = get_service(request).get_bot_detail(slug)
+        bot = get_service(request).get_bot_detail(slug, current_user_slug(request))
         if not bot:
             raise HTTPException(status_code=404, detail="Bot not found")
         return bot
 
     @app.get("/api/leaderboard", response_model=list[BotSummary])
     def leaderboard(request: Request) -> list[BotSummary]:
-        return get_service(request).get_leaderboard()
+        return get_service(request).get_leaderboard(current_user_slug(request))
 
     @app.get("/api/predictions", response_model=list[PredictionView])
     def predictions(
@@ -125,43 +171,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/me", response_model=UserProfile)
     def me(request: Request) -> UserProfile:
-        return get_service(request).get_user_profile()
+        return get_service(request).get_user_profile(current_user_slug(request) or active_settings.default_user_slug)
 
     @app.get("/api/me/alerts", response_model=AlertInbox)
     def alert_inbox(request: Request, unread_only: bool = False) -> AlertInbox:
-        return get_service(request).get_alert_inbox(unread_only=unread_only)
+        return get_service(request).get_alert_inbox(current_user_slug(request) or active_settings.default_user_slug, unread_only=unread_only)
 
     @app.post("/api/me/alerts/{alert_id}/read", response_model=AlertInbox)
     def mark_alert_read(alert_id: int, request: Request) -> AlertInbox:
-        return get_service(request).mark_alert_read(alert_id)
+        return get_service(request).mark_alert_read(current_user_slug(request) or active_settings.default_user_slug, alert_id)
 
     @app.post("/api/me/alerts/read-all", response_model=AlertInbox)
     def mark_all_alerts_read(request: Request) -> AlertInbox:
-        return get_service(request).mark_all_alerts_read()
+        return get_service(request).mark_all_alerts_read(current_user_slug(request) or active_settings.default_user_slug)
 
     @app.post("/api/me/follows", response_model=UserProfile)
     def follow_bot(payload: FollowBotRequest, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).follow_bot(payload.bot_slug))
+        return run_validated(lambda: get_service(request).follow_bot(current_user_slug(request) or active_settings.default_user_slug, payload.bot_slug))
 
     @app.delete("/api/me/follows/{bot_slug}", response_model=UserProfile)
     def unfollow_bot(bot_slug: str, request: Request) -> UserProfile:
-        return get_service(request).unfollow_bot(bot_slug)
+        return get_service(request).unfollow_bot(current_user_slug(request) or active_settings.default_user_slug, bot_slug)
 
     @app.post("/api/me/watchlist", response_model=UserProfile)
     def add_watchlist_asset(payload: WatchlistAssetRequest, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).add_watchlist_asset(payload.asset))
+        return run_validated(lambda: get_service(request).add_watchlist_asset(current_user_slug(request) or active_settings.default_user_slug, payload.asset))
 
     @app.delete("/api/me/watchlist/{asset}", response_model=UserProfile)
     def remove_watchlist_asset(asset: str, request: Request) -> UserProfile:
-        return get_service(request).remove_watchlist_asset(asset)
+        return get_service(request).remove_watchlist_asset(current_user_slug(request) or active_settings.default_user_slug, asset)
 
     @app.post("/api/me/alert-rules", response_model=UserProfile)
     def add_alert_rule(payload: AlertRuleCreate, request: Request) -> UserProfile:
-        return run_validated(lambda: get_service(request).add_alert_rule(payload))
+        return run_validated(lambda: get_service(request).add_alert_rule(current_user_slug(request) or active_settings.default_user_slug, payload))
 
     @app.delete("/api/me/alert-rules/{rule_id}", response_model=UserProfile)
     def delete_alert_rule(rule_id: int, request: Request) -> UserProfile:
-        return get_service(request).delete_alert_rule(rule_id)
+        return get_service(request).delete_alert_rule(current_user_slug(request) or active_settings.default_user_slug, rule_id)
+
+    @app.get("/api/me/notification-channels", response_model=list[NotificationChannel])
+    def notification_channels(request: Request) -> list[NotificationChannel]:
+        profile = get_service(request).get_user_profile(current_user_slug(request) or active_settings.default_user_slug)
+        return profile.notification_channels
+
+    @app.post("/api/me/notification-channels", response_model=UserProfile)
+    def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
+        return run_validated(lambda: get_service(request).add_notification_channel(current_user_slug(request) or active_settings.default_user_slug, payload))
+
+    @app.delete("/api/me/notification-channels/{channel_id}", response_model=UserProfile)
+    def delete_notification_channel(channel_id: int, request: Request) -> UserProfile:
+        return get_service(request).delete_notification_channel(current_user_slug(request) or active_settings.default_user_slug, channel_id)
 
     @app.get("/api/system/providers", response_model=ProviderStatusEnvelope)
     def provider_status(request: Request) -> ProviderStatusEnvelope:
