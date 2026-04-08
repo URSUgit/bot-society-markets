@@ -722,3 +722,80 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.workspace-card {
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--line);
+}
+
+.workspace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.workspace-list {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--line);
+}
+
+.inline-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inline-form input {
+  min-width: 88px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
+.compact-form input {
+  width: 86px;
+}
+
+.button.tertiary {
+  background: rgba(196, 106, 55, 0.12);
+  color: var(--text);
+  border: 1px solid rgba(196, 106, 55, 0.18);
+}
+
+.small-button {
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
+.detail-actions {
+  margin: 18px 0 22px;
+}
+
+@media (max-width: 1080px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}

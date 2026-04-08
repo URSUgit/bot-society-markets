@@ -85,6 +85,43 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     scored_predictions INTEGER NOT NULL DEFAULT 0,
     message TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    slug TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    email TEXT,
+    tier TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+    user_slug TEXT NOT NULL,
+    bot_slug TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(user_slug, bot_slug),
+    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
+    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    user_slug TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(user_slug, asset),
+    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS alert_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_slug TEXT NOT NULL,
+    bot_slug TEXT,
+    asset TEXT,
+    min_confidence REAL NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_slug) REFERENCES users(slug) ON DELETE CASCADE,
+    FOREIGN KEY(bot_slug) REFERENCES bots(slug) ON DELETE CASCADE
+);
 """
 
 

@@ -123,3 +123,29 @@ PREDICTION_SEEDS = [
     {"bot_slug": "news-reaction", "asset": "ETH", "direction": "bullish", "confidence": 0.67, "horizon_days": 1, "horizon_label": "1 day", "thesis": "The market still had room to reprice supportive ETH flow headlines.", "trigger_conditions": "Follow-through buyers appear into the next liquid session.", "invalidation": "News fades immediately with no spot participation.", "source_signal_ids": "[6,9]", "published_at": "2026-04-06T10:30:00Z", "status": "pending"},
     {"bot_slug": "news-reaction", "asset": "SOL", "direction": "bearish", "confidence": 0.59, "horizon_days": 1, "horizon_label": "1 day", "thesis": "The first wave of good news felt fully priced and vulnerable to mean reversion.", "trigger_conditions": "Price rejects the first continuation attempt.", "invalidation": "Fresh buyers keep paying through the headline impulse.", "source_signal_ids": "[4,10]", "published_at": "2026-04-06T09:00:00Z", "status": "pending"},
 ]
+
+USER_SEEDS = [
+    {
+        "slug": "demo-operator",
+        "display_name": "Demo Operator",
+        "email": "demo@botsocietymarkets.local",
+        "tier": "enterprise-preview",
+        "created_at": "2026-04-01T08:00:00Z",
+    }
+]
+
+FOLLOW_SEEDS = [
+    {"user_slug": "demo-operator", "bot_slug": "macro-narrative", "created_at": "2026-04-01T09:00:00Z"},
+    {"user_slug": "demo-operator", "bot_slug": "social-momentum", "created_at": "2026-04-01T09:05:00Z"},
+]
+
+WATCHLIST_SEEDS = [
+    {"user_slug": "demo-operator", "asset": "BTC", "created_at": "2026-04-01T09:15:00Z"},
+    {"user_slug": "demo-operator", "asset": "ETH", "created_at": "2026-04-01T09:16:00Z"},
+    {"user_slug": "demo-operator", "asset": "SOL", "created_at": "2026-04-01T09:17:00Z"},
+]
+
+ALERT_RULE_SEEDS = [
+    {"user_slug": "demo-operator", "bot_slug": "macro-narrative", "asset": None, "min_confidence": 0.62, "is_active": 1, "created_at": "2026-04-01T09:20:00Z"},
+    {"user_slug": "demo-operator", "bot_slug": None, "asset": "SOL", "min_confidence": 0.68, "is_active": 1, "created_at": "2026-04-01T09:25:00Z"},
+]

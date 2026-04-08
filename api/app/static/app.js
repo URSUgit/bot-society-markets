@@ -4,13 +4,28 @@ const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: 
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 
 let selectedBotSlug = null;
+let currentProfile = null;
+let currentLeaderboard = [];
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(path, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
   if (!response.ok) {
     throw new Error(`Failed to load ${path}`);
   }
   return response.json();
+}
+
+function setStatus(message) {
+  const status = document.getElementById("cycle-status");
+  if (status) {
+    status.textContent = message;
+  }
 }
 
 function renderLanding(snapshot) {
@@ -19,6 +34,8 @@ function renderLanding(snapshot) {
   const botGrid = document.getElementById("launch-bots");
   const assets = document.getElementById("asset-grid");
   const signals = document.getElementById("landing-signals");
+  const providerBadge = document.getElementById("landing-provider-badge");
+  const providerNote = document.getElementById("landing-provider-note");
 
   if (stats) {
     stats.innerHTML = `
@@ -32,6 +49,14 @@ function renderLanding(snapshot) {
     mini.innerHTML = snapshot.leaderboard.map((bot) => `
       <div><span>${bot.name}</span><strong>${fmtScore(bot.score)}</strong></div>
     `).join("");
+  }
+
+  if (providerBadge) {
+    providerBadge.textContent = `${snapshot.provider_status.market_provider_source}`;
+  }
+
+  if (providerNote) {
+    providerNote.textContent = `Market provider: ${snapshot.provider_status.market_provider_source}. Signal provider: ${snapshot.provider_status.signal_provider_source}.`;
   }
 
   if (botGrid) {
@@ -127,7 +152,22 @@ function renderOperation(operation) {
   `;
 }
 
+function renderProviderStatus(providerStatus) {
+  const card = document.getElementById("provider-card");
+  if (!card || !providerStatus) {
+    return;
+  }
+  card.innerHTML = `
+    <p><strong>Mode:</strong> ${providerStatus.market_provider_mode}</p>
+    <p><strong>Market source:</strong> ${providerStatus.market_provider_source}</p>
+    <p><strong>Signal source:</strong> ${providerStatus.signal_provider_source}</p>
+    <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
+    <p><strong>Fallback active:</strong> ${providerStatus.fallback_active ? "yes" : "no"}</p>
+  `;
+}
+
 function renderLeaderboard(leaderboard) {
+  currentLeaderboard = leaderboard;
   const body = document.getElementById("leaderboard-body");
   const spotlight = document.getElementById("bot-spotlight");
   if (!body) {
@@ -135,7 +175,7 @@ function renderLeaderboard(leaderboard) {
   }
   body.innerHTML = leaderboard.map((bot) => `
     <tr class="clickable-row" data-bot-slug="${bot.slug}">
-      <td><button class="text-button" type="button" data-bot-slug="${bot.slug}">${bot.name}</button></td>
+      <td><button class="text-button" type="button" data-bot-slug="${bot.slug}">${bot.name}${bot.is_followed ? " · Following" : ""}</button></td>
       <td>${fmtScore(bot.score)}</td>
       <td>${fmtPercent(bot.hit_rate)}</td>
       <td>${bot.calibration.toFixed(2)}</td>
@@ -192,6 +232,54 @@ function renderSignals(signals, targetId = "signal-list") {
   `).join("");
 }
 
+function renderUserProfile(profile) {
+  currentProfile = profile;
+  const tier = document.getElementById("workspace-tier");
+  const followList = document.getElementById("follow-list");
+  const watchlist = document.getElementById("watchlist-list");
+  const alertRules = document.getElementById("alert-rule-list");
+
+  if (tier) {
+    tier.textContent = `${profile.display_name} · ${profile.tier}`;
+  }
+
+  if (followList) {
+    followList.innerHTML = profile.follows.map((follow) => `
+      <li>
+        <div>
+          <strong>${follow.name}</strong>
+          <p>Score ${fmtScore(follow.score)}</p>
+        </div>
+        <button class="button tertiary small-button" type="button" data-action="unfollow" data-bot-slug="${follow.bot_slug}">Remove</button>
+      </li>
+    `).join("") || "<li><p>No followed bots yet.</p></li>";
+  }
+
+  if (watchlist) {
+    watchlist.innerHTML = profile.watchlist.map((item) => `
+      <li>
+        <div>
+          <strong>${item.asset}</strong>
+          <p>${item.latest_price !== null ? fmtPrice(item.latest_price) : "No price"}${item.change_24h !== null ? ` · ${fmtSignedPercent(item.change_24h)}` : ""}</p>
+        </div>
+        <button class="button tertiary small-button" type="button" data-action="remove-watch" data-asset="${item.asset}">Remove</button>
+      </li>
+    `).join("") || "<li><p>No watchlist assets yet.</p></li>";
+  }
+
+  if (alertRules) {
+    alertRules.innerHTML = profile.alert_rules.map((rule) => `
+      <li>
+        <div>
+          <strong>${rule.bot_slug || rule.asset || "Rule"}</strong>
+          <p>Min confidence ${fmtPercent(rule.min_confidence)}${rule.asset ? ` · ${rule.asset}` : ""}</p>
+        </div>
+        <button class="button tertiary small-button" type="button" data-action="delete-alert-rule" data-rule-id="${rule.id}">Remove</button>
+      </li>
+    `).join("") || "<li><p>No alert rules yet.</p></li>";
+  }
+}
+
 async function renderBotDetail(slug) {
   const detail = document.getElementById("bot-detail-card");
   if (!detail || !slug) {
@@ -203,6 +291,11 @@ async function renderBotDetail(slug) {
     <p class="eyebrow">${bot.archetype}</p>
     <h3>${bot.name}</h3>
     <p>${bot.thesis}</p>
+    <div class="hero-actions compact-actions detail-actions">
+      <button class="button tertiary" type="button" data-action="${bot.is_followed ? "unfollow" : "follow"}" data-bot-slug="${bot.slug}">${bot.is_followed ? "Unfollow Bot" : "Follow Bot"}</button>
+      <button class="button tertiary" type="button" data-action="add-watch" data-asset="${bot.latest_asset || bot.asset_universe[0]}">Watch ${bot.latest_asset || bot.asset_universe[0]}</button>
+      <button class="button tertiary" type="button" data-action="add-alert-rule" data-asset="${bot.latest_asset || bot.asset_universe[0]}" data-confidence="0.68">Alert on ${bot.latest_asset || bot.asset_universe[0]}</button>
+    </div>
     <dl class="detail-stats">
       <div><dt>Composite</dt><dd>${fmtScore(bot.score)}</dd></div>
       <div><dt>Hit rate</dt><dd>${fmtPercent(bot.hit_rate)}</dd></div>
@@ -215,14 +308,21 @@ async function renderBotDetail(slug) {
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }
 
+async function refreshProfileOnly() {
+  const profile = await fetchJson("/api/me");
+  renderUserProfile(profile);
+}
+
 async function loadDashboard() {
   const snapshot = await fetchJson("/api/dashboard");
   renderMetrics(snapshot.summary);
   renderAssets(snapshot.assets);
   renderOperation(snapshot.latest_operation);
+  renderProviderStatus(snapshot.provider_status);
   renderLeaderboard(snapshot.leaderboard);
   renderPredictions(snapshot.recent_predictions);
   renderSignals(snapshot.recent_signals);
+  renderUserProfile(snapshot.user_profile);
 
   const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
   if (preferredSlug) {
@@ -231,28 +331,93 @@ async function loadDashboard() {
 }
 
 async function runCycle() {
-  const status = document.getElementById("cycle-status");
   const button = document.getElementById("run-cycle-button");
-  if (status) {
-    status.textContent = "Running demo ingestion, orchestration, and scoring cycle...";
-  }
+  setStatus("Running ingestion, orchestration, and scoring cycle...");
   if (button) {
     button.disabled = true;
   }
   try {
     await fetchJson("/api/admin/run-cycle", { method: "POST" });
     await loadDashboard();
-    if (status) {
-      status.textContent = "Pipeline cycle completed and the dashboard was refreshed.";
-    }
+    setStatus("Pipeline cycle completed and the dashboard was refreshed.");
   } catch (error) {
-    if (status) {
-      status.textContent = `Pipeline cycle failed: ${error.message}`;
-    }
+    setStatus(`Pipeline cycle failed: ${error.message}`);
   } finally {
     if (button) {
       button.disabled = false;
     }
+  }
+}
+
+async function followBot(botSlug) {
+  await fetchJson("/api/me/follows", {
+    method: "POST",
+    body: JSON.stringify({ bot_slug: botSlug }),
+  });
+  await loadDashboard();
+}
+
+async function unfollowBot(botSlug) {
+  await fetchJson(`/api/me/follows/${botSlug}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
+async function addWatchlist(asset) {
+  await fetchJson("/api/me/watchlist", {
+    method: "POST",
+    body: JSON.stringify({ asset }),
+  });
+  await loadDashboard();
+}
+
+async function removeWatchlist(asset) {
+  await fetchJson(`/api/me/watchlist/${asset}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
+async function addAlertRule(asset, confidence = 0.68) {
+  await fetchJson("/api/me/alert-rules", {
+    method: "POST",
+    body: JSON.stringify({ asset, min_confidence: Number(confidence) }),
+  });
+  await loadDashboard();
+}
+
+async function deleteAlertRule(ruleId) {
+  await fetchJson(`/api/me/alert-rules/${ruleId}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
+function bindForms() {
+  const watchlistForm = document.getElementById("watchlist-form");
+  const alertRuleForm = document.getElementById("alert-rule-form");
+
+  if (watchlistForm) {
+    watchlistForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const assetInput = document.getElementById("watchlist-input");
+      const asset = assetInput?.value?.trim()?.toUpperCase();
+      if (!asset) {
+        return;
+      }
+      await addWatchlist(asset);
+      assetInput.value = "";
+    });
+  }
+
+  if (alertRuleForm) {
+    alertRuleForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const assetInput = document.getElementById("alert-asset-input");
+      const confidenceInput = document.getElementById("alert-confidence-input");
+      const asset = assetInput?.value?.trim()?.toUpperCase();
+      const confidence = confidenceInput?.value || "0.68";
+      if (!asset) {
+        return;
+      }
+      await addAlertRule(asset, confidence);
+      assetInput.value = "";
+    });
   }
 }
 
@@ -269,6 +434,32 @@ function bindInteractions() {
       return;
     }
 
+    const action = target.dataset.action;
+    if (action === "follow") {
+      await followBot(target.dataset.botSlug);
+      return;
+    }
+    if (action === "unfollow") {
+      await unfollowBot(target.dataset.botSlug);
+      return;
+    }
+    if (action === "add-watch") {
+      await addWatchlist(target.dataset.asset);
+      return;
+    }
+    if (action === "remove-watch") {
+      await removeWatchlist(target.dataset.asset);
+      return;
+    }
+    if (action === "add-alert-rule") {
+      await addAlertRule(target.dataset.asset, target.dataset.confidence || 0.68);
+      return;
+    }
+    if (action === "delete-alert-rule") {
+      await deleteAlertRule(target.dataset.ruleId);
+      return;
+    }
+
     const botSlug = target.dataset.botSlug || target.closest("[data-bot-slug]")?.dataset.botSlug;
     if (botSlug) {
       event.preventDefault();
@@ -279,6 +470,7 @@ function bindInteractions() {
 
 async function boot() {
   bindInteractions();
+  bindForms();
   try {
     if (document.getElementById("summary-stats")) {
       const landing = await fetchJson("/api/landing");
@@ -290,10 +482,7 @@ async function boot() {
     }
   } catch (error) {
     console.error(error);
-    const status = document.getElementById("cycle-status");
-    if (status) {
-      status.textContent = "Unable to load dashboard data right now.";
-    }
+    setStatus("Unable to load dashboard data right now.");
   }
 }
 

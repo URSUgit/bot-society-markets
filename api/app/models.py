@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Direction = Literal["bullish", "bearish", "neutral"]
 PredictionStatus = Literal["pending", "scored"]
@@ -65,6 +64,7 @@ class BotSummary(BaseModel):
     latest_asset: str | None = None
     latest_direction: Direction | None = None
     last_published_at: str | None = None
+    is_followed: bool = False
 
 
 class PredictionView(BaseModel):
@@ -107,6 +107,14 @@ class OperationSnapshot(BaseModel):
     message: str
 
 
+class ProviderStatus(BaseModel):
+    market_provider_mode: str
+    market_provider_source: str
+    signal_provider_source: str
+    tracked_coin_ids: list[str]
+    fallback_active: bool = False
+
+
 class DashboardSnapshot(BaseModel):
     summary: Summary
     assets: list[AssetSnapshot]
@@ -114,6 +122,8 @@ class DashboardSnapshot(BaseModel):
     recent_predictions: list[PredictionView]
     recent_signals: list[SignalView]
     latest_operation: OperationSnapshot | None = None
+    user_profile: "UserProfile"
+    provider_status: ProviderStatus
 
 
 class LandingSnapshot(BaseModel):
@@ -121,9 +131,68 @@ class LandingSnapshot(BaseModel):
     assets: list[AssetSnapshot]
     leaderboard: list[BotSummary]
     recent_signals: list[SignalView]
+    provider_status: ProviderStatus
 
 
 class CycleResult(BaseModel):
-    operation: OperationSnapshot
+    operation: OperationSnapshot | None
     leaderboard: list[BotSummary]
     recent_predictions: list[PredictionView]
+    provider_status: ProviderStatus
+
+
+class FollowedBot(BaseModel):
+    bot_slug: str
+    name: str
+    score: float = Field(ge=0, le=100)
+    created_at: str
+
+
+class WatchlistItem(BaseModel):
+    asset: str
+    created_at: str
+    latest_price: float | None = None
+    change_24h: float | None = None
+
+
+class AlertRule(BaseModel):
+    id: int
+    user_slug: str
+    bot_slug: str | None = None
+    asset: str | None = None
+    min_confidence: float = Field(ge=0, le=1)
+    is_active: bool
+    created_at: str
+
+
+class AlertRuleCreate(BaseModel):
+    bot_slug: str | None = None
+    asset: str | None = None
+    min_confidence: float = Field(default=0.65, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "AlertRuleCreate":
+        if not self.bot_slug and not self.asset:
+            raise ValueError("bot_slug or asset is required")
+        return self
+
+
+class FollowBotRequest(BaseModel):
+    bot_slug: str
+
+
+class WatchlistAssetRequest(BaseModel):
+    asset: str
+
+
+class UserProfile(BaseModel):
+    slug: str
+    display_name: str
+    tier: str
+    follows: list[FollowedBot]
+    watchlist: list[WatchlistItem]
+    alert_rules: list[AlertRule]
+
+
+class ProviderStatusEnvelope(BaseModel):
+    provider_status: ProviderStatus

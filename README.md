@@ -22,11 +22,17 @@ This repository now contains both the founder documentation package and a profes
 
 ## Code Structure
 
-- [API Starter](api/README.md)
+- [API README](api/README.md)
 - [FastAPI App Entry](api/app/main.py)
+- [Service Layer](api/app/services.py)
+- [Database Layer](api/app/database.py)
+- [Scoring Engine](api/app/scoring.py)
+- [Provider Layer](api/app/providers.py)
+- [Orchestration Layer](api/app/orchestration.py)
 - [Static Product UI](api/app/static/index.html)
-- [Dashboard Preview](api/app/static/dashboard.html)
+- [Dashboard UI](api/app/static/dashboard.html)
 - [Run Script](run-dev.ps1)
+- [Cycle Script](run-cycle.ps1)
 
 ## Project Summary
 
@@ -49,12 +55,14 @@ The current implementation uses a Python-first stack so the product is runnable 
 Included today:
 
 - a FastAPI application with structured product endpoints
-- SQLite-backed persistence for bots, market snapshots, signals, predictions, and pipeline runs
+- SQLite-backed persistence for bots, market snapshots, signals, predictions, pipeline runs, and user workspace state
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
-- demo ingestion providers and a bot orchestration pipeline
-- a polished landing page and working dashboard served by the backend
-- API tests covering health, dashboard data, bot detail, and pipeline-cycle execution
+- demo ingestion providers plus an optional CoinGecko-backed market provider mode
+- bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
+- a working dashboard with follows, watchlist items, alert rules, and pipeline controls
+- operational job entrypoints for bootstrap, provider-status, and cycle execution
+- API tests covering health, dashboard data, user workspace mutations, validation, and pipeline-cycle execution
 
 ## API Surface
 
@@ -68,24 +76,12 @@ Key endpoints include:
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
 - `GET /api/signals`
-- `GET /api/operations/latest`
+- `GET /api/me`
+- `POST /api/me/follows`
+- `POST /api/me/watchlist`
+- `POST /api/me/alert-rules`
+- `GET /api/system/providers`
 - `POST /api/admin/run-cycle`
-
-## Recommended First Build
-
-The initial MVP should:
-
-- focus on one asset universe
-- run 5 to 10 trader bots
-- ingest approved market and public signal data
-- generate structured predictions
-- score predictions against realized outcomes
-- present results through dashboards, leaderboards, and alerts
-
-## Notes
-
-- This package is strategic and operational guidance, not legal advice.
-- Before public launch, the product and marketing claims should be reviewed by legal counsel with financial regulatory experience.
 
 ## Run Locally
 
@@ -97,3 +93,30 @@ pip install -r api/requirements.txt
 ```
 
 Then open `http://127.0.0.1:8000`.
+
+## Operational Commands
+
+```powershell
+python -m api.app.jobs bootstrap
+python -m api.app.jobs provider-status
+python -m api.app.jobs run-cycle
+```
+
+## Optional Live Market Provider
+
+The repo can run against the demo provider by default or a live CoinGecko market provider.
+
+Example PowerShell setup:
+
+```powershell
+$env:BSM_MARKET_PROVIDER = "coingecko"
+$env:BSM_COINGECKO_PLAN = "demo"
+$env:BSM_COINGECKO_API_KEY = "your-key-here"
+```
+
+Then start the app normally.
+
+## Notes
+
+- This package is strategic and operational guidance, not legal advice.
+- Before public launch, the product and marketing claims should be reviewed by legal counsel with financial regulatory experience.

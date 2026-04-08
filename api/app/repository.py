@@ -250,3 +250,132 @@ class BotSocietyRepository:
             else:
                 row = connection.execute("SELECT COUNT(*) AS count FROM pipeline_runs").fetchone()
         return int(row["count"])
+
+    def upsert_users(self, users: Iterable[dict[str, Any]]) -> None:
+        query = """
+        INSERT INTO users (slug, display_name, email, tier, created_at)
+        VALUES (:slug, :display_name, :email, :tier, :created_at)
+        ON CONFLICT(slug) DO UPDATE SET
+            display_name = excluded.display_name,
+            email = excluded.email,
+            tier = excluded.tier
+        """
+        with self.database.connect() as connection:
+            connection.executemany(query, list(users))
+
+    def upsert_user_follows(self, follows: Iterable[dict[str, Any]]) -> None:
+        query = """
+        INSERT INTO user_follows (user_slug, bot_slug, created_at)
+        VALUES (:user_slug, :bot_slug, :created_at)
+        ON CONFLICT(user_slug, bot_slug) DO NOTHING
+        """
+        with self.database.connect() as connection:
+            connection.executemany(query, list(follows))
+
+    def upsert_watchlist_items(self, items: Iterable[dict[str, Any]]) -> None:
+        query = """
+        INSERT INTO watchlist_items (user_slug, asset, created_at)
+        VALUES (:user_slug, :asset, :created_at)
+        ON CONFLICT(user_slug, asset) DO NOTHING
+        """
+        with self.database.connect() as connection:
+            connection.executemany(query, list(items))
+
+    def upsert_alert_rules(self, rules: Iterable[dict[str, Any]]) -> None:
+        query = """
+        INSERT INTO alert_rules (user_slug, bot_slug, asset, min_confidence, is_active, created_at)
+        VALUES (:user_slug, :bot_slug, :asset, :min_confidence, :is_active, :created_at)
+        """
+        with self.database.connect() as connection:
+            connection.executemany(query, list(rules))
+
+    def get_user(self, slug: str) -> dict[str, Any] | None:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT * FROM users WHERE slug = ?", (slug,)).fetchone()
+        return dict(row) if row else None
+
+    def list_user_follows(self, user_slug: str) -> list[dict[str, Any]]:
+        query = """
+        SELECT user_follows.user_slug, user_follows.bot_slug, user_follows.created_at, bots.name, bots.slug, bots.focus
+        FROM user_follows
+        JOIN bots ON bots.slug = user_follows.bot_slug
+        WHERE user_follows.user_slug = ?
+        ORDER BY user_follows.created_at ASC
+        """
+        with self.database.connect() as connection:
+            rows = connection.execute(query, (user_slug,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_watchlist_items(self, user_slug: str) -> list[dict[str, Any]]:
+        query = """
+        SELECT watchlist_items.user_slug, watchlist_items.asset, watchlist_items.created_at,
+               market_snapshots.price AS latest_price, market_snapshots.change_24h
+        FROM watchlist_items
+        LEFT JOIN (
+            SELECT ms.*
+            FROM market_snapshots ms
+            JOIN (
+                SELECT asset, MAX(as_of) AS max_as_of
+                FROM market_snapshots
+                GROUP BY asset
+            ) latest
+                ON latest.asset = ms.asset AND latest.max_as_of = ms.as_of
+        ) market_snapshots ON market_snapshots.asset = watchlist_items.asset
+        WHERE watchlist_items.user_slug = ?
+        ORDER BY watchlist_items.created_at ASC
+        """
+        with self.database.connect() as connection:
+            rows = connection.execute(query, (user_slug,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_alert_rules(self, user_slug: str) -> list[dict[str, Any]]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM alert_rules WHERE user_slug = ? ORDER BY created_at ASC",
+                (user_slug,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_follow(self, user_slug: str, bot_slug: str, created_at: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO user_follows (user_slug, bot_slug, created_at) VALUES (?, ?, ?)",
+                (user_slug, bot_slug, created_at),
+            )
+
+    def delete_follow(self, user_slug: str, bot_slug: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM user_follows WHERE user_slug = ? AND bot_slug = ?",
+                (user_slug, bot_slug),
+            )
+
+    def create_watchlist_item(self, user_slug: str, asset: str, created_at: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO watchlist_items (user_slug, asset, created_at) VALUES (?, ?, ?)",
+                (user_slug, asset, created_at),
+            )
+
+    def delete_watchlist_item(self, user_slug: str, asset: str) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM watchlist_items WHERE user_slug = ? AND asset = ?",
+                (user_slug, asset),
+            )
+
+    def create_alert_rule(self, payload: dict[str, Any]) -> int:
+        query = """
+        INSERT INTO alert_rules (user_slug, bot_slug, asset, min_confidence, is_active, created_at)
+        VALUES (:user_slug, :bot_slug, :asset, :min_confidence, :is_active, :created_at)
+        """
+        with self.database.connect() as connection:
+            cursor = connection.execute(query, payload)
+            return int(cursor.lastrowid)
+
+    def delete_alert_rule(self, user_slug: str, rule_id: int) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM alert_rules WHERE user_slug = ? AND id = ?",
+                (user_slug, rule_id),
+            )

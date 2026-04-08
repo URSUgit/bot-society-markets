@@ -1,26 +1,33 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from statistics import mean, median, pstdev
 
 from .config import Settings
 from .database import Database
 from .models import (
+    AlertRule,
+    AlertRuleCreate,
     AssetSnapshot,
     BotDetail,
     BotSummary,
     CycleResult,
     DashboardSnapshot,
+    FollowedBot,
     LandingSnapshot,
     OperationSnapshot,
     PredictionView,
+    ProviderStatus,
     SignalView,
     Summary,
+    UserProfile,
+    WatchlistItem,
 )
 from .orchestration import PredictionOrchestrator
-from .providers import DemoMarketProvider, DemoSignalProvider
+from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
-from .seed import seed_demo_dataset
+from .seed import ensure_demo_user_state, seed_demo_dataset
 from .utils import parse_timestamp, to_timestamp
 
 
@@ -28,14 +35,18 @@ class BotSocietyService:
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
         self.settings = settings
-        self.market_provider = DemoMarketProvider()
+        self.demo_market_provider = DemoMarketProvider()
+        self.market_provider = self._build_market_provider()
         self.signal_provider = DemoSignalProvider()
         self.orchestrator = PredictionOrchestrator()
+        self.market_provider_fallback = False
+        self.market_provider_source = self.market_provider.source_name
 
     def bootstrap(self) -> None:
         self.database.initialize()
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
+        ensure_demo_user_state(repository)
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
         if seeded:
@@ -48,13 +59,13 @@ class BotSocietyService:
                     "ingested_signals": 0,
                     "generated_predictions": 0,
                     "scored_predictions": scored,
-                    "message": "Seeded demo market data, historical signals, and scored the initial prediction archive.",
+                    "message": "Seeded demo market data, user state, historical signals, and scored the initial prediction archive.",
                 }
             )
 
     def get_summary(self) -> Summary:
         repository = BotSocietyRepository(self.database)
-        bots = self._build_bot_summaries(repository)
+        bots = self._build_bot_summaries(repository, self.settings.default_user_slug)
         predictions = repository.list_predictions(limit=500)
         assets = repository.list_assets()
         signals = repository.list_recent_signals(limit=100)
@@ -94,11 +105,11 @@ class BotSocietyService:
 
     def get_leaderboard(self) -> list[BotSummary]:
         repository = BotSocietyRepository(self.database)
-        return self._build_bot_summaries(repository)
+        return self._build_bot_summaries(repository, self.settings.default_user_slug)
 
     def get_bot_detail(self, slug: str) -> BotDetail | None:
         repository = BotSocietyRepository(self.database)
-        summaries = self._build_bot_summaries(repository)
+        summaries = self._build_bot_summaries(repository, self.settings.default_user_slug)
         summary = next((bot for bot in summaries if bot.slug == slug), None)
         if not summary:
             return None
@@ -108,15 +119,102 @@ class BotSocietyService:
         ]
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
 
+    def get_user_profile(self) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(self.settings.default_user_slug)
+        if not user:
+            raise ValueError(f"User {self.settings.default_user_slug} is not available")
+
+        leaderboard_map = {bot.slug: bot for bot in self._build_bot_summaries(repository, self.settings.default_user_slug)}
+        follows = [
+            FollowedBot(
+                bot_slug=row["bot_slug"],
+                name=row["name"],
+                score=leaderboard_map[row["bot_slug"]].score if row["bot_slug"] in leaderboard_map else 0.0,
+                created_at=row["created_at"],
+            )
+            for row in repository.list_user_follows(self.settings.default_user_slug)
+        ]
+        watchlist = [WatchlistItem(**row) for row in repository.list_watchlist_items(self.settings.default_user_slug)]
+        alert_rules = [AlertRule(**{**row, "is_active": bool(row["is_active"])}) for row in repository.list_alert_rules(self.settings.default_user_slug)]
+        return UserProfile(
+            slug=user["slug"],
+            display_name=user["display_name"],
+            tier=user["tier"],
+            follows=follows,
+            watchlist=watchlist,
+            alert_rules=alert_rules,
+        )
+
+    def follow_bot(self, bot_slug: str) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_bot(bot_slug):
+            raise ValueError(f"Unknown bot slug: {bot_slug}")
+        repository.create_follow(self.settings.default_user_slug, bot_slug, self._now())
+        return self.get_user_profile()
+
+    def unfollow_bot(self, bot_slug: str) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        repository.delete_follow(self.settings.default_user_slug, bot_slug)
+        return self.get_user_profile()
+
+    def add_watchlist_asset(self, asset: str) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        normalized_asset = asset.upper()
+        if normalized_asset not in repository.list_assets():
+            raise ValueError(f"Unknown asset: {normalized_asset}")
+        repository.create_watchlist_item(self.settings.default_user_slug, normalized_asset, self._now())
+        return self.get_user_profile()
+
+    def remove_watchlist_asset(self, asset: str) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        repository.delete_watchlist_item(self.settings.default_user_slug, asset.upper())
+        return self.get_user_profile()
+
+    def add_alert_rule(self, payload: AlertRuleCreate) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        asset = payload.asset.upper() if payload.asset else None
+        if asset and asset not in repository.list_assets():
+            raise ValueError(f"Unknown asset: {asset}")
+        if payload.bot_slug and not repository.get_bot(payload.bot_slug):
+            raise ValueError(f"Unknown bot slug: {payload.bot_slug}")
+        repository.create_alert_rule(
+            {
+                "user_slug": self.settings.default_user_slug,
+                "bot_slug": payload.bot_slug,
+                "asset": asset,
+                "min_confidence": payload.min_confidence,
+                "is_active": 1,
+                "created_at": self._now(),
+            }
+        )
+        return self.get_user_profile()
+
+    def delete_alert_rule(self, rule_id: int) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        repository.delete_alert_rule(self.settings.default_user_slug, rule_id)
+        return self.get_user_profile()
+
+    def get_provider_status(self) -> ProviderStatus:
+        return ProviderStatus(
+            market_provider_mode=self.settings.market_provider_mode,
+            market_provider_source=self.market_provider_source,
+            signal_provider_source=self.signal_provider.source_name,
+            tracked_coin_ids=list(self.settings.tracked_coin_ids),
+            fallback_active=self.market_provider_fallback,
+        )
+
     def get_dashboard_snapshot(self) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
         return DashboardSnapshot(
             summary=self.get_summary(),
             assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository),
+            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             latest_operation=self._latest_operation(repository),
+            user_profile=self.get_user_profile(),
+            provider_status=self.get_provider_status(),
         )
 
     def get_landing_snapshot(self) -> LandingSnapshot:
@@ -124,8 +222,9 @@ class BotSocietyService:
         return LandingSnapshot(
             summary=self.get_summary(),
             assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository)[:4],
+            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug)[:4],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=4)],
+            provider_status=self.get_provider_status(),
         )
 
     def get_latest_operation(self) -> OperationSnapshot | None:
@@ -135,8 +234,23 @@ class BotSocietyService:
     def run_pipeline_cycle(self) -> CycleResult:
         repository = BotSocietyRepository(self.database)
         latest_snapshots = repository.list_latest_market_snapshots()
-        cycle_index = repository.count_pipeline_runs("demo-cycle") + 1
-        market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
+        cycle_index = repository.count_pipeline_runs() + 1
+
+        cycle_type = "demo-cycle"
+        message_prefix = ""
+        try:
+            market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
+            self.market_provider_fallback = False
+            self.market_provider_source = self.market_provider.source_name
+            if self.market_provider_source != self.demo_market_provider.source_name:
+                cycle_type = "live-cycle"
+        except Exception as exc:
+            market_batch = self.demo_market_provider.generate(latest_snapshots, cycle_index)
+            self.market_provider_fallback = True
+            self.market_provider_source = f"{self.market_provider.source_name}-fallback"
+            cycle_type = "fallback-demo-cycle"
+            message_prefix = f"Live provider fallback triggered after {exc.__class__.__name__}: {exc}. "
+
         repository.upsert_market_snapshots(market_batch)
         signal_batch = self.signal_provider.generate(market_batch, cycle_index)
         ingested_signals = repository.upsert_signals(signal_batch)
@@ -156,28 +270,33 @@ class BotSocietyService:
 
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored_predictions = scorer.score_available_predictions()
-        run_id = repository.insert_pipeline_run(
+        repository.insert_pipeline_run(
             {
-                "cycle_type": "demo-cycle",
+                "cycle_type": cycle_type,
                 "status": "completed",
                 "started_at": published_at,
                 "completed_at": published_at,
                 "ingested_signals": ingested_signals,
                 "generated_predictions": created_predictions,
                 "scored_predictions": scored_predictions,
-                "message": "Ingested a new demo market batch, refreshed the signal layer, and generated fresh pending predictions.",
+                "message": (
+                    f"{message_prefix}Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, "
+                    f"and scored {scored_predictions} eligible predictions."
+                ),
             }
         )
         operation = repository.get_latest_pipeline_run()
         return CycleResult(
-            operation=self._to_operation_model({**operation, "id": run_id} if operation else None),
-            leaderboard=self._build_bot_summaries(repository),
+            operation=self._to_operation_model(operation),
+            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
+            provider_status=self.get_provider_status(),
         )
 
-    def _build_bot_summaries(self, repository: BotSocietyRepository) -> list[BotSummary]:
+    def _build_bot_summaries(self, repository: BotSocietyRepository, user_slug: str | None = None) -> list[BotSummary]:
         bots = repository.list_bots()
         predictions = repository.list_predictions(limit=500)
+        followed_bot_slugs = {row["bot_slug"] for row in repository.list_user_follows(user_slug)} if user_slug else set()
         bot_predictions: dict[str, list[dict]] = {bot["slug"]: [] for bot in bots}
         for prediction in predictions:
             bot_predictions.setdefault(prediction["bot_slug"], []).append(prediction)
@@ -191,7 +310,10 @@ class BotSocietyService:
             hit_rate = mean(row["directional_success"] for row in scored_rows) if scored_rows else 0.0
             calibration = mean(row["calibration_score"] for row in scored_rows) if scored_rows else 0.0
             avg_strategy_return = mean(row["strategy_return"] for row in scored_rows) if scored_rows else 0.0
-            risk_discipline = mean(clamp(1 - abs(row["max_adverse_excursion"] or 0.0) / 0.06, 0.0, 1.0) for row in scored_rows) if scored_rows else 0.0
+            risk_discipline = mean(
+                clamp(1 - abs(row["max_adverse_excursion"] or 0.0) / 0.06, 0.0, 1.0)
+                for row in scored_rows
+            ) if scored_rows else 0.0
             score_series = [row["score"] / 100 for row in scored_rows if row["score"] is not None]
             consistency = clamp(1 - (pstdev(score_series) / 0.25), 0.0, 1.0) if len(score_series) > 1 else (1.0 if score_series else 0.0)
             return_component = clamp((avg_strategy_return + 0.04) / 0.08, 0.0, 1.0)
@@ -221,9 +343,19 @@ class BotSocietyService:
                     latest_asset=latest["asset"] if latest else None,
                     latest_direction=latest["direction"] if latest else None,
                     last_published_at=latest["published_at"] if latest else None,
+                    is_followed=bot["slug"] in followed_bot_slugs,
                 )
             )
         return sorted(summaries, key=lambda bot: bot.score, reverse=True)
+
+    def _build_market_provider(self):
+        if self.settings.market_provider_mode == "coingecko":
+            return CoinGeckoMarketProvider(
+                plan=self.settings.coingecko_plan,
+                api_key=self.settings.coingecko_api_key,
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+            )
+        return self.demo_market_provider
 
     @staticmethod
     def _to_asset_model(row: dict) -> AssetSnapshot:
@@ -235,7 +367,10 @@ class BotSocietyService:
 
     @staticmethod
     def _to_prediction_model(row: dict) -> PredictionView:
-        payload = {**row, "directional_success": bool(row["directional_success"]) if row["directional_success"] is not None else None}
+        payload = {
+            **row,
+            "directional_success": bool(row["directional_success"]) if row["directional_success"] is not None else None,
+        }
         return PredictionView(**payload)
 
     def _latest_operation(self, repository: BotSocietyRepository) -> OperationSnapshot | None:
@@ -247,3 +382,7 @@ class BotSocietyService:
         if not row:
             return None
         return OperationSnapshot(**row)
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

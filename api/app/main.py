@@ -10,7 +10,23 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
 from .database import Database
-from .models import BotDetail, BotSummary, CycleResult, DashboardSnapshot, LandingSnapshot, OperationSnapshot, PredictionView, SignalView, Summary, AssetSnapshot
+from .models import (
+    AlertRuleCreate,
+    AssetSnapshot,
+    BotDetail,
+    BotSummary,
+    CycleResult,
+    DashboardSnapshot,
+    FollowBotRequest,
+    LandingSnapshot,
+    OperationSnapshot,
+    PredictionView,
+    ProviderStatusEnvelope,
+    SignalView,
+    Summary,
+    UserProfile,
+    WatchlistAssetRequest,
+)
 from .services import BotSocietyService
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -47,6 +63,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def get_service(request: Request) -> BotSocietyService:
         return request.app.state.bot_society_service
+
+    def run_validated(action):
+        try:
+            return action()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
@@ -98,6 +120,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/operations/latest", response_model=OperationSnapshot | None)
     def latest_operation(request: Request) -> OperationSnapshot | None:
         return get_service(request).get_latest_operation()
+
+    @app.get("/api/me", response_model=UserProfile)
+    def me(request: Request) -> UserProfile:
+        return get_service(request).get_user_profile()
+
+    @app.post("/api/me/follows", response_model=UserProfile)
+    def follow_bot(payload: FollowBotRequest, request: Request) -> UserProfile:
+        return run_validated(lambda: get_service(request).follow_bot(payload.bot_slug))
+
+    @app.delete("/api/me/follows/{bot_slug}", response_model=UserProfile)
+    def unfollow_bot(bot_slug: str, request: Request) -> UserProfile:
+        return get_service(request).unfollow_bot(bot_slug)
+
+    @app.post("/api/me/watchlist", response_model=UserProfile)
+    def add_watchlist_asset(payload: WatchlistAssetRequest, request: Request) -> UserProfile:
+        return run_validated(lambda: get_service(request).add_watchlist_asset(payload.asset))
+
+    @app.delete("/api/me/watchlist/{asset}", response_model=UserProfile)
+    def remove_watchlist_asset(asset: str, request: Request) -> UserProfile:
+        return get_service(request).remove_watchlist_asset(asset)
+
+    @app.post("/api/me/alert-rules", response_model=UserProfile)
+    def add_alert_rule(payload: AlertRuleCreate, request: Request) -> UserProfile:
+        return run_validated(lambda: get_service(request).add_alert_rule(payload))
+
+    @app.delete("/api/me/alert-rules/{rule_id}", response_model=UserProfile)
+    def delete_alert_rule(rule_id: int, request: Request) -> UserProfile:
+        return get_service(request).delete_alert_rule(rule_id)
+
+    @app.get("/api/system/providers", response_model=ProviderStatusEnvelope)
+    def provider_status(request: Request) -> ProviderStatusEnvelope:
+        return ProviderStatusEnvelope(provider_status=get_service(request).get_provider_status())
 
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:
