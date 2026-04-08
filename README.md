@@ -2,7 +2,7 @@
 
 `Bot Society Markets` is a concept-stage SaaS platform for persistent AI trader personas that ingest market and public signal data, publish structured predictions, and build transparent track records for retail and enterprise users.
 
-This repository now contains both the founder documentation package and a Python-first starter implementation for the product.
+This repository now contains both the founder documentation package and a professional Python-first MVP foundation for the product.
 
 ## Document Index
 
@@ -44,15 +44,32 @@ The first release should be a research and prediction platform, not an automated
 
 ## Current Implementation
 
-The current starter implementation uses a Python-first stack so the project is runnable on this machine without requiring Node.
+The current implementation uses a Python-first stack so the product is runnable on this machine without requiring Node.
 
 Included today:
 
-- a FastAPI app with health and mock market-intelligence endpoints
-- sample bot, alert, and prediction data models
-- a polished landing page served by the backend
-- a sample dashboard wired to the API
-- initial smoke tests for core routes
+- a FastAPI application with structured product endpoints
+- SQLite-backed persistence for bots, market snapshots, signals, predictions, and pipeline runs
+- seeded historical market data and signal archives
+- a scoring engine that evaluates historical predictions against stored market moves
+- demo ingestion providers and a bot orchestration pipeline
+- a polished landing page and working dashboard served by the backend
+- API tests covering health, dashboard data, bot detail, and pipeline-cycle execution
+
+## API Surface
+
+Key endpoints include:
+
+- `GET /api/landing`
+- `GET /api/dashboard`
+- `GET /api/summary`
+- `GET /api/assets`
+- `GET /api/bots`
+- `GET /api/bots/{slug}`
+- `GET /api/predictions`
+- `GET /api/signals`
+- `GET /api/operations/latest`
+- `POST /api/admin/run-cycle`
 
 ## Recommended First Build
 

@@ -569,3 +569,156 @@ th {
     align-items: flex-start;
   }
 }
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.asset-card,
+.operation-card,
+.bot-detail-card {
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--line);
+}
+
+.compact-assets {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.asset-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.asset-price {
+  font-size: 1.7rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  margin-bottom: 14px;
+}
+
+.asset-card dl,
+.detail-stats {
+  display: grid;
+  gap: 10px;
+}
+
+.asset-card dl div,
+.detail-stats div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-soft);
+}
+
+.asset-card dt,
+.detail-stats dt {
+  font-weight: 700;
+}
+
+.asset-card dd,
+.detail-stats dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.signal-list,
+.prediction-list {
+  display: grid;
+  gap: 14px;
+}
+
+.signal-list li,
+.prediction-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--line);
+}
+
+.signal-list strong,
+.prediction-list strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.signal-list p,
+.prediction-list p,
+.operation-card p,
+.bot-detail-card p {
+  color: var(--text-soft);
+}
+
+.compact-signals li,
+.compact-predictions li {
+  padding: 14px 16px;
+}
+
+.operation-card {
+  display: grid;
+  gap: 10px;
+}
+
+.notice {
+  min-height: 24px;
+  margin: 0 0 20px;
+  color: var(--copper);
+  font-weight: 700;
+}
+
+.text-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.text-button:hover {
+  color: var(--copper);
+}
+
+.clickable-row:hover {
+  background: rgba(196, 106, 55, 0.06);
+}
+
+.badge-up {
+  background: rgba(31, 122, 120, 0.14);
+}
+
+.badge-down {
+  background: rgba(196, 106, 55, 0.18);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+}
+
+.button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1080px) {
+  .asset-grid,
+  .compact-assets,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

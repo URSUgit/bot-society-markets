@@ -11,44 +11,62 @@
     <aside class="sidebar">
       <div>
         <p class="eyebrow">Bot Society Markets</p>
-        <h1 class="sidebar-title">Market Intelligence Console</h1>
+        <h1 class="sidebar-title">Operations Dashboard</h1>
       </div>
       <nav class="sidebar-nav">
-        <a class="active" href="/dashboard">Leaderboard</a>
-        <a href="#">Bots</a>
-        <a href="#">Alerts</a>
-        <a href="#">Compare</a>
-        <a href="#">Enterprise</a>
+        <a class="active" href="#leaderboard-section">Leaderboard</a>
+        <a href="#assets-section">Assets</a>
+        <a href="#predictions-section">Predictions</a>
+        <a href="#signals-section">Signals</a>
+        <a href="#detail-section">Bot Detail</a>
         <a href="/">Back to Landing</a>
       </nav>
       <div class="sidebar-card">
         <p class="eyebrow">MVP boundary</p>
-        <p>Research product only. No auto-execution. No personalized advice.</p>
+        <p>Research, analytics, and signal discovery only. No trade execution and no personalized investment advice.</p>
       </div>
     </aside>
 
     <main class="dashboard-main">
       <section class="dashboard-hero card">
         <div>
-          <p class="eyebrow">90-day leaderboard</p>
-          <h2>Analyst bots ranked by performance, calibration, and consistency.</h2>
+          <p class="eyebrow">Live system snapshot</p>
+          <h2>Persistent analyst bots ranked by scored market performance.</h2>
         </div>
         <div class="hero-actions compact-actions">
-          <a class="button primary" href="#">Follow Top Bots</a>
-          <a class="button secondary" href="#">Export Sample Feed</a>
+          <button class="button primary" id="run-cycle-button" type="button">Run Demo Pipeline Cycle</button>
+          <a class="button secondary" href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Open Repository</a>
         </div>
       </section>
 
       <section class="metrics-row" id="dashboard-metrics"></section>
+      <p class="notice" id="cycle-status"></p>
 
-      <section class="content-grid">
+      <section class="content-grid" id="assets-section">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Market overview</p>
+              <h3>Tracked assets and current state</h3>
+            </div>
+          </div>
+          <div class="asset-grid compact-assets" id="dashboard-assets"></div>
+        </article>
+        <article class="card side-card" id="operations-section">
+          <p class="eyebrow">Latest operation</p>
+          <h3>Pipeline status</h3>
+          <div class="operation-card" id="operation-card"></div>
+        </article>
+      </section>
+
+      <section class="content-grid" id="leaderboard-section">
         <article class="card wide-card">
           <div class="section-head">
             <div>
               <p class="eyebrow">Leaderboard</p>
-              <h3>Top bots this quarter</h3>
+              <h3>Bot performance over the current archive</h3>
             </div>
-            <span class="badge">Live mock data</span>
+            <span class="badge">API-backed</span>
           </div>
           <div class="table-wrap">
             <table>
@@ -58,7 +76,7 @@
                   <th>Composite</th>
                   <th>Hit Rate</th>
                   <th>Calibration</th>
-                  <th>Focus</th>
+                  <th>Avg Strategy Return</th>
                   <th>Predictions</th>
                 </tr>
               </thead>
@@ -68,34 +86,44 @@
         </article>
 
         <article class="card side-card">
-          <p class="eyebrow">Recent alerts</p>
-          <h3>High-conviction calls</h3>
-          <ul class="alert-list" id="alert-list"></ul>
+          <p class="eyebrow">Bot spotlight</p>
+          <h3>Selected profile</h3>
+          <div id="bot-spotlight"></div>
         </article>
       </section>
 
-      <section class="content-grid lower-grid">
+      <section class="content-grid" id="predictions-section">
         <article class="card wide-card">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Bot roster</p>
-              <h3>Launch personalities</h3>
+              <p class="eyebrow">Recent predictions</p>
+              <h3>Pending and scored calls</h3>
             </div>
           </div>
-          <div class="bot-grid compact-grid" id="dashboard-bots"></div>
+          <ul class="prediction-list" id="prediction-list"></ul>
         </article>
 
-        <article class="card side-card dark-card">
-          <p class="eyebrow">Scoring logic</p>
-          <h3>What drives rank</h3>
-          <ul class="checklist compact">
-            <li>30% directional accuracy</li>
-            <li>25% return capture</li>
-            <li>20% confidence calibration</li>
-            <li>15% consistency</li>
-            <li>10% risk discipline</li>
-          </ul>
+        <article class="card side-card" id="signals-section">
+          <p class="eyebrow">Recent signals</p>
+          <h3>Input layer</h3>
+          <ul class="signal-list compact-signals" id="signal-list"></ul>
         </article>
+      </section>
+
+      <section class="card" id="detail-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Bot detail</p>
+            <h3>Full profile and recent history</h3>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <article class="bot-detail-card" id="bot-detail-card"></article>
+          <article class="bot-detail-card">
+            <p class="eyebrow">Recent calls</p>
+            <ul class="prediction-list compact-predictions" id="bot-detail-predictions"></ul>
+          </article>
+        </div>
       </section>
     </main>
   </div>

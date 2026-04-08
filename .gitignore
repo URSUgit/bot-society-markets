@@ -18,3 +18,4 @@ Thumbs.db
 
 # Runtime
 *.log
+api/data/*.db
