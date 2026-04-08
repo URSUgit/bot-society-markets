@@ -56,7 +56,7 @@ The current build includes:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn api.app.main:app --reload
+python -m uvicorn api.app.main:app --reload
 ```
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
@@ -69,6 +69,15 @@ python -m api.app.jobs provider-status
 python -m api.app.jobs run-cycle
 python -m api.app.jobs worker --cycles 1 --interval-seconds 300
 ```
+
+## Windows Launcher
+
+The repository includes a one-click launcher:
+
+- [launch-dashboard.bat](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.bat)
+- [launch-dashboard.ps1](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.ps1)
+
+It will provision the virtual environment if needed, install dependencies, start the API, and open the dashboard automatically.
 
 ## Environment Variables
 

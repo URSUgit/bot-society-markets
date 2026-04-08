@@ -18,6 +18,7 @@ This repository contains both the founder documentation package and a profession
 - [Founder Deck Script](docs/09-founder-deck-script.md)
 - [Scoring Specification](docs/10-scoring-specification.md)
 - [Data Provider Decision Memo](docs/11-data-provider-decision-memo.md)
+- [Deployment Guide](docs/12-deployment-guide.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -33,8 +34,11 @@ This repository contains both the founder documentation package and a profession
 - [Static Product UI](api/app/static/index.html)
 - [Dashboard UI](api/app/static/dashboard.html)
 - [Run Script](run-dev.ps1)
+- [Launcher Script](launch-dashboard.ps1)
+- [Launcher Shortcut](launch-dashboard.bat)
 - [Cycle Script](run-cycle.ps1)
 - [Worker Script](run-worker.ps1)
+- [Render Blueprint](render.yaml)
 
 ## Current Implementation
 
@@ -85,6 +89,25 @@ pip install -r api/requirements.txt
 
 Then open `http://127.0.0.1:8000`.
 
+## One-Click Windows Launcher
+
+Double-click:
+
+- [launch-dashboard.bat](C:\Users\ionut\OneDrive\Documents\New project\launch-dashboard.bat)
+
+Or run:
+
+```powershell
+.\launch-dashboard.ps1
+```
+
+The launcher will:
+
+- create `.venv` if it does not exist
+- install/update Python dependencies only when needed
+- start the local API server
+- open the dashboard in your default browser
+
 ## Operational Commands
 
 ```powershell
@@ -100,6 +123,19 @@ Or use the helper scripts:
 .\run-cycle.ps1
 .\run-worker.ps1
 ```
+
+## Deploy To Render
+
+This repo now includes a Render blueprint at [render.yaml](C:\Users\ionut\OneDrive\Documents\New project\render.yaml).
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/URSUgit/bot-society-markets)
+
+Fastest path:
+
+- run [deploy-render.bat](C:\Users\ionut\OneDrive\Documents\New project\deploy-render.bat)
+- or open [https://render.com/deploy?repo=https://github.com/URSUgit/bot-society-markets](https://render.com/deploy?repo=https://github.com/URSUgit/bot-society-markets)
+
+If the repository stays private, Render's docs indicate you need Render's GitHub App installed on the repository before the deploy flow can read it.
 
 ## Environment Configuration
 

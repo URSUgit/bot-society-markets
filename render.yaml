@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bot-society-markets
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn api.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: BSM_DATABASE_PATH
+        value: /tmp/bot_society_markets.db
+      - key: BSM_MARKET_PROVIDER
+        value: demo
+      - key: BSM_SIGNAL_PROVIDER
+        value: demo
+      - key: BSM_ALERT_INBOX_LIMIT
+        value: "10"
