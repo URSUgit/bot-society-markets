@@ -1,0 +1,15 @@
+# Keep Docker build context lean and avoid local runtime artifacts
+.git
+.venv
+.pytest_cache
+.tools
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+api/data/*.db
+api/data/*.db-journal
+api/data/*.txt
+pytest-cache-files-*/
+.env

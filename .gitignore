@@ -7,6 +7,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+pytest-cache-files-*/
 
 # OS
 .DS_Store
@@ -23,3 +24,6 @@ api/data/*.db-journal
 api/data/*.txt
 .env
 .tools/
+dist/
+build/
+*.egg-info/

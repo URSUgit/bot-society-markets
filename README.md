@@ -33,6 +33,8 @@ This repository contains both the founder documentation package and a profession
 - [Worker Loop](api/app/worker.py)
 - [Static Product UI](api/app/static/index.html)
 - [Dashboard UI](api/app/static/dashboard.html)
+- [Dockerfile](C:\Users\ionut\OneDrive\Documents\New project\Dockerfile)
+- [CI Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\ci.yml)
 - [Run Script](run-dev.ps1)
 - [Launcher Script](launch-dashboard.ps1)
 - [Launcher Shortcut](launch-dashboard.bat)
@@ -55,6 +57,8 @@ Included today:
 - a working dashboard with follows, watchlist items, alert rules, alert inbox state, provider status, and pipeline controls
 - operational job entrypoints for bootstrap, provider-status, run-cycle, and worker execution
 - API tests covering health, dashboard data, user workspace mutations, alert read flows, validation, and pipeline-cycle execution
+- GitHub Actions CI for Python tests and Docker image validation
+- Docker assets for reproducible container deployment
 
 ## Product Surface
 
@@ -164,6 +168,21 @@ $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.ex
 
 ```powershell
 python -m pytest api/tests/test_api.py
+```
+
+## CI And Containers
+
+This repo now includes:
+
+- [GitHub Actions CI](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\ci.yml)
+- [Dockerfile](C:\Users\ionut\OneDrive\Documents\New project\Dockerfile)
+- [.dockerignore](C:\Users\ionut\OneDrive\Documents\New project\.dockerignore)
+
+Local Docker command:
+
+```powershell
+docker build -t bot-society-markets .
+docker run --rm -p 8000:8000 bot-society-markets
 ```
 
 ## Notes

@@ -18,6 +18,9 @@ Included deployment assets:
 - `render.yaml`
 - `.python-version`
 - `requirements.txt`
+- `Dockerfile`
+- `.dockerignore`
+- `.github/workflows/ci.yml`
 - `deploy-render.ps1`
 - `deploy-render.bat`
 
@@ -43,6 +46,19 @@ Included deployment assets:
 ## Important Runtime Note
 
 The current hosted setup is appropriate for demos and previews. It uses SQLite in ephemeral storage, so data can reset when the instance restarts or is replaced.
+
+## Container Path
+
+The repository now includes a Docker image definition for teams that prefer container-first deployment targets.
+
+Build and run locally:
+
+```powershell
+docker build -t bot-society-markets .
+docker run --rm -p 8000:8000 bot-society-markets
+```
+
+This uses the same FastAPI entrypoint as the Render blueprint.
 
 For a durable hosted environment, the next production move should be:
 

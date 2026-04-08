@@ -4,12 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bot-society-markets"
-version = "0.1.0"
-description = "FastAPI starter for Bot Society Markets"
+version = "0.4.0"
+description = "Professional FastAPI MVP for Bot Society Markets"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic",
+    "fastapi==0.118.0",
+    "pydantic==2.11.9",
+    "uvicorn[standard]==0.37.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.0.2",
+]
+
+[project.scripts]
+bsm-jobs = "api.app.jobs:main"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["api/tests"]
+cache_dir = ".pytest_cache"

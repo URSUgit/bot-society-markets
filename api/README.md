@@ -16,6 +16,8 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `app/jobs.py` - operational CLI entrypoints
 - `app/static/` - landing page and dashboard served by the backend
 - `tests/` - API verification tests
+- `../Dockerfile` - container image definition for deployment
+- `../.github/workflows/ci.yml` - continuous integration workflow
 
 ## Main Endpoints
 
@@ -105,6 +107,13 @@ $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.ex
 
 ```powershell
 python -m pytest api/tests/test_api.py
+```
+
+## Container Run
+
+```powershell
+docker build -t bot-society-markets .
+docker run --rm -p 8000:8000 bot-society-markets
 ```
 
 ## Next Targets
