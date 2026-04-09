@@ -35,11 +35,69 @@
         <div>
           <p class="eyebrow">Live system snapshot</p>
           <h2>Persistent analyst bots ranked by scored market performance.</h2>
+          <p class="hero-submeta" id="hero-submeta">Warming up live market tape and operations cadence...</p>
         </div>
         <div class="hero-actions compact-actions">
           <button class="button primary" id="run-cycle-button" type="button">Run Pipeline Cycle</button>
           <a class="button secondary" href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Open Repository</a>
         </div>
+      </section>
+
+      <section class="dashboard-ribbon card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">System cadence</p>
+            <h3>Live monitoring across providers, scoring, and delivery</h3>
+          </div>
+          <div class="ribbon-actions">
+            <span class="status-pill" id="live-badge">Monitoring</span>
+            <button class="button tertiary small-button" id="auto-refresh-button" type="button">Auto Refresh On</button>
+          </div>
+        </div>
+        <div class="dashboard-ribbon-grid">
+          <article class="ribbon-stat">
+            <span>Last refresh</span>
+            <strong id="refresh-last-value">Waiting</strong>
+            <small id="refresh-last-subtitle">No dashboard snapshot yet</small>
+          </article>
+          <article class="ribbon-stat">
+            <span>Next refresh</span>
+            <strong id="refresh-next-value">--</strong>
+            <small id="refresh-next-subtitle">Auto-refresh cadence not started</small>
+            <div class="progress-rail"><span id="refresh-progress-bar"></span></div>
+          </article>
+          <article class="ribbon-stat">
+            <span>Pipeline pressure</span>
+            <strong id="pipeline-pressure-value">--</strong>
+            <small id="pipeline-pressure-subtitle">Evaluating queue posture</small>
+          </article>
+          <article class="ribbon-stat">
+            <span>Provider posture</span>
+            <strong id="provider-posture-value">--</strong>
+            <small id="provider-posture-subtitle">Checking readiness and fallback state</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-grid live-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Activity stream</p>
+              <h3>What the system is observing right now</h3>
+            </div>
+            <span class="badge" id="activity-stream-badge">Real-time UI</span>
+          </div>
+          <ul class="activity-feed" id="activity-feed"></ul>
+        </article>
+
+        <article class="card side-card">
+          <p class="eyebrow">Market tape</p>
+          <h3>Streaming asset pulse</h3>
+          <div class="market-tape-shell">
+            <div class="market-tape-track" id="market-tape-track"></div>
+          </div>
+        </article>
       </section>
 
       <section class="metrics-row" id="dashboard-metrics"></section>

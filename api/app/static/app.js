@@ -3,6 +3,42 @@ const fmtScore = (value) => Number(value).toFixed(1);
 const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
+const AUTO_REFRESH_MS = 20000;
+const RUN_CYCLE_STAGES = [
+  "Pulling market context",
+  "Hydrating signal input",
+  "Ranking analyst bots",
+  "Scoring archive windows",
+  "Refreshing dashboard surface",
+];
+
+function fmtRelativeTime(value) {
+  if (!value) {
+    return "n/a";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  const deltaSeconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (deltaSeconds < 5) {
+    return "just now";
+  }
+  if (deltaSeconds < 60) {
+    return `${deltaSeconds}s ago`;
+  }
+  const deltaMinutes = Math.round(deltaSeconds / 60);
+  if (deltaMinutes < 60) {
+    return `${deltaMinutes}m ago`;
+  }
+  const deltaHours = Math.round(deltaMinutes / 60);
+  if (deltaHours < 24) {
+    return `${deltaHours}h ago`;
+  }
+  const deltaDays = Math.round(deltaHours / 24);
+  return `${deltaDays}d ago`;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
 function qualityLabel(score) {
   const numeric = Number(score);
@@ -20,6 +56,14 @@ function qualityLabel(score) {
 
 let selectedBotSlug = null;
 let latestSnapshot = null;
+let lastDashboardRefreshAt = null;
+let nextDashboardRefreshAt = null;
+let autoRefreshEnabled = true;
+let autoRefreshTimer = null;
+let countdownTimer = null;
+let dashboardLoadInFlight = false;
+let previousLeaderboardScores = new Map();
+let runCycleStageTimer = null;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -106,6 +150,235 @@ function setStatus(message) {
   }
 }
 
+function setLiveBadge(label, variant = "neutral") {
+  const badge = document.getElementById("live-badge");
+  if (!badge) {
+    return;
+  }
+  badge.textContent = label;
+  badge.dataset.variant = variant;
+}
+
+function renderHeroMeta(snapshot) {
+  const heroSubmeta = document.getElementById("hero-submeta");
+  if (!heroSubmeta) {
+    return;
+  }
+  const latestOperation = snapshot.latest_operation;
+  const latestSignal = snapshot.recent_signals?.[0];
+  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${snapshot.summary.pending_predictions} pending predictions · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
+}
+
+function renderRibbon(snapshot) {
+  const lastValue = document.getElementById("refresh-last-value");
+  const lastSubtitle = document.getElementById("refresh-last-subtitle");
+  const nextValue = document.getElementById("refresh-next-value");
+  const nextSubtitle = document.getElementById("refresh-next-subtitle");
+  const pressureValue = document.getElementById("pipeline-pressure-value");
+  const pressureSubtitle = document.getElementById("pipeline-pressure-subtitle");
+  const providerValue = document.getElementById("provider-posture-value");
+  const providerSubtitle = document.getElementById("provider-posture-subtitle");
+  const activityBadge = document.getElementById("activity-stream-badge");
+
+  if (lastValue) {
+    lastValue.textContent = lastDashboardRefreshAt ? fmtRelativeTime(lastDashboardRefreshAt) : "Waiting";
+  }
+  if (lastSubtitle) {
+    lastSubtitle.textContent = lastDashboardRefreshAt ? fmtDateTime(lastDashboardRefreshAt) : "Dashboard has not been hydrated yet";
+  }
+  if (nextValue) {
+    nextValue.textContent = autoRefreshEnabled ? "Queued" : "Paused";
+  }
+  if (nextSubtitle) {
+    nextSubtitle.textContent = autoRefreshEnabled ? "Next pull scheduled automatically" : "Manual refresh mode enabled";
+  }
+
+  if (pressureValue) {
+    pressureValue.textContent = `${snapshot.summary.pending_predictions} pending`;
+  }
+  if (pressureSubtitle) {
+    pressureSubtitle.textContent = `${snapshot.summary.scored_predictions} scored · ${snapshot.notification_health.retry_queue_depth} notification retries waiting`;
+  }
+
+  const providersHealthy = snapshot.provider_status.market_provider_ready && snapshot.provider_status.signal_provider_ready;
+  const fallbackActive = snapshot.provider_status.market_fallback_active || snapshot.provider_status.signal_fallback_active;
+  if (providerValue) {
+    providerValue.textContent = fallbackActive ? "Fallback active" : (providersHealthy ? "Primary providers stable" : "Needs attention");
+  }
+  if (providerSubtitle) {
+    providerSubtitle.textContent = `${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source}`;
+  }
+  if (activityBadge) {
+    activityBadge.textContent = autoRefreshEnabled ? `Auto-refresh ${AUTO_REFRESH_MS / 1000}s` : "Manual refresh";
+  }
+
+  if (fallbackActive) {
+    setLiveBadge("Fallback Active", "warning");
+  } else if (providersHealthy) {
+    setLiveBadge("Monitoring", "positive");
+  } else {
+    setLiveBadge("Needs Attention", "warning");
+  }
+}
+
+function renderMarketTape(assets) {
+  const track = document.getElementById("market-tape-track");
+  if (!track) {
+    return;
+  }
+  const chips = assets.map((asset) => `
+    <article class="tape-chip ${asset.change_24h >= 0 ? "tape-chip-up" : "tape-chip-down"}">
+      <span class="tape-chip-symbol">${asset.asset}</span>
+      <strong>${fmtPrice(asset.price)}</strong>
+      <span>${fmtSignedPercent(asset.change_24h)} · trend ${asset.trend_score.toFixed(2)}</span>
+    </article>
+  `).join("");
+  track.innerHTML = `${chips}${chips}`;
+}
+
+function buildActivityItems(snapshot) {
+  const latestPrediction = snapshot.recent_predictions?.[0];
+  const latestSignal = snapshot.recent_signals?.[0];
+  const latestAlert = snapshot.user_profile?.recent_alerts?.[0];
+  const latestOperation = snapshot.latest_operation;
+  return [
+    {
+      label: "Market monitor",
+      title: `${snapshot.provider_status.market_provider_source} is tracking ${snapshot.assets.length} assets`,
+      detail: `${snapshot.summary.tracked_assets} tracked assets across ${snapshot.provider_status.environment_name} environment`,
+      meta: snapshot.provider_status.market_provider_live_capable ? "live-capable" : "demo-safe",
+      tone: "teal",
+    },
+    {
+      label: "Signal intake",
+      title: latestSignal ? `${latestSignal.asset} signal from ${latestSignal.source}` : "Signal queue is idle",
+      detail: latestSignal ? `${qualityLabel(latestSignal.source_quality_score)} · ${fmtRelativeTime(latestSignal.observed_at)} · ${latestSignal.title}` : "Waiting for fresh provider input",
+      meta: `${snapshot.summary.signals_last_24h} signals in last 24h`,
+      tone: "copper",
+    },
+    {
+      label: "Bot publication",
+      title: latestPrediction ? `${latestPrediction.bot_name} issued ${latestPrediction.direction} ${latestPrediction.asset}` : "No recent prediction published",
+      detail: latestPrediction ? `${latestPrediction.horizon_label} horizon · ${fmtPercent(latestPrediction.confidence)} confidence` : "Prediction archive is waiting on the next cycle",
+      meta: `${snapshot.summary.pending_predictions} pending calls`,
+      tone: "gold",
+    },
+    {
+      label: "Operations",
+      title: latestOperation ? `${latestOperation.cycle_type} ${latestOperation.status}` : "Pipeline has not run yet",
+      detail: latestOperation ? `${latestOperation.message}` : "Waiting for first operation window",
+      meta: latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "idle",
+      tone: "ink",
+    },
+    {
+      label: "Alerting",
+      title: latestAlert ? latestAlert.title : "No alerts published yet",
+      detail: latestAlert ? `${latestAlert.message}` : "Alert inbox is clear right now",
+      meta: `${snapshot.user_profile.unread_alert_count} unread · ${snapshot.notification_health.retry_queue_depth} retries queued`,
+      tone: "teal",
+    },
+  ];
+}
+
+function renderActivityFeed(snapshot) {
+  const feed = document.getElementById("activity-feed");
+  if (!feed) {
+    return;
+  }
+  const items = buildActivityItems(snapshot);
+  feed.innerHTML = items.map((item) => `
+    <li class="activity-item activity-${item.tone}">
+      <div class="activity-bullet"></div>
+      <div class="activity-copy">
+        <p class="activity-label">${item.label}</p>
+        <strong>${item.title}</strong>
+        <p>${item.detail}</p>
+      </div>
+      <span class="activity-meta">${item.meta}</span>
+    </li>
+  `).join("");
+}
+
+function updateRefreshCountdown() {
+  const nextValue = document.getElementById("refresh-next-value");
+  const nextSubtitle = document.getElementById("refresh-next-subtitle");
+  const progressBar = document.getElementById("refresh-progress-bar");
+  const toggle = document.getElementById("auto-refresh-button");
+
+  if (toggle) {
+    toggle.textContent = autoRefreshEnabled ? "Auto Refresh On" : "Auto Refresh Off";
+  }
+
+  if (!nextValue || !nextSubtitle || !progressBar) {
+    return;
+  }
+
+  if (!autoRefreshEnabled || !nextDashboardRefreshAt || !lastDashboardRefreshAt) {
+    nextValue.textContent = autoRefreshEnabled ? "Queued" : "Paused";
+    nextSubtitle.textContent = autoRefreshEnabled ? "Waiting for the next refresh window" : "Refresh cadence paused";
+    progressBar.style.width = autoRefreshEnabled ? "18%" : "0%";
+    return;
+  }
+
+  const remainingMs = nextDashboardRefreshAt - Date.now();
+  const totalMs = nextDashboardRefreshAt - lastDashboardRefreshAt.getTime();
+  const progress = clamp(1 - (remainingMs / totalMs), 0, 1);
+
+  if (remainingMs <= 0) {
+    nextValue.textContent = "Refreshing";
+    nextSubtitle.textContent = "Pulling the next dashboard snapshot";
+    progressBar.style.width = "100%";
+    return;
+  }
+
+  nextValue.textContent = `${Math.ceil(remainingMs / 1000)}s`;
+  nextSubtitle.textContent = `Auto-refresh in ${Math.ceil(remainingMs / 1000)} seconds`;
+  progressBar.style.width = `${(progress * 100).toFixed(2)}%`;
+}
+
+function clearRefreshTimers() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+}
+
+function startAutoRefresh() {
+  clearRefreshTimers();
+  if (!autoRefreshEnabled || !document.getElementById("dashboard-metrics")) {
+    updateRefreshCountdown();
+    return;
+  }
+  nextDashboardRefreshAt = Date.now() + AUTO_REFRESH_MS;
+  countdownTimer = window.setInterval(updateRefreshCountdown, 1000);
+  autoRefreshTimer = window.setInterval(() => {
+    loadDashboard({ silent: true });
+  }, AUTO_REFRESH_MS);
+  updateRefreshCountdown();
+}
+
+function setRunCycleStageAnimation(active) {
+  if (runCycleStageTimer) {
+    clearInterval(runCycleStageTimer);
+    runCycleStageTimer = null;
+  }
+  if (!active) {
+    updateRefreshCountdown();
+    return;
+  }
+  setLiveBadge("Cycle Running", "warning");
+  let stageIndex = 0;
+  setStatus(`${RUN_CYCLE_STAGES[stageIndex]}...`);
+  runCycleStageTimer = window.setInterval(() => {
+    stageIndex = (stageIndex + 1) % RUN_CYCLE_STAGES.length;
+    setStatus(`${RUN_CYCLE_STAGES[stageIndex]}...`);
+  }, 1200);
+}
+
 function renderLanding(snapshot) {
   const stats = document.getElementById("summary-stats");
   const mini = document.getElementById("leaderboard-mini");
@@ -185,10 +458,26 @@ function renderMetrics(summary) {
     return;
   }
   metrics.innerHTML = `
-    <article class="metric-card"><span>Active bots</span><strong>${summary.active_bots}</strong></article>
-    <article class="metric-card"><span>Tracked assets</span><strong>${summary.tracked_assets}</strong></article>
-    <article class="metric-card"><span>Scored predictions</span><strong>${summary.scored_predictions}</strong></article>
-    <article class="metric-card"><span>Pending predictions</span><strong>${summary.pending_predictions}</strong></article>
+    <article class="metric-card metric-live">
+      <span>Active bots</span>
+      <strong>${summary.active_bots}</strong>
+      <small>${summary.average_bot_score.toFixed(1)} avg composite</small>
+    </article>
+    <article class="metric-card metric-live">
+      <span>Tracked assets</span>
+      <strong>${summary.tracked_assets}</strong>
+      <small>${summary.signals_last_24h} fresh signals last 24h</small>
+    </article>
+    <article class="metric-card metric-live">
+      <span>Scored predictions</span>
+      <strong>${summary.scored_predictions}</strong>
+      <small>${summary.total_predictions} total archived calls</small>
+    </article>
+    <article class="metric-card metric-live">
+      <span>Pending predictions</span>
+      <strong>${summary.pending_predictions}</strong>
+      <small>${summary.last_cycle_status || "idle"} cycle state</small>
+    </article>
   `;
 }
 
@@ -207,7 +496,18 @@ function renderAssets(assets) {
       <dl>
         <div><dt>Trend</dt><dd>${asset.trend_score.toFixed(2)}</dd></div>
         <div><dt>Bias</dt><dd>${asset.signal_bias.toFixed(2)}</dd></div>
+        <div><dt>Volatility</dt><dd>${fmtPercent(asset.volatility, 1)}</dd></div>
       </dl>
+      <div class="asset-meter-group">
+        <div>
+          <span>Trend</span>
+          <div class="asset-meter"><i style="width:${(clamp((asset.trend_score + 1) / 2, 0, 1) * 100).toFixed(2)}%"></i></div>
+        </div>
+        <div>
+          <span>Bias</span>
+          <div class="asset-meter"><i style="width:${(clamp((asset.signal_bias + 1) / 2, 0, 1) * 100).toFixed(2)}%"></i></div>
+        </div>
+      </div>
     </article>
   `).join("");
 }
@@ -222,12 +522,17 @@ function renderOperation(operation) {
     return;
   }
   card.innerHTML = `
-    <p><strong>Status:</strong> ${operation.status}</p>
-    <p><strong>Type:</strong> ${operation.cycle_type}</p>
-    <p><strong>Signals ingested:</strong> ${operation.ingested_signals}</p>
-    <p><strong>Predictions created:</strong> ${operation.generated_predictions}</p>
-    <p><strong>Predictions scored:</strong> ${operation.scored_predictions}</p>
-    <p><strong>Completed:</strong> ${fmtDateTime(operation.completed_at || operation.started_at)}</p>
+    <div class="operation-hero">
+      <span class="status-pill" data-variant="${operation.status === "completed" ? "positive" : "warning"}">${operation.status}</span>
+      <strong>${operation.cycle_type}</strong>
+      <small>${fmtRelativeTime(operation.completed_at || operation.started_at)}</small>
+    </div>
+    <div class="operation-grid">
+      <p><strong>Signals ingested:</strong> ${operation.ingested_signals}</p>
+      <p><strong>Predictions created:</strong> ${operation.generated_predictions}</p>
+      <p><strong>Predictions scored:</strong> ${operation.scored_predictions}</p>
+      <p><strong>Completed:</strong> ${fmtDateTime(operation.completed_at || operation.started_at)}</p>
+    </div>
     <p>${operation.message}</p>
   `;
 }
@@ -279,9 +584,15 @@ function renderLeaderboard(leaderboard, profile) {
   if (!body) {
     return;
   }
-  body.innerHTML = leaderboard.map((bot) => `
-    <tr class="clickable-row" data-bot-slug="${bot.slug}">
-      <td><button class="text-button" type="button" data-bot-slug="${bot.slug}">${bot.name}${bot.is_followed ? " · Following" : ""}</button></td>
+  const scoreSnapshot = new Map();
+  body.innerHTML = leaderboard.map((bot, index) => `
+    <tr class="clickable-row ${leaderboardDeltaClass(bot)}" data-bot-slug="${bot.slug}">
+      <td>
+        <button class="text-button leaderboard-button" type="button" data-bot-slug="${bot.slug}">
+          <span class="leaderboard-rank">${index + 1}</span>
+          <span>${bot.name}${bot.is_followed ? " · Following" : ""}</span>
+        </button>
+      </td>
       <td>${fmtScore(bot.score)}</td>
       <td>${fmtPercent(bot.hit_rate)}</td>
       <td>${bot.calibration.toFixed(2)}</td>
@@ -291,15 +602,32 @@ function renderLeaderboard(leaderboard, profile) {
     </tr>
   `).join("");
 
+  leaderboard.forEach((bot) => {
+    scoreSnapshot.set(bot.slug, bot.score);
+  });
+  previousLeaderboardScores = scoreSnapshot;
+
   if (spotlight) {
     const unreadCount = profile?.unread_alert_count || 0;
     const latestAlert = profile?.recent_alerts?.[0];
     spotlight.innerHTML = `
       <p><strong>Unread alerts:</strong> ${unreadCount}</p>
       <p><strong>Inbox coverage:</strong> ${profile?.recent_alerts?.length || 0} recent events</p>
+      <p><strong>Pending archive:</strong> ${latestSnapshot?.summary?.pending_predictions || 0} calls waiting on score windows</p>
       ${latestAlert ? `<p><strong>Latest:</strong> ${latestAlert.title}</p><p>${latestAlert.message}</p>` : "<p>No alert deliveries yet.</p>"}
     `;
   }
+}
+
+function leaderboardDeltaClass(bot) {
+  if (!previousLeaderboardScores.has(bot.slug)) {
+    return "";
+  }
+  const prior = previousLeaderboardScores.get(bot.slug);
+  if (Math.abs(prior - bot.score) < 0.05) {
+    return "";
+  }
+  return bot.score > prior ? "row-up" : "row-down";
 }
 
 function renderPredictions(predictions, targetId = "prediction-list") {
@@ -312,6 +640,7 @@ function renderPredictions(predictions, targetId = "prediction-list") {
       <div>
         <strong>${prediction.bot_name} · ${prediction.asset} · ${prediction.direction}</strong>
         <p>${prediction.thesis}</p>
+        <p class="panel-note">${fmtRelativeTime(prediction.published_at)} · ${fmtPercent(prediction.confidence)} confidence</p>
       </div>
       <span>${prediction.horizon_label} · ${prediction.status}${prediction.score !== null ? ` · ${fmtScore(prediction.score)}` : ""}</span>
     </li>
@@ -329,7 +658,7 @@ function renderSignals(signals, targetId = "signal-list") {
         <strong>${signal.asset} · ${signal.title}</strong>
         <p>${signal.summary}</p>
         <p class="panel-note">${signal.provider_name}${signal.author_handle ? ` · ${signal.author_handle}` : ""}</p>
-        <p class="panel-note">${qualityLabel(signal.source_quality_score)} · trust ${fmtPercent(signal.provider_trust_score)} · freshness ${fmtPercent(signal.freshness_score)}</p>
+        <p class="panel-note">${qualityLabel(signal.source_quality_score)} · trust ${fmtPercent(signal.provider_trust_score)} · freshness ${fmtPercent(signal.freshness_score)} · ${fmtRelativeTime(signal.observed_at)}</p>
       </div>
       <span>${signal.source_type} · ${signal.source} · quality ${fmtPercent(signal.source_quality_score)}${signal.engagement_score !== null ? ` · engagement ${fmtPercent(signal.engagement_score)}` : ""}</span>
     </li>
@@ -535,6 +864,7 @@ async function renderBotDetail(slug) {
       <div><dt>Hit rate</dt><dd>${fmtPercent(bot.hit_rate)}</dd></div>
       <div><dt>Calibration</dt><dd>${bot.calibration.toFixed(2)}</dd></div>
       <div><dt>Provenance</dt><dd>${fmtPercent(bot.provenance_score)}</dd></div>
+      <div><dt>Last call</dt><dd>${bot.last_published_at ? fmtRelativeTime(bot.last_published_at) : "No archive yet"}</dd></div>
       <div><dt>Focus</dt><dd>${bot.focus}</dd></div>
       <div><dt>Risk style</dt><dd>${bot.risk_style}</dd></div>
       <div><dt>Universe</dt><dd>${bot.asset_universe.join(", ")}</dd></div>
@@ -543,40 +873,62 @@ async function renderBotDetail(slug) {
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }
 
-async function loadDashboard() {
-  const snapshot = await fetchJson("/api/dashboard");
-  latestSnapshot = snapshot;
-  renderMetrics(snapshot.summary);
-  renderAssets(snapshot.assets);
-  renderOperation(snapshot.latest_operation);
-  renderProviderStatus(snapshot.provider_status);
-  renderLeaderboard(snapshot.leaderboard, snapshot.user_profile);
-  renderPredictions(snapshot.recent_predictions);
-  renderSignals(snapshot.recent_signals);
-  renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
-  renderNotificationHealth(snapshot.notification_health);
-  renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
-  applyWorkspaceMode(snapshot);
+async function loadDashboard(options = {}) {
+  if (dashboardLoadInFlight) {
+    return;
+  }
+  dashboardLoadInFlight = true;
+  try {
+    const snapshot = await fetchJson("/api/dashboard");
+    latestSnapshot = snapshot;
+    lastDashboardRefreshAt = new Date();
+    nextDashboardRefreshAt = autoRefreshEnabled ? Date.now() + AUTO_REFRESH_MS : null;
+    renderHeroMeta(snapshot);
+    renderRibbon(snapshot);
+    renderMetrics(snapshot.summary);
+    renderAssets(snapshot.assets);
+    renderMarketTape(snapshot.assets);
+    renderActivityFeed(snapshot);
+    renderOperation(snapshot.latest_operation);
+    renderProviderStatus(snapshot.provider_status);
+    renderLeaderboard(snapshot.leaderboard, snapshot.user_profile);
+    renderPredictions(snapshot.recent_predictions);
+    renderSignals(snapshot.recent_signals);
+    renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
+    renderNotificationHealth(snapshot.notification_health);
+    renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
+    applyWorkspaceMode(snapshot);
+    updateRefreshCountdown();
+    if (document.getElementById("dashboard-metrics")) {
+      startAutoRefresh();
+    }
 
-  const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
-  if (preferredSlug) {
-    await renderBotDetail(preferredSlug);
+    const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
+    if (preferredSlug) {
+      await renderBotDetail(preferredSlug);
+    }
+    if (!options.silent) {
+      setStatus(`Dashboard synced ${fmtRelativeTime(lastDashboardRefreshAt)}. ${snapshot.summary.pending_predictions} predictions are still waiting for score windows.`);
+    }
+  } finally {
+    dashboardLoadInFlight = false;
   }
 }
 
 async function runCycle() {
   const button = document.getElementById("run-cycle-button");
-  setStatus("Running ingestion, orchestration, scoring, and alert delivery cycle...");
+  setRunCycleStageAnimation(true);
   if (button) {
     button.disabled = true;
   }
   try {
     const result = await fetchJson("/api/admin/run-cycle", { method: "POST" });
-    await loadDashboard();
+    await loadDashboard({ silent: true });
     setStatus(`Pipeline cycle completed. ${result.alert_inbox.unread_count} unread alerts currently in inbox.`);
   } catch (error) {
     setStatus(`Pipeline cycle failed: ${error.message}`);
   } finally {
+    setRunCycleStageAnimation(false);
     if (button) {
       button.disabled = false;
     }
@@ -591,7 +943,7 @@ async function retryNotifications() {
   }
   try {
     const result = await fetchJson("/api/admin/retry-notifications", { method: "POST" });
-    await loadDashboard();
+    await loadDashboard({ silent: true });
     setStatus(`Retry pass finished. Scanned ${result.scanned_events}, delivered ${result.delivered}, rescheduled ${result.rescheduled}, exhausted ${result.exhausted}.`);
   } catch (error) {
     setStatus(`Retry pass failed: ${error.message}`);
@@ -827,6 +1179,14 @@ function bindInteractions() {
       return;
     }
 
+    if (target.id === "auto-refresh-button") {
+      event.preventDefault();
+      autoRefreshEnabled = !autoRefreshEnabled;
+      startAutoRefresh();
+      setStatus(autoRefreshEnabled ? "Auto-refresh resumed." : "Auto-refresh paused. Manual refresh remains available.");
+      return;
+    }
+
     const action = target.dataset.action;
     try {
       if (action === "follow") {
@@ -905,6 +1265,7 @@ function bindInteractions() {
 async function boot() {
   bindInteractions();
   bindForms();
+  window.addEventListener("beforeunload", clearRefreshTimers);
   try {
     if (document.getElementById("summary-stats")) {
       const landing = await fetchJson("/api/landing");
