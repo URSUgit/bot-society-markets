@@ -47,6 +47,8 @@ class AssetAwareSignalProvider(SignalProviderBase):
     }
     POSITIVE_TERMS = ("surge", "gain", "rally", "approval", "breakout", "strong", "higher", "bull", "inflow", "growth")
     NEGATIVE_TERMS = ("drop", "fall", "risk", "hack", "bear", "outflow", "lower", "lawsuit", "pressure", "liquidation")
+    PREDICTION_POSITIVE_TERMS = ("approve", "approval", "launch", "buy", "higher", "up", "above", "hit", "surpass", "ath", "rally")
+    PREDICTION_NEGATIVE_TERMS = ("sell", "sells", "down", "below", "fall", "lower", "reject", "rejection", "lawsuit", "hack", "ban", "outflow", "liquidation")
 
     @staticmethod
     def _local_name(tag: str) -> str:
@@ -93,18 +95,53 @@ class AssetAwareSignalProvider(SignalProviderBase):
         market_strength = min(0.16, abs(float(snapshot["trend_score"])) * 0.2)
         return round(_clamp(0.58 + narrative_strength + market_strength + engagement_bonus, 0.45, 0.96), 6)
 
+    @staticmethod
+    def _safe_float(value, default: float | None = None) -> float | None:
+        if value in (None, "", "null"):
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _market_engagement_score(self, *, liquidity: float = 0.0, volume: float = 0.0) -> float:
+        activity = max(0.0, liquidity) + max(0.0, volume)
+        if activity <= 0:
+            return 0.12
+        return round(_clamp(math.log1p(activity) / 13, 0.12, 0.98), 6)
+
+    def _prediction_probability(self, *values) -> float | None:
+        parsed = [self._safe_float(value) for value in values]
+        numeric = [value for value in parsed if value is not None]
+        if not numeric:
+            return None
+        if len(numeric) >= 2:
+            return round(_clamp(sum(numeric[:2]) / 2, 0.0, 1.0), 6)
+        return round(_clamp(numeric[0], 0.0, 1.0), 6)
+
+    def _prediction_market_sentiment(self, text: str, probability: float, snapshot: dict) -> float:
+        positive_hits = sum(text.count(term) for term in self.PREDICTION_POSITIVE_TERMS)
+        negative_hits = sum(text.count(term) for term in self.PREDICTION_NEGATIVE_TERMS)
+        polarity = -1.0 if negative_hits > positive_hits else 1.0
+        probability_component = ((probability - 0.5) * 2.0) * polarity
+        market_component = (float(snapshot["signal_bias"]) * 0.2) + (float(snapshot["trend_score"]) * 0.1)
+        return round(_clamp(probability_component + market_component, -1.0, 1.0), 6)
+
 
 PROVIDER_TRUST_BASE = {
     "seed-provider": 0.82,
     "demo-signal-provider": 0.72,
     "rss-news-provider": 0.78,
     "reddit-oauth-provider": 0.74,
+    "polymarket-gamma-provider": 0.86,
+    "kalshi-public-provider": 0.85,
 }
 
 SOURCE_TYPE_TRUST_ADJUSTMENT = {
     "macro": 0.08,
     "news": 0.05,
     "social": 0.0,
+    "prediction-market": 0.1,
 }
 
 
@@ -231,6 +268,65 @@ class CoinGeckoMarketProvider(MarketProviderBase):
                     "price": float(coin.get("current_price") or 0.0),
                     "change_24h": round(change_pct, 6),
                     "volume_24h": float(coin.get("total_volume") or 0.0),
+                    "volatility": round(volatility, 6),
+                    "trend_score": trend_score,
+                    "signal_bias": signal_bias,
+                    "source": self.source_name,
+                }
+            )
+        return generated
+
+
+class HyperliquidMarketProvider(MarketProviderBase):
+    source_name = "hyperliquid-public-provider"
+    COIN_SYMBOLS = {
+        "bitcoin": "BTC",
+        "ethereum": "ETH",
+        "solana": "SOL",
+    }
+
+    def __init__(self, *, tracked_coin_ids: tuple[str, ...], dex: str = "") -> None:
+        self.tracked_coin_ids = tracked_coin_ids
+        self.dex = dex
+
+    def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
+        body: dict[str, str] = {"type": "allMids"}
+        if self.dex:
+            body["dex"] = self.dex
+        request = Request(
+            "https://api.hyperliquid.xyz/info",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"accept": "application/json", "content-type": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+            method="POST",
+        )
+        with urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        latest_snapshot_map = {snapshot["asset"]: snapshot for snapshot in latest_snapshots}
+        observed_at = to_timestamp(datetime.now(timezone.utc))
+        generated: list[dict] = []
+        for coin_id in self.tracked_coin_ids:
+            asset = self.COIN_SYMBOLS.get(coin_id, coin_id.upper())
+            raw_price = payload.get(asset)
+            if raw_price is None:
+                continue
+            price = float(raw_price)
+            prior = latest_snapshot_map.get(asset)
+            prior_price = float(prior["price"]) if prior and prior.get("price") else price
+            change_pct = ((price - prior_price) / prior_price) if prior_price else 0.0
+            inherited_volume = float(prior["volume_24h"]) if prior and prior.get("volume_24h") else 0.0
+            base_volume = inherited_volume if inherited_volume > 0 else price * 100000
+            volatility = min(0.25, max(0.02, abs(change_pct) * 1.8 + (float(prior["volatility"]) * 0.45 if prior else 0.02)))
+            trend_score = max(-1.0, min(1.0, round(change_pct * 10, 6)))
+            prior_bias = float(prior["signal_bias"]) if prior else 0.0
+            signal_bias = max(-1.0, min(1.0, round((trend_score * 0.72) + (prior_bias * 0.28), 6)))
+            generated.append(
+                {
+                    "asset": asset,
+                    "as_of": observed_at,
+                    "price": price,
+                    "change_24h": round(change_pct, 6),
+                    "volume_24h": round(base_volume * (1 + min(0.08, abs(change_pct))), 2),
                     "volatility": round(volatility, 6),
                     "trend_score": trend_score,
                     "signal_bias": signal_bias,
@@ -542,6 +638,241 @@ class RedditSignalProvider(AssetAwareSignalProvider):
             payload = json.loads(response.read().decode("utf-8"))
         children = payload.get("data", {}).get("children", [])
         return [child.get("data", {}) for child in children if child.get("kind") == "t3"]
+
+
+class PolymarketSignalProvider(AssetAwareSignalProvider):
+    source_name = "polymarket-gamma-provider"
+    MAX_SIGNALS_PER_ASSET = 2
+
+    def __init__(self, *, tag_id: int, event_limit: int) -> None:
+        self.tag_id = tag_id
+        self.event_limit = event_limit
+
+    def readiness(self) -> ProviderReadiness:
+        if self.tag_id < 1:
+            return ProviderReadiness(False, "Polymarket venue mode requires a positive BSM_POLYMARKET_TAG_ID")
+        return ProviderReadiness(True)
+
+    def generate(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
+        latest_snapshot_map = {snapshot["asset"]: snapshot for snapshot in market_batch}
+        batch_id = f"polymarket-cycle-{cycle_index}"
+        generated: list[dict] = []
+        seen_ids: set[str] = set()
+        asset_counts: dict[str, int] = {}
+
+        query = urlencode(
+            {
+                "tag_id": str(self.tag_id),
+                "active": "true",
+                "closed": "false",
+                "limit": str(self.event_limit),
+            }
+        )
+        request = Request(
+            f"https://gamma-api.polymarket.com/events?{query}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        for event in payload:
+            title = self._clean_text(str(event.get("title") or "Untitled Polymarket event"))
+            description = self._clean_text(str(event.get("description") or title))
+            body = f" {title} {description} ".lower()
+            asset = self._infer_asset(body, latest_snapshot_map.keys())
+            if not asset:
+                continue
+            if asset_counts.get(asset, 0) >= self.MAX_SIGNALS_PER_ASSET:
+                continue
+            snapshot = latest_snapshot_map.get(asset)
+            if not snapshot:
+                continue
+            market = self._select_market(event.get("markets") or [])
+            if not market:
+                continue
+            external_id = f"polymarket-{market.get('id')}"
+            if external_id in seen_ids:
+                continue
+            probability = self._prediction_probability(
+                market.get("lastTradePrice"),
+                self._prediction_probability(market.get("bestBid"), market.get("bestAsk")),
+            )
+            if probability is None:
+                continue
+            seen_ids.add(external_id)
+            liquidity = self._safe_float(market.get("liquidityNum"), self._safe_float(event.get("liquidityClob"), 0.0)) or 0.0
+            volume = self._safe_float(market.get("volume24hrClob"), self._safe_float(event.get("volume24hr"), 0.0)) or 0.0
+            engagement_score = self._market_engagement_score(liquidity=liquidity, volume=volume)
+            sentiment = self._prediction_market_sentiment(body, probability, snapshot)
+            relevance = self._infer_relevance(body, asset, snapshot, engagement_bonus=min(0.18, engagement_score * 0.18))
+            market_title = self._clean_text(str(market.get("question") or title))
+            generated.append(
+                {
+                    "external_id": external_id,
+                    "asset": asset,
+                    "source": "Polymarket",
+                    "provider_name": self.source_name,
+                    "source_type": "prediction-market",
+                    "author_handle": None,
+                    "engagement_score": engagement_score,
+                    "channel": "venue",
+                    "title": market_title[:180],
+                    "summary": (
+                        f"Polymarket YES probability {probability * 100:.1f}% on '{market_title}'. "
+                        f"Liquidity {liquidity:,.0f}, 24h volume {volume:,.0f}."
+                    )[:360],
+                    "sentiment": sentiment,
+                    "relevance": relevance,
+                    "url": f"https://polymarket.com/event/{event.get('slug') or market.get('slug') or ''}",
+                    "observed_at": market.get("updatedAt") or event.get("updatedAt") or to_timestamp(datetime.now(timezone.utc)),
+                    "ingest_batch_id": batch_id,
+                }
+            )
+            asset_counts[asset] = asset_counts.get(asset, 0) + 1
+
+        if not generated:
+            raise ValueError("Polymarket did not yield tracked-asset venue signals for the configured universe")
+        return generated
+
+    def _select_market(self, markets: list[dict]) -> dict | None:
+        active_markets = [
+            market
+            for market in markets
+            if bool(market.get("active")) and not bool(market.get("closed")) and bool(market.get("acceptingOrders", True))
+        ]
+        if not active_markets:
+            return None
+        return max(
+            active_markets,
+            key=lambda market: (
+                self._safe_float(market.get("volume24hrClob"), 0.0) or 0.0,
+                self._safe_float(market.get("volumeClob"), 0.0) or 0.0,
+                self._safe_float(market.get("liquidityClob"), 0.0) or 0.0,
+            ),
+        )
+
+
+class KalshiSignalProvider(AssetAwareSignalProvider):
+    source_name = "kalshi-public-provider"
+    BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+    MAX_SIGNALS_PER_ASSET = 2
+
+    def __init__(self, *, category: str, series_limit: int, markets_per_series: int) -> None:
+        self.category = category
+        self.series_limit = series_limit
+        self.markets_per_series = markets_per_series
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.category.strip():
+            return ProviderReadiness(False, "Kalshi venue mode requires BSM_KALSHI_CATEGORY")
+        return ProviderReadiness(True)
+
+    def generate(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
+        latest_snapshot_map = {snapshot["asset"]: snapshot for snapshot in market_batch}
+        batch_id = f"kalshi-cycle-{cycle_index}"
+        generated: list[dict] = []
+        seen_ids: set[str] = set()
+        asset_counts: dict[str, int] = {}
+
+        for series in self._fetch_series():
+            title = self._clean_text(str(series.get("title") or "Untitled Kalshi series"))
+            tags = " ".join(str(tag) for tag in (series.get("tags") or []))
+            body = f" {title} {tags} ".lower()
+            asset = self._infer_asset(body, latest_snapshot_map.keys())
+            if not asset:
+                continue
+            if asset_counts.get(asset, 0) >= self.MAX_SIGNALS_PER_ASSET:
+                continue
+            snapshot = latest_snapshot_map.get(asset)
+            if not snapshot:
+                continue
+            try:
+                market = self._select_market(self._fetch_markets(str(series.get("ticker") or "")))
+            except Exception as exc:
+                if generated and "429" in str(exc):
+                    break
+                raise
+            if not market:
+                continue
+            external_id = f"kalshi-{market.get('ticker')}"
+            if external_id in seen_ids:
+                continue
+            probability = self._prediction_probability(
+                market.get("last_price_dollars"),
+                self._prediction_probability(market.get("yes_bid_dollars"), market.get("yes_ask_dollars")),
+            )
+            if probability is None:
+                continue
+            seen_ids.add(external_id)
+            liquidity = self._safe_float(market.get("liquidity_dollars"), 0.0) or 0.0
+            volume = self._safe_float(market.get("volume_24h_fp"), self._safe_float(market.get("volume_fp"), 0.0)) or 0.0
+            engagement_score = self._market_engagement_score(liquidity=liquidity, volume=volume)
+            market_title = self._clean_text(str(market.get("title") or title))
+            full_text = f" {title} {market_title} {tags} ".lower()
+            sentiment = self._prediction_market_sentiment(full_text, probability, snapshot)
+            relevance = self._infer_relevance(full_text, asset, snapshot, engagement_bonus=min(0.18, engagement_score * 0.18))
+            generated.append(
+                {
+                    "external_id": external_id,
+                    "asset": asset,
+                    "source": "Kalshi",
+                    "provider_name": self.source_name,
+                    "source_type": "prediction-market",
+                    "author_handle": None,
+                    "engagement_score": engagement_score,
+                    "channel": "venue",
+                    "title": market_title[:180],
+                    "summary": (
+                        f"Kalshi YES probability {probability * 100:.1f}% on '{market_title}'. "
+                        f"Series {title}; liquidity {liquidity:,.0f}, volume {volume:,.0f}."
+                    )[:360],
+                    "sentiment": sentiment,
+                    "relevance": relevance,
+                    "url": f"https://kalshi.com/markets/{str(series.get('ticker') or '').lower()}",
+                    "observed_at": market.get("updated_time") or market.get("created_time") or to_timestamp(datetime.now(timezone.utc)),
+                    "ingest_batch_id": batch_id,
+                }
+            )
+            asset_counts[asset] = asset_counts.get(asset, 0) + 1
+
+        if not generated:
+            raise ValueError("Kalshi did not yield tracked-asset venue signals for the configured universe")
+        return generated
+
+    def _fetch_series(self) -> list[dict]:
+        query = urlencode({"category": self.category, "limit": str(self.series_limit)})
+        request = Request(
+            f"{self.BASE_URL}/series?{query}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload.get("series") or []
+
+    def _fetch_markets(self, series_ticker: str) -> list[dict]:
+        if not series_ticker:
+            return []
+        query = urlencode({"series_ticker": series_ticker, "status": "open", "limit": str(self.markets_per_series)})
+        request = Request(
+            f"{self.BASE_URL}/markets?{query}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload.get("markets") or []
+
+    def _select_market(self, markets: list[dict]) -> dict | None:
+        active_markets = [market for market in markets if str(market.get("status") or "").lower() == "active"]
+        if not active_markets:
+            return None
+        return max(
+            active_markets,
+            key=lambda market: (
+                self._safe_float(market.get("volume_24h_fp"), 0.0) or 0.0,
+                self._safe_float(market.get("volume_fp"), 0.0) or 0.0,
+                self._safe_float(market.get("liquidity_dollars"), 0.0) or 0.0,
+            ),
+        )
 
 
 

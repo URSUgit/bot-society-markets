@@ -548,6 +548,15 @@ function renderProviderStatus(providerStatus) {
   const redditFeeds = providerStatus.reddit_subreddits?.length
     ? providerStatus.reddit_subreddits.map((subreddit) => `<li>r/${subreddit}</li>`).join("")
     : "<li>No subreddits configured</li>";
+  const venueProviders = providerStatus.venue_signal_providers?.length
+    ? providerStatus.venue_signal_providers.map((provider) => `
+        <li>
+          <strong>${provider.mode}</strong> · ${provider.source}
+          <span class="panel-note">${provider.ready ? "ready" : "attention"} · ${provider.live_capable ? "live" : "demo-safe"}</span>
+          ${provider.warning ? `<div class="error-text">${provider.warning}</div>` : ""}
+        </li>
+      `).join("")
+    : "<li>No venue providers configured</li>";
   card.innerHTML = `
     <p><strong>Environment:</strong> ${providerStatus.environment_name}</p>
     <p><strong>Deployment:</strong> ${providerStatus.deployment_target}</p>
@@ -574,6 +583,10 @@ function renderProviderStatus(providerStatus) {
     <div class="provider-feed-list">
       <strong>Reddit subreddits</strong>
       <ul>${redditFeeds}</ul>
+    </div>
+    <div class="provider-feed-list">
+      <strong>Venue providers</strong>
+      <ul>${venueProviders}</ul>
     </div>
   `;
 }

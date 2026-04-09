@@ -117,10 +117,16 @@ def main() -> None:
             f"market_fallback_active={status.market_fallback_active} "
             f"signal_fallback_active={status.signal_fallback_active}"
         )
+        if status.venue_signal_providers:
+            for provider in status.venue_signal_providers:
+                print(
+                    f"  venue_provider mode={provider.mode} source={provider.source} configured={provider.configured} "
+                    f"live_capable={provider.live_capable} ready={provider.ready}"
+                )
         if args.probe_live:
             diagnostics = service.probe_provider_connectivity()
-            print(f"market_probe={diagnostics['market']}")
-            print(f"signal_probe={diagnostics['signal']}")
+            for name, result in diagnostics.items():
+                print(f"{name}_probe={result}")
         return
 
     if args.command == "retry-notifications":

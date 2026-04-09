@@ -251,6 +251,28 @@ def test_live_provider_configuration_metadata() -> None:
         assert provider_payload["signal_provider_live_capable"] is True
 
 
+def test_hyperliquid_and_venue_provider_metadata() -> None:
+    settings = Settings(
+        market_provider_mode="hyperliquid",
+        signal_provider_mode="demo",
+        venue_signal_providers=("polymarket", "kalshi"),
+        polymarket_tag_id=21,
+        kalshi_category="Crypto",
+    )
+    with build_client(settings) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["market_provider_mode"] == "hyperliquid"
+        assert provider_payload["market_provider_source"] == "hyperliquid-public-provider"
+        assert provider_payload["market_provider_configured"] is True
+        assert provider_payload["market_provider_live_capable"] is True
+        assert provider_payload["signal_provider_mode"] == "demo + polymarket, kalshi"
+        assert provider_payload["signal_provider_live_capable"] is True
+        assert len(provider_payload["venue_signal_providers"]) == 2
+        assert {provider["mode"] for provider in provider_payload["venue_signal_providers"]} == {"polymarket", "kalshi"}
+
+
 def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
     with build_client() as client:
         response = client.get("/api/signals", params={"limit": 12})

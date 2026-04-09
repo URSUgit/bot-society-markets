@@ -33,6 +33,7 @@ from .models import (
     NotificationRetryResult,
     OperationSnapshot,
     PredictionView,
+    ProviderComponentStatus,
     ProviderStatus,
     SignalView,
     Summary,
@@ -42,7 +43,16 @@ from .models import (
 )
 from .notifications import NotificationDispatcher
 from .orchestration import PredictionOrchestrator
-from .providers import CoinGeckoMarketProvider, DemoMarketProvider, DemoSignalProvider, RedditSignalProvider, RSSNewsSignalProvider
+from .providers import (
+    CoinGeckoMarketProvider,
+    DemoMarketProvider,
+    DemoSignalProvider,
+    HyperliquidMarketProvider,
+    KalshiSignalProvider,
+    PolymarketSignalProvider,
+    RedditSignalProvider,
+    RSSNewsSignalProvider,
+)
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
 from .seed import ensure_demo_user_state, seed_demo_dataset
@@ -61,11 +71,12 @@ class BotSocietyService:
         self.demo_signal_provider = DemoSignalProvider()
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
+        self.venue_signal_providers = self._build_venue_signal_providers()
         self.orchestrator = PredictionOrchestrator()
         self.market_provider_fallback = False
         self.signal_provider_fallback = False
         self.market_provider_source = self.market_provider.source_name
-        self.signal_provider_source = self.signal_provider.source_name
+        self.signal_provider_source = self._compose_signal_provider_source()
 
     def bootstrap(self) -> None:
         self.database.initialize()
@@ -502,7 +513,7 @@ class BotSocietyService:
 
     def get_provider_status(self) -> ProviderStatus:
         market_readiness = self.market_provider.readiness()
-        signal_readiness = self.signal_provider.readiness()
+        signal_ready, signal_warning, venue_statuses = self._signal_provider_health()
         market_configured, market_live_capable = self._provider_configuration("market")
         signal_configured, signal_live_capable = self._provider_configuration("signal")
         return ProviderStatus(
@@ -516,15 +527,16 @@ class BotSocietyService:
             market_provider_live_capable=market_live_capable,
             market_provider_ready=market_readiness.ready,
             market_provider_warning=market_readiness.warning,
-            signal_provider_mode=self.settings.signal_provider_mode,
+            signal_provider_mode=self._signal_provider_mode_label(),
             signal_provider_source=self.signal_provider_source,
             signal_provider_configured=signal_configured,
             signal_provider_live_capable=signal_live_capable,
-            signal_provider_ready=signal_readiness.ready,
-            signal_provider_warning=signal_readiness.warning,
+            signal_provider_ready=signal_ready,
+            signal_provider_warning=signal_warning,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
             rss_feed_urls=list(self.settings.rss_feed_urls),
             reddit_subreddits=list(self.settings.reddit_subreddits),
+            venue_signal_providers=venue_statuses,
             market_fallback_active=self.market_provider_fallback,
             signal_fallback_active=self.signal_provider_fallback,
         )
@@ -576,6 +588,14 @@ class BotSocietyService:
         except Exception as exc:
             diagnostics["signal"] = f"error ({exc.__class__.__name__}: {exc})"
 
+        for venue_provider in self.venue_signal_providers:
+            key = f"signal_{venue_provider.source_name}"
+            try:
+                signal_batch = venue_provider.generate(market_batch, 0)
+                diagnostics[key] = f"ok ({len(signal_batch)} signal(s) returned)"
+            except Exception as exc:
+                diagnostics[key] = f"error ({exc.__class__.__name__}: {exc})"
+
         return diagnostics
 
     def run_pipeline_cycle(self) -> CycleResult:
@@ -601,16 +621,16 @@ class BotSocietyService:
         repository.upsert_market_snapshots(market_batch)
 
         try:
-            signal_batch = self.signal_provider.generate(market_batch, cycle_index)
+            signal_batch = self._generate_signal_batch(market_batch, cycle_index)
             if not signal_batch:
-                raise ValueError("signal provider returned zero signals")
+                raise ValueError("signal providers returned zero signals")
             self.signal_provider_fallback = False
-            self.signal_provider_source = self.signal_provider.source_name
-            live_signal_active = self.signal_provider_source != self.demo_signal_provider.source_name
+            self.signal_provider_source = self._compose_signal_provider_source()
+            live_signal_active = self._signal_live_active()
         except Exception as exc:
             signal_batch = self.demo_signal_provider.generate(market_batch, cycle_index)
             self.signal_provider_fallback = True
-            self.signal_provider_source = f"{self.signal_provider.source_name}-fallback"
+            self.signal_provider_source = f"{self._compose_signal_provider_source()}-fallback"
             message_prefixes.append(f"Signal provider fallback after {exc.__class__.__name__}: {exc}.")
 
         ingested_signals = repository.upsert_signals(signal_batch)
@@ -861,16 +881,15 @@ class BotSocietyService:
         if provider_type == "market":
             if self.settings.market_provider_mode == "demo":
                 return True, False
+            if self.settings.market_provider_mode == "hyperliquid":
+                return True, True
             configured = self.settings.coingecko_plan != "pro" or bool(self.settings.coingecko_api_key)
             return configured, configured
 
-        if self.settings.signal_provider_mode == "demo":
-            return True, False
-        if self.settings.signal_provider_mode == "rss":
-            configured = bool(self.settings.rss_feed_urls)
-            return configured, configured
-        configured = bool(self.settings.reddit_client_id and self.settings.reddit_client_secret and self.settings.reddit_subreddits)
-        return configured, configured
+        components = [self._primary_signal_provider_component()] + self._venue_signal_provider_components()
+        configured = any(component.configured for component in components)
+        live_capable = any(component.live_capable for component in components)
+        return configured, live_capable
 
     def _database_target(self) -> str:
         if self.database.dialect_name == "postgresql":
@@ -889,6 +908,11 @@ class BotSocietyService:
                 api_key=self.settings.coingecko_api_key,
                 tracked_coin_ids=self.settings.tracked_coin_ids,
             )
+        if self.settings.market_provider_mode == "hyperliquid":
+            return HyperliquidMarketProvider(
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+                dex=self.settings.hyperliquid_dex,
+            )
         return self.demo_market_provider
 
     def _build_signal_provider(self):
@@ -903,6 +927,109 @@ class BotSocietyService:
                 post_limit=self.settings.reddit_post_limit,
             )
         return self.demo_signal_provider
+
+    def _build_venue_signal_providers(self):
+        providers = []
+        for provider_mode in self.settings.venue_signal_providers:
+            if provider_mode == "polymarket":
+                providers.append(
+                    PolymarketSignalProvider(
+                        tag_id=self.settings.polymarket_tag_id,
+                        event_limit=self.settings.polymarket_event_limit,
+                    )
+                )
+            elif provider_mode == "kalshi":
+                providers.append(
+                    KalshiSignalProvider(
+                        category=self.settings.kalshi_category,
+                        series_limit=self.settings.kalshi_series_limit,
+                        markets_per_series=self.settings.kalshi_markets_per_series,
+                    )
+                )
+        return providers
+
+    def _generate_signal_batch(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
+        signal_batch: list[dict] = []
+        errors: list[str] = []
+        try:
+            primary_batch = self.signal_provider.generate(market_batch, cycle_index)
+            if primary_batch:
+                signal_batch.extend(primary_batch)
+        except Exception as exc:
+            errors.append(f"{self.signal_provider.source_name}: {exc.__class__.__name__}: {exc}")
+        for provider in self.venue_signal_providers:
+            try:
+                venue_batch = provider.generate(market_batch, cycle_index)
+                if venue_batch:
+                    signal_batch.extend(venue_batch)
+            except Exception as exc:
+                errors.append(f"{provider.source_name}: {exc.__class__.__name__}: {exc}")
+        if signal_batch:
+            return signal_batch
+        if errors:
+            raise ValueError("; ".join(errors))
+        return signal_batch
+
+    def _compose_signal_provider_source(self) -> str:
+        sources = [self.signal_provider.source_name] + [provider.source_name for provider in self.venue_signal_providers]
+        unique_sources: list[str] = []
+        for source in sources:
+            if source not in unique_sources:
+                unique_sources.append(source)
+        return " + ".join(unique_sources)
+
+    def _signal_live_active(self) -> bool:
+        providers = [self.signal_provider] + self.venue_signal_providers
+        return any(provider.source_name != self.demo_signal_provider.source_name for provider in providers)
+
+    def _signal_provider_mode_label(self) -> str:
+        if not self.venue_signal_providers:
+            return self.settings.signal_provider_mode
+        venue_modes = ", ".join(self.settings.venue_signal_providers)
+        return f"{self.settings.signal_provider_mode} + {venue_modes}"
+
+    def _primary_signal_provider_component(self) -> ProviderComponentStatus:
+        readiness = self.signal_provider.readiness()
+        if self.settings.signal_provider_mode == "demo":
+            configured = True
+            live_capable = False
+        elif self.settings.signal_provider_mode == "rss":
+            configured = bool(self.settings.rss_feed_urls)
+            live_capable = configured
+        else:
+            configured = bool(self.settings.reddit_client_id and self.settings.reddit_client_secret and self.settings.reddit_subreddits)
+            live_capable = configured
+        return ProviderComponentStatus(
+            mode=self.settings.signal_provider_mode,
+            source=self.signal_provider.source_name,
+            configured=configured,
+            live_capable=live_capable,
+            ready=readiness.ready,
+            warning=readiness.warning,
+        )
+
+    def _venue_signal_provider_components(self) -> list[ProviderComponentStatus]:
+        components: list[ProviderComponentStatus] = []
+        for mode, provider in zip(self.settings.venue_signal_providers, self.venue_signal_providers):
+            readiness = provider.readiness()
+            components.append(
+                ProviderComponentStatus(
+                    mode=mode,
+                    source=provider.source_name,
+                    configured=True,
+                    live_capable=True,
+                    ready=readiness.ready,
+                    warning=readiness.warning,
+                )
+            )
+        return components
+
+    def _signal_provider_health(self) -> tuple[bool, str | None, list[ProviderComponentStatus]]:
+        components = [self._primary_signal_provider_component(), *self._venue_signal_provider_components()]
+        ready = any(component.ready for component in components)
+        warnings = [component.warning for component in components if component.warning]
+        warning = "; ".join(warnings) if warnings else None
+        return ready, warning, components[1:]
 
     @staticmethod
     def _to_asset_model(row: dict) -> AssetSnapshot:

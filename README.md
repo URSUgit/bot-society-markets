@@ -53,7 +53,8 @@ Included today:
 - Alembic migration scaffolding plus operational database upgrade and copy commands
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
-- demo ingestion providers plus optional CoinGecko market mode and RSS news signal mode with safe fallback behavior
+- demo ingestion providers plus optional CoinGecko and Hyperliquid market modes with safe fallback behavior
+- optional venue-intelligence signal ingestion from Polymarket Gamma and Kalshi public market data
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
 - a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
@@ -181,6 +182,7 @@ $env:BSM_ENVIRONMENT_NAME = "development"
 $env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_WORKER_INTERVAL_SECONDS = "900"
 $env:BSM_WORKER_MAX_CYCLES = "0"
@@ -196,6 +198,9 @@ $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"
 $env:BSM_COINGECKO_API_KEY = "your-key-here"
 
+$env:BSM_MARKET_PROVIDER = "hyperliquid"
+$env:BSM_HYPERLIQUID_DEX = ""
+
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"
 
@@ -205,6 +210,14 @@ $env:BSM_REDDIT_CLIENT_SECRET = "your-client-secret"
 $env:BSM_REDDIT_USER_AGENT = "BotSocietyMarkets/0.7"
 $env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
 $env:BSM_REDDIT_POST_LIMIT = "15"
+
+$env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_VENUE_SIGNAL_PROVIDERS = "polymarket,kalshi"
+$env:BSM_POLYMARKET_TAG_ID = "21"
+$env:BSM_POLYMARKET_EVENT_LIMIT = "30"
+$env:BSM_KALSHI_CATEGORY = "Crypto"
+$env:BSM_KALSHI_SERIES_LIMIT = "12"
+$env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
 ```
 
 For local secret handling, create `.env` or `.env.local` in the repo root. `.env.local` overrides `.env`.

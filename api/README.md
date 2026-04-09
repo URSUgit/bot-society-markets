@@ -9,7 +9,7 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `app/database.py` - SQLAlchemy schema, migrations for legacy SQLite data, and database connection management
 - `app/db_ops.py` - Alembic helpers and database copy utilities
 - `app/repository.py` - persistence layer for bots, market data, signals, predictions, pipeline runs, user state, and alert deliveries
-- `app/providers.py` - demo providers, optional CoinGecko market adapter, and optional RSS signal ingestion
+- `app/providers.py` - demo providers, optional CoinGecko and Hyperliquid market adapters, optional RSS/Reddit ingestion, and venue adapters for Polymarket and Kalshi
 - `app/orchestration.py` - bot prediction generation logic
 - `app/scoring.py` - prediction scoring engine
 - `app/services.py` - application service layer, auth/session workflows, notification delivery, and dashboard aggregation
@@ -56,9 +56,10 @@ The current build includes:
 - persisted user state for follows, watchlist items, alert rules, notification channels, in-app alerts, and authenticated sessions
 - a repeatable pipeline cycle that ingests fresh batches, creates new pending predictions, and delivers alert events
 - retry scheduling plus delivery-health tracking for failed outbound notification attempts
-- optional live market data through CoinGecko configuration with demo fallback behavior
+- optional live market data through CoinGecko or Hyperliquid configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
+- optional venue-backed prediction-market ingestion from Polymarket and Kalshi
 - signal-level provenance scoring for provider trust, freshness, and composite source quality
 - leaderboard provenance weighting so bot rankings reflect linked source quality, not just output performance
 - a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
@@ -107,6 +108,7 @@ $env:BSM_ENVIRONMENT_NAME = "development"
 $env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_WORKER_INTERVAL_SECONDS = "900"
 $env:BSM_WORKER_MAX_CYCLES = "0"
@@ -123,6 +125,9 @@ $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"
 $env:BSM_COINGECKO_API_KEY = "your-key-here"
 
+$env:BSM_MARKET_PROVIDER = "hyperliquid"
+$env:BSM_HYPERLIQUID_DEX = ""
+
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"
 
@@ -132,6 +137,14 @@ $env:BSM_REDDIT_CLIENT_SECRET = "your-client-secret"
 $env:BSM_REDDIT_USER_AGENT = "BotSocietyMarkets/0.7"
 $env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
 $env:BSM_REDDIT_POST_LIMIT = "15"
+
+$env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_VENUE_SIGNAL_PROVIDERS = "polymarket,kalshi"
+$env:BSM_POLYMARKET_TAG_ID = "21"
+$env:BSM_POLYMARKET_EVENT_LIMIT = "30"
+$env:BSM_KALSHI_CATEGORY = "Crypto"
+$env:BSM_KALSHI_SERIES_LIMIT = "12"
+$env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
 ```
 
 You can also place runtime values in a repo-root `.env` or `.env.local` file. `.env.local` overrides `.env`.

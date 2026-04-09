@@ -117,6 +117,15 @@ class OperationSnapshot(BaseModel):
     message: str
 
 
+class ProviderComponentStatus(BaseModel):
+    mode: str
+    source: str
+    configured: bool = True
+    live_capable: bool = False
+    ready: bool = True
+    warning: str | None = None
+
+
 class ProviderStatus(BaseModel):
     environment_name: str
     deployment_target: str
@@ -137,6 +146,7 @@ class ProviderStatus(BaseModel):
     tracked_coin_ids: list[str]
     rss_feed_urls: list[str]
     reddit_subreddits: list[str] = Field(default_factory=list)
+    venue_signal_providers: list[ProviderComponentStatus] = Field(default_factory=list)
     market_fallback_active: bool = False
     signal_fallback_active: bool = False
 
