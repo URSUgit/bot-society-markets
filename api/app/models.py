@@ -67,6 +67,7 @@ class BotSummary(BaseModel):
     score: float = Field(ge=0, le=100)
     hit_rate: float = Field(ge=0, le=1)
     calibration: float = Field(ge=0, le=1)
+    provenance_score: float = Field(ge=0, le=1)
     average_strategy_return: float
     predictions: int = Field(ge=0)
     pending_predictions: int = Field(ge=0)
@@ -117,12 +118,20 @@ class OperationSnapshot(BaseModel):
 
 
 class ProviderStatus(BaseModel):
+    environment_name: str
+    deployment_target: str
+    database_backend: str
+    database_target: str
     market_provider_mode: str
     market_provider_source: str
+    market_provider_configured: bool = True
+    market_provider_live_capable: bool = False
     market_provider_ready: bool = True
     market_provider_warning: str | None = None
     signal_provider_mode: str
     signal_provider_source: str
+    signal_provider_configured: bool = True
+    signal_provider_live_capable: bool = False
     signal_provider_ready: bool = True
     signal_provider_warning: str | None = None
     tracked_coin_ids: list[str]

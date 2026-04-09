@@ -202,6 +202,14 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
+    def list_signals_by_ids(self, signal_ids: Iterable[int]) -> list[dict[str, Any]]:
+        normalized_ids = [int(signal_id) for signal_id in signal_ids]
+        if not normalized_ids:
+            return []
+        stmt = select(signals_table).where(signals_table.c.id.in_(normalized_ids)).order_by(desc(signals_table.c.observed_at))
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
     def count_signals_since(self, observed_at: str) -> int:
         stmt = select(func.count()).select_from(signals_table).where(signals_table.c.observed_at >= observed_at)
         with self.database.connect() as connection:

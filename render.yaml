@@ -1,19 +1,279 @@
-services:
-  - type: web
-    name: bot-society-markets
-    runtime: python
-    plan: free
-    branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m uvicorn api.app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
-    autoDeployTrigger: commit
-    envVars:
-      - key: BSM_DATABASE_PATH
-        value: /tmp/bot_society_markets.db
-      - key: BSM_MARKET_PROVIDER
-        value: demo
-      - key: BSM_SIGNAL_PROVIDER
-        value: demo
-      - key: BSM_ALERT_INBOX_LIMIT
-        value: "10"
+previews:
+  generation: off
+
+projects:
+  - name: bot-society-markets
+    environments:
+      - name: production
+        networking:
+          isolation: enabled
+        permissions:
+          protection: enabled
+        envVarGroups:
+          - name: bot-society-markets-production-shared
+            envVars:
+              - key: BSM_ENVIRONMENT_NAME
+                value: production
+              - key: BSM_DEPLOYMENT_TARGET
+                value: render
+              - key: BSM_SEED_DEMO_DATA
+                value: "true"
+              - key: BSM_MARKET_PROVIDER
+                value: coingecko
+              - key: BSM_COINGECKO_PLAN
+                value: pro
+              - key: BSM_SIGNAL_PROVIDER
+                value: reddit
+              - key: BSM_TRACKED_COIN_IDS
+                value: bitcoin,ethereum,solana
+              - key: BSM_REDDIT_SUBREDDITS
+                value: CryptoCurrency,Bitcoin,ethtrader,solana
+              - key: BSM_REDDIT_POST_LIMIT
+                value: "15"
+              - key: BSM_ALERT_INBOX_LIMIT
+                value: "10"
+              - key: BSM_WORKER_INTERVAL_SECONDS
+                value: "900"
+              - key: BSM_WORKER_MAX_CYCLES
+                value: "0"
+              - key: BSM_SESSION_TTL_HOURS
+                value: "168"
+              - key: BSM_NOTIFICATION_RETRY_LIMIT
+                value: "25"
+              - key: BSM_NOTIFICATION_MAX_ATTEMPTS
+                value: "4"
+              - key: BSM_NOTIFICATION_RETRY_BASE_SECONDS
+                value: "300"
+        services:
+          - type: web
+            name: bot-society-markets-web
+            runtime: python
+            plan: starter
+            branch: main
+            buildCommand: pip install -r requirements.txt
+            startCommand: python -m api.app.jobs db-upgrade && python -m uvicorn api.app.main:app --host 0.0.0.0 --port $PORT
+            healthCheckPath: /health
+            autoDeployTrigger: commit
+            envVars:
+              - fromGroup: bot-society-markets-production-shared
+              - key: BSM_DATABASE_URL
+                fromDatabase:
+                  name: bot-society-markets-db
+                  property: connectionString
+              - key: BSM_COINGECKO_API_KEY
+                sync: false
+              - key: BSM_REDDIT_CLIENT_ID
+                sync: false
+              - key: BSM_REDDIT_CLIENT_SECRET
+                sync: false
+              - key: BSM_REDDIT_USER_AGENT
+                value: BotSocietyMarkets/0.7
+              - key: BSM_SMTP_HOST
+                sync: false
+              - key: BSM_SMTP_PORT
+                value: "587"
+              - key: BSM_SMTP_USERNAME
+                sync: false
+              - key: BSM_SMTP_PASSWORD
+                sync: false
+              - key: BSM_SMTP_FROM_EMAIL
+                sync: false
+              - key: BSM_SMTP_USE_TLS
+                value: "true"
+          - type: worker
+            name: bot-society-markets-worker
+            runtime: python
+            plan: starter
+            branch: main
+            buildCommand: pip install -r requirements.txt
+            startCommand: python -m api.app.jobs db-upgrade && python -m api.app.jobs worker
+            autoDeployTrigger: commit
+            envVars:
+              - fromGroup: bot-society-markets-production-shared
+              - key: BSM_DATABASE_URL
+                fromDatabase:
+                  name: bot-society-markets-db
+                  property: connectionString
+              - key: BSM_COINGECKO_API_KEY
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_COINGECKO_API_KEY
+              - key: BSM_REDDIT_CLIENT_ID
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_REDDIT_CLIENT_ID
+              - key: BSM_REDDIT_CLIENT_SECRET
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_REDDIT_CLIENT_SECRET
+              - key: BSM_REDDIT_USER_AGENT
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_REDDIT_USER_AGENT
+              - key: BSM_SMTP_HOST
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_HOST
+              - key: BSM_SMTP_PORT
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_PORT
+              - key: BSM_SMTP_USERNAME
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_USERNAME
+              - key: BSM_SMTP_PASSWORD
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_PASSWORD
+              - key: BSM_SMTP_FROM_EMAIL
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_FROM_EMAIL
+              - key: BSM_SMTP_USE_TLS
+                fromService:
+                  name: bot-society-markets-web
+                  type: web
+                  envVarKey: BSM_SMTP_USE_TLS
+        databases:
+          - name: bot-society-markets-db
+            plan: basic-256mb
+            databaseName: bot_society_markets
+            user: bot_society_markets
+
+      - name: staging
+        networking:
+          isolation: enabled
+        permissions:
+          protection: enabled
+        envVarGroups:
+          - name: bot-society-markets-staging-shared
+            envVars:
+              - key: BSM_ENVIRONMENT_NAME
+                value: staging
+              - key: BSM_DEPLOYMENT_TARGET
+                value: render
+              - key: BSM_SEED_DEMO_DATA
+                value: "true"
+              - key: BSM_MARKET_PROVIDER
+                value: coingecko
+              - key: BSM_COINGECKO_PLAN
+                value: demo
+              - key: BSM_SIGNAL_PROVIDER
+                value: rss
+              - key: BSM_TRACKED_COIN_IDS
+                value: bitcoin,ethereum,solana
+              - key: BSM_ALERT_INBOX_LIMIT
+                value: "10"
+              - key: BSM_WORKER_INTERVAL_SECONDS
+                value: "1200"
+              - key: BSM_WORKER_MAX_CYCLES
+                value: "0"
+              - key: BSM_SESSION_TTL_HOURS
+                value: "168"
+              - key: BSM_NOTIFICATION_RETRY_LIMIT
+                value: "25"
+              - key: BSM_NOTIFICATION_MAX_ATTEMPTS
+                value: "4"
+              - key: BSM_NOTIFICATION_RETRY_BASE_SECONDS
+                value: "300"
+        services:
+          - type: web
+            name: bot-society-markets-web-staging
+            runtime: python
+            plan: starter
+            branch: main
+            buildCommand: pip install -r requirements.txt
+            startCommand: python -m api.app.jobs db-upgrade && python -m uvicorn api.app.main:app --host 0.0.0.0 --port $PORT
+            healthCheckPath: /health
+            autoDeployTrigger: commit
+            envVars:
+              - fromGroup: bot-society-markets-staging-shared
+              - key: BSM_DATABASE_URL
+                fromDatabase:
+                  name: bot-society-markets-db-staging
+                  property: connectionString
+              - key: BSM_COINGECKO_API_KEY
+                sync: false
+              - key: BSM_RSS_FEED_URLS
+                sync: false
+              - key: BSM_SMTP_HOST
+                sync: false
+              - key: BSM_SMTP_PORT
+                value: "587"
+              - key: BSM_SMTP_USERNAME
+                sync: false
+              - key: BSM_SMTP_PASSWORD
+                sync: false
+              - key: BSM_SMTP_FROM_EMAIL
+                sync: false
+              - key: BSM_SMTP_USE_TLS
+                value: "true"
+          - type: worker
+            name: bot-society-markets-worker-staging
+            runtime: python
+            plan: starter
+            branch: main
+            buildCommand: pip install -r requirements.txt
+            startCommand: python -m api.app.jobs db-upgrade && python -m api.app.jobs worker
+            autoDeployTrigger: commit
+            envVars:
+              - fromGroup: bot-society-markets-staging-shared
+              - key: BSM_DATABASE_URL
+                fromDatabase:
+                  name: bot-society-markets-db-staging
+                  property: connectionString
+              - key: BSM_COINGECKO_API_KEY
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_COINGECKO_API_KEY
+              - key: BSM_RSS_FEED_URLS
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_RSS_FEED_URLS
+              - key: BSM_SMTP_HOST
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_HOST
+              - key: BSM_SMTP_PORT
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_PORT
+              - key: BSM_SMTP_USERNAME
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_USERNAME
+              - key: BSM_SMTP_PASSWORD
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_PASSWORD
+              - key: BSM_SMTP_FROM_EMAIL
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_FROM_EMAIL
+              - key: BSM_SMTP_USE_TLS
+                fromService:
+                  name: bot-society-markets-web-staging
+                  type: web
+                  envVarKey: BSM_SMTP_USE_TLS
+        databases:
+          - name: bot-society-markets-db-staging
+            plan: basic-256mb
+            databaseName: bot_society_markets_staging
+            user: bot_society_markets_staging

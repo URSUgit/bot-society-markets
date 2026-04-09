@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
@@ -502,13 +503,23 @@ class BotSocietyService:
     def get_provider_status(self) -> ProviderStatus:
         market_readiness = self.market_provider.readiness()
         signal_readiness = self.signal_provider.readiness()
+        market_configured, market_live_capable = self._provider_configuration("market")
+        signal_configured, signal_live_capable = self._provider_configuration("signal")
         return ProviderStatus(
+            environment_name=self.settings.environment_name,
+            deployment_target=self.settings.deployment_target,
+            database_backend=self.database.dialect_name,
+            database_target=self._database_target(),
             market_provider_mode=self.settings.market_provider_mode,
             market_provider_source=self.market_provider_source,
+            market_provider_configured=market_configured,
+            market_provider_live_capable=market_live_capable,
             market_provider_ready=market_readiness.ready,
             market_provider_warning=market_readiness.warning,
             signal_provider_mode=self.settings.signal_provider_mode,
             signal_provider_source=self.signal_provider_source,
+            signal_provider_configured=signal_configured,
+            signal_provider_live_capable=signal_live_capable,
             signal_provider_ready=signal_readiness.ready,
             signal_provider_warning=signal_readiness.warning,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
@@ -546,6 +557,26 @@ class BotSocietyService:
     def get_latest_operation(self) -> OperationSnapshot | None:
         repository = BotSocietyRepository(self.database)
         return self._latest_operation(repository)
+
+    def probe_provider_connectivity(self) -> dict[str, str]:
+        repository = BotSocietyRepository(self.database)
+        latest_snapshots = repository.list_latest_market_snapshots()
+        market_batch = latest_snapshots
+        diagnostics: dict[str, str] = {}
+
+        try:
+            market_batch = self.market_provider.generate(latest_snapshots, 0)
+            diagnostics["market"] = f"ok ({len(market_batch)} snapshot(s) returned)"
+        except Exception as exc:
+            diagnostics["market"] = f"error ({exc.__class__.__name__}: {exc})"
+
+        try:
+            signal_batch = self.signal_provider.generate(market_batch, 0)
+            diagnostics["signal"] = f"ok ({len(signal_batch)} signal(s) returned)"
+        except Exception as exc:
+            diagnostics["signal"] = f"error ({exc.__class__.__name__}: {exc})"
+
+        return diagnostics
 
     def run_pipeline_cycle(self) -> CycleResult:
         repository = BotSocietyRepository(self.database)
@@ -731,6 +762,7 @@ class BotSocietyService:
         predictions = repository.list_predictions(limit=500)
         followed_bot_slugs = {row["bot_slug"] for row in repository.list_user_follows(user_slug)} if user_slug else set()
         bot_predictions: dict[str, list[dict]] = {bot["slug"]: [] for bot in bots}
+        signal_lookup = self._load_prediction_signal_lookup(repository, predictions)
         for prediction in predictions:
             bot_predictions.setdefault(prediction["bot_slug"], []).append(prediction)
 
@@ -748,15 +780,22 @@ class BotSocietyService:
                 if scored_rows
                 else 0.0
             )
+            provenance_samples = []
+            for row in rows:
+                provenance_value = self._prediction_provenance_score(row, signal_lookup)
+                if provenance_value is not None:
+                    provenance_samples.append(provenance_value)
+            provenance_score = mean(provenance_samples) if provenance_samples else 0.0
             score_series = [row["score"] / 100 for row in scored_rows if row["score"] is not None]
             consistency = clamp(1 - (pstdev(score_series) / 0.25), 0.0, 1.0) if len(score_series) > 1 else (1.0 if score_series else 0.0)
             return_component = clamp((avg_strategy_return + 0.04) / 0.08, 0.0, 1.0)
             composite_score = 100 * (
-                0.30 * hit_rate
-                + 0.25 * return_component
-                + 0.20 * calibration
-                + 0.15 * consistency
-                + 0.10 * risk_discipline
+                0.28 * hit_rate
+                + 0.23 * return_component
+                + 0.18 * calibration
+                + 0.13 * consistency
+                + 0.08 * risk_discipline
+                + 0.10 * provenance_score
             )
             summaries.append(
                 BotSummary(
@@ -771,6 +810,7 @@ class BotSocietyService:
                     score=round(composite_score, 2),
                     hit_rate=round(hit_rate, 3),
                     calibration=round(calibration, 3),
+                    provenance_score=round(provenance_score, 3),
                     average_strategy_return=round(avg_strategy_return, 4),
                     predictions=len(rows),
                     pending_predictions=len(pending_rows),
@@ -781,6 +821,66 @@ class BotSocietyService:
                 )
             )
         return sorted(summaries, key=lambda bot: bot.score, reverse=True)
+
+    @staticmethod
+    def _extract_source_signal_ids(prediction: dict) -> list[int]:
+        raw_ids = prediction.get("source_signal_ids")
+        if not raw_ids:
+            return []
+        try:
+            parsed = json.loads(raw_ids) if isinstance(raw_ids, str) else raw_ids
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(parsed, list):
+            return []
+        signal_ids: list[int] = []
+        for value in parsed:
+            try:
+                signal_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return signal_ids
+
+    def _load_prediction_signal_lookup(self, repository: BotSocietyRepository, predictions: list[dict]) -> dict[int, dict]:
+        signal_ids = {
+            signal_id
+            for prediction in predictions
+            for signal_id in self._extract_source_signal_ids(prediction)
+        }
+        if not signal_ids:
+            return {}
+        return {row["id"]: row for row in repository.list_signals_by_ids(signal_ids)}
+
+    def _prediction_provenance_score(self, prediction: dict, signal_lookup: dict[int, dict]) -> float | None:
+        linked_signals = [signal_lookup[signal_id] for signal_id in self._extract_source_signal_ids(prediction) if signal_id in signal_lookup]
+        if not linked_signals:
+            return None
+        return mean(float(signal.get("source_quality_score") or 0.0) for signal in linked_signals)
+
+    def _provider_configuration(self, provider_type: str) -> tuple[bool, bool]:
+        if provider_type == "market":
+            if self.settings.market_provider_mode == "demo":
+                return True, False
+            configured = self.settings.coingecko_plan != "pro" or bool(self.settings.coingecko_api_key)
+            return configured, configured
+
+        if self.settings.signal_provider_mode == "demo":
+            return True, False
+        if self.settings.signal_provider_mode == "rss":
+            configured = bool(self.settings.rss_feed_urls)
+            return configured, configured
+        configured = bool(self.settings.reddit_client_id and self.settings.reddit_client_secret and self.settings.reddit_subreddits)
+        return configured, configured
+
+    def _database_target(self) -> str:
+        if self.database.dialect_name == "postgresql":
+            if self.settings.deployment_target.startswith("render"):
+                return "managed-postgres"
+            target = self.settings.database_url or self.database.url
+            if "render.com" in target:
+                return "managed-postgres"
+            return "postgres"
+        return f"sqlite:{self.settings.database_path}"
 
     def _build_market_provider(self):
         if self.settings.market_provider_mode == "coingecko":

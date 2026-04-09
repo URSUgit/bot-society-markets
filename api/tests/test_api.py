@@ -47,10 +47,14 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert "notification_health" in payload
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
+        assert payload["provider_status"]["environment_name"] == "development"
+        assert payload["provider_status"]["deployment_target"] == "local"
+        assert payload["provider_status"]["database_backend"] == "sqlite"
         assert payload["user_profile"]["is_demo_user"] is True
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
+        assert payload["leaderboard"][0]["provenance_score"] >= 0
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -211,6 +215,8 @@ def test_reddit_provider_readiness_and_fallback() -> None:
         assert provider_response.status_code == 200
         provider_payload = provider_response.json()["provider_status"]
         assert provider_payload["signal_provider_mode"] == "reddit"
+        assert provider_payload["signal_provider_configured"] is False
+        assert provider_payload["signal_provider_live_capable"] is False
         assert provider_payload["signal_provider_ready"] is False
         assert "BSM_REDDIT_CLIENT_ID" in provider_payload["signal_provider_warning"]
 
@@ -218,6 +224,31 @@ def test_reddit_provider_readiness_and_fallback() -> None:
         assert cycle_response.status_code == 200
         cycle_payload = cycle_response.json()
         assert cycle_payload["provider_status"]["signal_fallback_active"] is True
+
+
+def test_live_provider_configuration_metadata() -> None:
+    settings = Settings(
+        environment_name="staging",
+        deployment_target="render",
+        market_provider_mode="coingecko",
+        coingecko_plan="pro",
+        coingecko_api_key="secret-key",
+        signal_provider_mode="reddit",
+        reddit_client_id="client-id",
+        reddit_client_secret="client-secret",
+        reddit_subreddits=("CryptoCurrency", "Bitcoin"),
+    )
+    with build_client(settings) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["environment_name"] == "staging"
+        assert provider_payload["deployment_target"] == "render"
+        assert provider_payload["database_backend"] == "sqlite"
+        assert provider_payload["market_provider_configured"] is True
+        assert provider_payload["market_provider_live_capable"] is True
+        assert provider_payload["signal_provider_configured"] is True
+        assert provider_payload["signal_provider_live_capable"] is True
 
 
 def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:

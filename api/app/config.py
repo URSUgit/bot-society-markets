@@ -6,8 +6,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional during bootstrap before deps install
+    load_dotenv = None
+
 MarketProviderMode = Literal["demo", "coingecko"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_environment_files() -> None:
+    if load_dotenv is None:
+        return
+    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv(PROJECT_ROOT / ".env.local", override=True)
+
+
+_load_environment_files()
 
 
 def _workspace_database_path() -> Path:
@@ -40,6 +56,8 @@ def _default_database_path() -> Path:
 class Settings:
     project_name: str = "Bot Society Markets"
     version: str = "0.6.0"
+    environment_name: str = "development"
+    deployment_target: str = "local"
     database_path: Path = field(default_factory=_default_database_path)
     database_url: str | None = None
     seed_demo_data: bool = True
@@ -113,6 +131,8 @@ def get_settings() -> Settings:
     notification_retry_base_seconds = max(30, int(os.getenv("BSM_NOTIFICATION_RETRY_BASE_SECONDS", "300")))
 
     return Settings(
+        environment_name=os.getenv("BSM_ENVIRONMENT_NAME", "development"),
+        deployment_target=os.getenv("BSM_DEPLOYMENT_TARGET", "local"),
         database_path=database_path,
         database_url=database_url,
         seed_demo_data=seed_demo_data,

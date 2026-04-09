@@ -54,6 +54,7 @@ def main() -> None:
     parser.add_argument("--source-path", type=str, default=None)
     parser.add_argument("--target-path", type=str, default=None)
     parser.add_argument("--no-truncate-target", action="store_true")
+    parser.add_argument("--probe-live", action="store_true")
     args = parser.parse_args()
 
     if args.command == "db-upgrade":
@@ -101,13 +102,25 @@ def main() -> None:
     if args.command == "provider-status":
         status = service.get_provider_status()
         print(
+            f"environment_name={status.environment_name} "
+            f"deployment_target={status.deployment_target} "
+            f"database_backend={status.database_backend} "
+            f"database_target={status.database_target} "
             f"market_provider_mode={status.market_provider_mode} "
             f"market_provider_source={status.market_provider_source} "
+            f"market_provider_configured={status.market_provider_configured} "
+            f"market_provider_live_capable={status.market_provider_live_capable} "
             f"signal_provider_mode={status.signal_provider_mode} "
             f"signal_provider_source={status.signal_provider_source} "
+            f"signal_provider_configured={status.signal_provider_configured} "
+            f"signal_provider_live_capable={status.signal_provider_live_capable} "
             f"market_fallback_active={status.market_fallback_active} "
             f"signal_fallback_active={status.signal_fallback_active}"
         )
+        if args.probe_live:
+            diagnostics = service.probe_provider_connectivity()
+            print(f"market_probe={diagnostics['market']}")
+            print(f"signal_probe={diagnostics['signal']}")
         return
 
     if args.command == "retry-notifications":

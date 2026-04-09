@@ -134,7 +134,7 @@ function renderLanding(snapshot) {
   }
 
   if (providerNote) {
-    providerNote.textContent = `Market provider: ${snapshot.provider_status.market_provider_source}. Signal provider: ${snapshot.provider_status.signal_provider_source}.`;
+    providerNote.textContent = `${snapshot.provider_status.environment_name} environment · market provider ${snapshot.provider_status.market_provider_source} · signal provider ${snapshot.provider_status.signal_provider_source}.`;
   }
 
   if (botGrid) {
@@ -244,12 +244,19 @@ function renderProviderStatus(providerStatus) {
     ? providerStatus.reddit_subreddits.map((subreddit) => `<li>r/${subreddit}</li>`).join("")
     : "<li>No subreddits configured</li>";
   card.innerHTML = `
+    <p><strong>Environment:</strong> ${providerStatus.environment_name}</p>
+    <p><strong>Deployment:</strong> ${providerStatus.deployment_target}</p>
+    <p><strong>Database:</strong> ${providerStatus.database_backend} · ${providerStatus.database_target}</p>
     <p><strong>Market mode:</strong> ${providerStatus.market_provider_mode}</p>
     <p><strong>Market source:</strong> ${providerStatus.market_provider_source}</p>
+    <p><strong>Market configured:</strong> ${providerStatus.market_provider_configured ? "yes" : "no"}</p>
+    <p><strong>Market live capable:</strong> ${providerStatus.market_provider_live_capable ? "yes" : "no"}</p>
     <p><strong>Market ready:</strong> ${providerStatus.market_provider_ready ? "yes" : "no"}</p>
     ${providerStatus.market_provider_warning ? `<p class="error-text">${providerStatus.market_provider_warning}</p>` : ""}
     <p><strong>Signal mode:</strong> ${providerStatus.signal_provider_mode}</p>
     <p><strong>Signal source:</strong> ${providerStatus.signal_provider_source}</p>
+    <p><strong>Signal configured:</strong> ${providerStatus.signal_provider_configured ? "yes" : "no"}</p>
+    <p><strong>Signal live capable:</strong> ${providerStatus.signal_provider_live_capable ? "yes" : "no"}</p>
     <p><strong>Signal ready:</strong> ${providerStatus.signal_provider_ready ? "yes" : "no"}</p>
     ${providerStatus.signal_provider_warning ? `<p class="error-text">${providerStatus.signal_provider_warning}</p>` : ""}
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
@@ -278,6 +285,7 @@ function renderLeaderboard(leaderboard, profile) {
       <td>${fmtScore(bot.score)}</td>
       <td>${fmtPercent(bot.hit_rate)}</td>
       <td>${bot.calibration.toFixed(2)}</td>
+      <td>${fmtPercent(bot.provenance_score)}</td>
       <td>${fmtSignedPercent(bot.average_strategy_return)}</td>
       <td>${bot.predictions}</td>
     </tr>
@@ -526,6 +534,7 @@ async function renderBotDetail(slug) {
       <div><dt>Composite</dt><dd>${fmtScore(bot.score)}</dd></div>
       <div><dt>Hit rate</dt><dd>${fmtPercent(bot.hit_rate)}</dd></div>
       <div><dt>Calibration</dt><dd>${bot.calibration.toFixed(2)}</dd></div>
+      <div><dt>Provenance</dt><dd>${fmtPercent(bot.provenance_score)}</dd></div>
       <div><dt>Focus</dt><dd>${bot.focus}</dd></div>
       <div><dt>Risk style</dt><dd>${bot.risk_style}</dd></div>
       <div><dt>Universe</dt><dd>${bot.asset_universe.join(", ")}</dd></div>

@@ -60,9 +60,11 @@ The current build includes:
 - optional RSS-backed news ingestion with demo fallback behavior
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
 - signal-level provenance scoring for provider trust, freshness, and composite source quality
+- leaderboard provenance weighting so bot rankings reflect linked source quality, not just output performance
 - a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
 - a worker loop for scheduled cycle execution
 - Alembic-backed schema upgrade flow for Postgres-oriented environments
+- `.env` and `.env.local` support for local secret loading
 
 ## Run Locally
 
@@ -80,6 +82,7 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ```powershell
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
+python -m api.app.jobs provider-status --probe-live
 python -m api.app.jobs run-cycle
 python -m api.app.jobs retry-notifications
 python -m api.app.jobs notification-health
@@ -100,6 +103,8 @@ It now prefers Docker + Postgres on port `8010`, falls back to the local Python 
 ## Environment Variables
 
 ```powershell
+$env:BSM_ENVIRONMENT_NAME = "development"
+$env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
@@ -129,6 +134,8 @@ $env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
 $env:BSM_REDDIT_POST_LIMIT = "15"
 ```
 
+You can also place runtime values in a repo-root `.env` or `.env.local` file. `.env.local` overrides `.env`.
+
 ## Verification
 
 ```powershell
@@ -155,6 +162,6 @@ The Compose stack uses Postgres, sets `BSM_DATABASE_URL` automatically, and defa
 
 ## Current Next Targets
 
-- move from a baseline Alembic migration to revision-per-feature migrations
-- add provider-level provenance scoring and source quality controls
+- activate hosted staging and production environments on Render
+- add deeper provider health probes and freshness-based alerting
 - expand notifications beyond in-app plus single email/webhook channels

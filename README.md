@@ -58,12 +58,15 @@ Included today:
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
 - a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
 - signal provenance scoring with provider trust, freshness, and composite source-quality weighting
+- leaderboard provenance weighting so bot rankings reflect both performance and input quality
 - notification retry scheduling, retry jobs, and per-channel observability for outbound alert delivery
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
 - Docker assets for reproducible container deployment
 - desktop shortcut installation for one-click Windows startup
+- `.env` and `.env.local` loading for secret-aware local live-provider activation
+- Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 
 ## Product Surface
 
@@ -134,6 +137,7 @@ To install or refresh the desktop shortcuts:
 ```powershell
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
+python -m api.app.jobs provider-status --probe-live
 python -m api.app.jobs run-cycle
 python -m api.app.jobs retry-notifications
 python -m api.app.jobs notification-health
@@ -161,11 +165,20 @@ Fastest path:
 
 If the repository stays private, Render's docs indicate you need Render's GitHub App installed on the repository before the deploy flow can read it.
 
+The hosted blueprint is now structured around:
+
+- a `production` environment with managed Postgres, a web service, and a background worker
+- a `staging` environment with its own managed Postgres, web service, and worker
+- secret prompts for CoinGecko, Reddit, RSS, and SMTP credentials where appropriate
+- environment-level isolation and protection controls
+
 ## Environment Configuration
 
 The application reads optional runtime settings from environment variables.
 
 ```powershell
+$env:BSM_ENVIRONMENT_NAME = "development"
+$env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
@@ -193,6 +206,8 @@ $env:BSM_REDDIT_USER_AGENT = "BotSocietyMarkets/0.7"
 $env:BSM_REDDIT_SUBREDDITS = "CryptoCurrency,Bitcoin,ethtrader,solana"
 $env:BSM_REDDIT_POST_LIMIT = "15"
 ```
+
+For local secret handling, create `.env` or `.env.local` in the repo root. `.env.local` overrides `.env`.
 
 Runtime behavior:
 
@@ -255,3 +270,4 @@ The dashboard will be available at `http://127.0.0.1:8010/dashboard` by default.
 
 - This package is strategic and operational guidance, not legal advice.
 - Before public launch, the product and marketing claims should be reviewed by legal counsel with financial regulatory experience.
+- Render blueprint design follows the current official support for `fromDatabase`, service-to-service env references, project environments, and `sync: false` secret prompts: [Render Blueprint YAML Reference](https://render.com/docs/blueprint-spec), [Render Projects and Environments](https://render.com/docs/projects)
