@@ -55,6 +55,10 @@ def _default_database_path() -> Path:
     return _workspace_database_path()
 
 
+def _default_export_artifacts_dir() -> Path:
+    return PROJECT_ROOT / "artifacts" / "strategy-exports"
+
+
 @dataclass(slots=True)
 class Settings:
     project_name: str = "Bot Society Markets"
@@ -62,6 +66,7 @@ class Settings:
     environment_name: str = "development"
     deployment_target: str = "local"
     database_path: Path = field(default_factory=_default_database_path)
+    export_artifacts_dir: Path = field(default_factory=_default_export_artifacts_dir)
     database_url: str | None = None
     seed_demo_data: bool = True
     scoring_version: str = "v1"
@@ -172,11 +177,13 @@ def get_settings() -> Settings:
     notification_max_attempts = max(1, int(os.getenv("BSM_NOTIFICATION_MAX_ATTEMPTS", "4")))
     notification_retry_base_seconds = max(30, int(os.getenv("BSM_NOTIFICATION_RETRY_BASE_SECONDS", "300")))
     simulation_cache_hours = max(1, int(os.getenv("BSM_SIMULATION_CACHE_HOURS", "12")))
+    export_artifacts_dir = Path(os.getenv("BSM_EXPORT_ARTIFACTS_DIR", str(_default_export_artifacts_dir())))
 
     return Settings(
         environment_name=os.getenv("BSM_ENVIRONMENT_NAME", "development"),
         deployment_target=os.getenv("BSM_DEPLOYMENT_TARGET", "local"),
         database_path=database_path,
+        export_artifacts_dir=export_artifacts_dir,
         database_url=database_url,
         seed_demo_data=seed_demo_data,
         market_provider_mode=market_provider_mode,

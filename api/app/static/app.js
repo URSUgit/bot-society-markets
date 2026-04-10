@@ -5,6 +5,19 @@ const fmtCompactNumber = (value) => Intl.NumberFormat("en-US", { notation: "comp
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
+const fmtFileSize = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "0 B";
+  }
+  if (numeric < 1024) {
+    return `${Math.round(numeric)} B`;
+  }
+  if (numeric < 1024 * 1024) {
+    return `${(numeric / 1024).toFixed(1)} KB`;
+  }
+  return `${(numeric / (1024 * 1024)).toFixed(2)} MB`;
+};
 const AUTO_REFRESH_MS = 20000;
 const RUN_CYCLE_STAGES = [
   "Pulling market context",
@@ -860,15 +873,58 @@ function renderAdvancedExport(exportBundle) {
     summary.textContent = exportBundle.summary;
   }
   if (card) {
+    const storageState = exportBundle.saved_to_disk ? "Saved artifact" : "Preview only";
+    const storageNote = exportBundle.saved_to_disk
+      ? "Artifact saved to disk and added to the recent export history."
+      : "Artifact is available only in the current preview session.";
     card.innerHTML = `
       <div><span>File</span><strong>${exportBundle.filename}</strong></div>
       <div><span>Engine</span><strong>${exportBundle.engine_target}</strong></div>
       <div><span>Generated</span><strong>${fmtDateTime(exportBundle.generated_at)}</strong></div>
+      <div><span>Status</span><strong>${storageState}</strong></div>
+      ${exportBundle.filesystem_path ? `<div><span>Saved path</span><strong class="advanced-export-path">${exportBundle.filesystem_path}</strong></div>` : ""}
+      <footer class="advanced-export-actions">
+        ${exportBundle.download_url ? `<a class="button secondary" href="${exportBundle.download_url}" download>Download JSON</a>` : ""}
+        <p class="panel-note">${storageNote}</p>
+      </footer>
     `;
   }
   if (preview) {
     preview.textContent = JSON.stringify(exportBundle.payload, null, 2);
   }
+}
+
+function renderSimulationExportHistory(artifacts) {
+  const historyList = document.getElementById("simulation-export-history");
+  if (!historyList) {
+    return;
+  }
+
+  if (!artifacts?.length) {
+    historyList.innerHTML = `
+      <li>
+        <div>
+          <strong>No saved exports yet</strong>
+          <p>Generate an advanced export to create a reusable Strategy Lab artifact.</p>
+        </div>
+      </li>
+    `;
+    return;
+  }
+
+  historyList.innerHTML = artifacts.map((artifact) => `
+    <li>
+      <div>
+        <strong>${artifact.asset} · ${artifact.strategy_id}</strong>
+        <p>${artifact.filename}</p>
+        <small>${artifact.lookback_years}y window · ${artifact.engine_target} · ${fmtFileSize(artifact.size_bytes)} · ${fmtRelativeTime(artifact.generated_at)}</small>
+      </div>
+      <div class="workspace-actions export-history-actions">
+        <span>${fmtDateTime(artifact.generated_at)}</span>
+        <a class="text-link" href="${artifact.download_url}" download>Download JSON</a>
+      </div>
+    </li>
+  `).join("");
 }
 
 function populateSimulationForm(config) {
@@ -1012,6 +1068,36 @@ async function refreshSimulationContext(asset) {
   renderSimulationContext(asset, edgeSnapshot, walletSnapshot);
 }
 
+async function loadSimulationExports() {
+  const historyList = document.getElementById("simulation-export-history");
+  if (historyList) {
+    historyList.innerHTML = `
+      <li>
+        <div>
+          <strong>Loading artifacts</strong>
+          <p>Hydrating the latest Strategy Lab export history.</p>
+        </div>
+      </li>
+    `;
+  }
+
+  try {
+    const artifacts = await fetchJson("/api/simulation/exports");
+    renderSimulationExportHistory(artifacts);
+  } catch (error) {
+    if (historyList) {
+      historyList.innerHTML = `
+        <li>
+          <div>
+            <strong>Artifact history unavailable</strong>
+            <p>${error.message}</p>
+          </div>
+        </li>
+      `;
+    }
+  }
+}
+
 async function generateAdvancedExport() {
   const button = document.getElementById("generate-advanced-export-button");
   if (button) {
@@ -1023,6 +1109,7 @@ async function generateAdvancedExport() {
       body: JSON.stringify(currentSimulationPayload()),
     });
     renderAdvancedExport(exportBundle);
+    await loadSimulationExports();
     setStatus(`Advanced export ready: ${exportBundle.filename}.`);
   } catch (error) {
     setStatus(`Advanced export failed: ${error.message}`);
@@ -1059,7 +1146,7 @@ async function loadSimulationPage() {
   simulationConfig = await fetchJson("/api/simulation/config");
   populateSimulationForm(simulationConfig);
   renderAdvancedExport(null);
-  await runSimulation();
+  await Promise.all([loadSimulationExports(), runSimulation()]);
 }
 
 function renderPulseMetrics(systemPulse, targetId) {

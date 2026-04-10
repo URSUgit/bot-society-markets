@@ -1759,6 +1759,34 @@ form:has(:disabled) {
   margin: 12px 0 14px;
 }
 
+.advanced-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 0;
+}
+
+.advanced-export-path {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  word-break: break-word;
+}
+
+.export-history-list li {
+  align-items: flex-start;
+}
+
+.export-history-list p,
+.export-history-list small {
+  color: var(--text-soft);
+}
+
+.export-history-actions {
+  min-width: 170px;
+}
+
 .code-preview {
   margin: 0;
   max-height: 420px;
@@ -1828,5 +1856,10 @@ form:has(:disabled) {
     min-width: 0;
     justify-items: start;
     text-align: left;
+  }
+
+  .advanced-export-actions {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

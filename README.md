@@ -70,6 +70,7 @@ Included today:
 - smart-wallet intelligence with demo mode or optional public Polymarket wallet tracking for selected addresses
 - fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
 - advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines
+- saved Strategy Lab export artifacts with download history and configurable storage paths
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
@@ -91,6 +92,8 @@ Key endpoints include:
 - `GET /api/wallet-intelligence`
 - `GET /api/edge`
 - `GET /api/simulation/config`
+- `GET /api/simulation/exports`
+- `GET /api/simulation/exports/{filename}`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
@@ -216,6 +219,7 @@ $env:BSM_PAPER_TRADE_FEE_BPS = "10"
 $env:BSM_PAPER_TRADE_SLIPPAGE_BPS = "15"
 $env:BSM_SIMULATION_LIVE_HISTORY = "true"
 $env:BSM_SIMULATION_CACHE_HOURS = "12"
+$env:BSM_EXPORT_ARTIFACTS_DIR = "artifacts/strategy-exports"
 ```
 
 Optional live provider setup:
@@ -256,6 +260,8 @@ $env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
 ```
 
 For local secret handling, create `.env` or `.env.local` in the repo root. `.env.local` overrides `.env`.
+
+Strategy Lab export bundles are saved under `artifacts/strategy-exports` by default and can be redirected with `BSM_EXPORT_ARTIFACTS_DIR`.
 
 Runtime behavior:
 

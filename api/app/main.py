@@ -38,6 +38,7 @@ from .models import (
     ProviderStatusEnvelope,
     SignalView,
     SimulationConfig,
+    SimulationExportArtifact,
     SimulationRequest,
     SimulationRunResult,
     Summary,
@@ -268,6 +269,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/simulation/advanced-export", response_model=AdvancedBacktestExport)
     def advanced_simulation_export(payload: SimulationRequest, request: Request) -> AdvancedBacktestExport:
         return run_validated(lambda: get_service(request).export_advanced_backtest(payload))
+
+    @app.get("/api/simulation/exports", response_model=list[SimulationExportArtifact])
+    def simulation_exports(request: Request, limit: int = Query(default=12, ge=1, le=50)) -> list[SimulationExportArtifact]:
+        return get_service(request).list_simulation_exports(limit=limit)
+
+    @app.get("/api/simulation/exports/{filename}")
+    def simulation_export_download(filename: str, request: Request) -> FileResponse:
+        path = run_validated(lambda: get_service(request).get_simulation_export_path(filename))
+        return FileResponse(path, media_type="application/json", filename=path.name)
 
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:

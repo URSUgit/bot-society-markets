@@ -14,10 +14,12 @@ from api.app.main import create_app
 @contextmanager
 def build_client(settings: Settings | None = None):
     with TemporaryDirectory() as temp_dir:
-        database_path = Path(temp_dir) / "bot-society-markets-test.db"
+        temp_root = Path(temp_dir)
+        database_path = temp_root / "bot-society-markets-test.db"
         active_settings = settings or Settings(database_path=database_path)
         if active_settings.database_url is None:
             active_settings.database_path = database_path
+        active_settings.export_artifacts_dir = temp_root / "exports"
         app = create_app(active_settings)
         with TestClient(app) as client:
             yield client
@@ -321,10 +323,51 @@ def test_strategy_lab_advanced_export_packages_context() -> None:
         assert export_payload["engine_target"] == "prediction-market-backtesting"
         assert export_payload["asset"] == "BTC"
         assert export_payload["filename"].endswith(".json")
+        assert export_payload["saved_to_disk"] is True
+        assert export_payload["download_url"].endswith(export_payload["filename"])
+        assert Path(export_payload["filesystem_path"]).exists()
         assert export_payload["payload"]["metadata"]["asset"] == "BTC"
         assert export_payload["payload"]["simulation_result"]["selected_result"]["strategy_id"] == "trend_follow"
         assert "wallet_context" in export_payload["payload"]
         assert "macro_context" in export_payload["payload"]
+
+
+def test_strategy_lab_export_artifact_routes_expose_saved_bundles() -> None:
+    settings = Settings(simulation_live_history=False)
+    with build_client(settings) as client:
+        export_response = client.post(
+            "/api/simulation/advanced-export",
+            json={
+                "asset": "ETH",
+                "lookback_years": 2,
+                "strategy_id": "mean_reversion",
+                "starting_capital": 15000,
+                "fee_bps": 12,
+                "fast_window": 3,
+                "slow_window": 6,
+                "mean_window": 5,
+                "breakout_window": 8,
+            },
+        )
+        assert export_response.status_code == 200
+        export_payload = export_response.json()
+
+        history_response = client.get("/api/simulation/exports")
+        assert history_response.status_code == 200
+        history_payload = history_response.json()
+        assert history_payload
+        saved_artifact = next(item for item in history_payload if item["filename"] == export_payload["filename"])
+        assert saved_artifact["asset"] == "ETH"
+        assert saved_artifact["strategy_id"] == "mean_reversion"
+        assert saved_artifact["download_url"] == export_payload["download_url"]
+
+        download_response = client.get(export_payload["download_url"])
+        assert download_response.status_code == 200
+        assert "application/json" in download_response.headers["content-type"]
+        download_payload = download_response.json()
+        assert download_payload["metadata"]["asset"] == "ETH"
+        assert download_payload["metadata"]["lookback_years"] == 2
+        assert download_payload["simulation_result"]["selected_result"]["strategy_id"] == "mean_reversion"
 
 
 def test_macro_provider_readiness_and_fallback_metadata() -> None:

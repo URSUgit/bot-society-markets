@@ -335,7 +335,21 @@ class AdvancedBacktestExport(BaseModel):
     asset: str
     summary: str
     filename: str
+    download_url: str | None = None
+    filesystem_path: str | None = None
+    saved_to_disk: bool = False
     payload: dict[str, object]
+
+
+class SimulationExportArtifact(BaseModel):
+    filename: str
+    asset: str
+    strategy_id: str
+    lookback_years: int = Field(ge=1, le=10)
+    engine_target: str
+    generated_at: str
+    size_bytes: int = Field(ge=0)
+    download_url: str
 
 
 class SimulationStrategyPreset(BaseModel):

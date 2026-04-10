@@ -51,6 +51,7 @@ from .models import (
     SignalView,
     SignalMixItem,
     SimulationConfig,
+    SimulationExportArtifact,
     SimulationLeaderboardEntry,
     SimulationRequest,
     SimulationRunResult,
@@ -745,7 +746,8 @@ class BotSocietyService:
                 "Wallet context ranks public trader behavior by smart-money score and directional bias.",
             ],
         }
-        filename = f"bsm-{payload.asset.lower()}-{payload.strategy_id}-{payload.lookback_years}y-export.json"
+        filename = self._build_export_filename(payload)
+        artifact_path = self._write_export_artifact(filename, export_payload)
         summary = (
             f"Prepared {payload.asset} advanced export for {payload.strategy_id} across {result.actual_years_covered:.2f} years "
             f"with {len(related_wallets)} relevant wallet profiles and "
@@ -757,8 +759,47 @@ class BotSocietyService:
             asset=payload.asset,
             summary=summary,
             filename=filename,
+            download_url=f"/api/simulation/exports/{filename}",
+            filesystem_path=str(artifact_path),
+            saved_to_disk=True,
             payload=export_payload,
         )
+
+    def list_simulation_exports(self, limit: int = 12) -> list[SimulationExportArtifact]:
+        artifacts_dir = self._export_artifacts_dir()
+        artifacts: list[SimulationExportArtifact] = []
+        for path in sorted(artifacts_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:limit]:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            artifacts.append(
+                SimulationExportArtifact(
+                    filename=path.name,
+                    asset=str(metadata.get("asset") or "n/a"),
+                    strategy_id=str(metadata.get("strategy_id") or "n/a"),
+                    lookback_years=max(1, min(10, int(metadata.get("lookback_years") or 1))),
+                    engine_target=str(metadata.get("engine_target") or "prediction-market-backtesting"),
+                    generated_at=str(metadata.get("generated_at") or self._now()),
+                    size_bytes=max(0, path.stat().st_size),
+                    download_url=f"/api/simulation/exports/{path.name}",
+                )
+            )
+        return artifacts
+
+    def get_simulation_export_path(self, filename: str) -> Path:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+\.json", filename):
+            raise ValueError("Invalid export filename")
+        candidate = (self._export_artifacts_dir() / filename).resolve()
+        artifacts_dir = self._export_artifacts_dir().resolve()
+        if artifacts_dir not in candidate.parents:
+            raise ValueError("Invalid export filename")
+        if not candidate.exists() or not candidate.is_file():
+            raise ValueError("Export artifact not found")
+        return candidate
 
     def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
@@ -2003,6 +2044,20 @@ class BotSocietyService:
                     )
                 )
         return providers
+
+    def _export_artifacts_dir(self) -> Path:
+        path = Path(self.settings.export_artifacts_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _build_export_filename(self, payload: SimulationRequest) -> str:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        return f"bsm-{payload.asset.lower()}-{payload.strategy_id}-{payload.lookback_years}y-{timestamp}.json"
+
+    def _write_export_artifact(self, filename: str, payload: dict[str, object]) -> Path:
+        target = self._export_artifacts_dir() / filename
+        target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return target
 
     @staticmethod
     def _cache_is_fresh(cached_entry: tuple[datetime, object] | None, ttl_seconds: int = 90) -> bool:
