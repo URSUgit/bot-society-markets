@@ -67,6 +67,9 @@ Included today:
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
+- smart-wallet intelligence with demo mode or optional public Polymarket wallet tracking for selected addresses
+- fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
+- advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
@@ -85,6 +88,8 @@ Key endpoints include:
 - `GET /api/assets`
 - `GET /api/assets/{asset}/history`
 - `GET /api/macro`
+- `GET /api/wallet-intelligence`
+- `GET /api/edge`
 - `GET /api/simulation/config`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
@@ -99,6 +104,7 @@ Key endpoints include:
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `POST /api/simulation/run`
+- `POST /api/simulation/advanced-export`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
@@ -195,9 +201,11 @@ $env:BSM_ENVIRONMENT_NAME = "development"
 $env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_MACRO_PROVIDER = "demo"
+$env:BSM_WALLET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
+$env:BSM_TRACKED_WALLETS = ""
 $env:BSM_WORKER_INTERVAL_SECONDS = "900"
 $env:BSM_WORKER_MAX_CYCLES = "0"
 $env:BSM_NOTIFICATION_RETRY_LIMIT = "25"
@@ -223,6 +231,10 @@ $env:BSM_HYPERLIQUID_DEX = ""
 $env:BSM_MACRO_PROVIDER = "fred"
 $env:BSM_FRED_API_KEY = "your-fred-api-key"
 $env:BSM_FRED_SERIES_IDS = "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"
+
+$env:BSM_WALLET_PROVIDER = "polymarket"
+$env:BSM_TRACKED_WALLETS = "0xwallet1,0xwallet2"
+$env:BSM_WALLET_TRADE_LIMIT = "25"
 
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"

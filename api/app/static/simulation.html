@@ -100,6 +100,7 @@
             </div>
             <div class="hero-actions compact-actions">
               <button class="button primary" id="run-simulation-button" type="submit">Run Simulation</button>
+              <button class="button tertiary" id="generate-advanced-export-button" type="button">Generate Advanced Export</button>
               <a class="button secondary" href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Open Repository</a>
             </div>
           </form>
@@ -138,6 +139,36 @@
             </div>
           </div>
           <div class="chart-surface" id="simulation-drawdown-chart"></div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Context overlay</p>
+              <h3>Smart-money and market-pricing context for the selected asset</h3>
+            </div>
+            <span class="badge">Research assist</span>
+          </div>
+          <p class="panel-note" id="simulation-edge-summary">Loading market edge and wallet context...</p>
+          <div class="simulation-context-grid">
+            <div class="context-card-stack" id="simulation-edge-card"></div>
+            <div class="context-card-stack" id="simulation-wallet-card"></div>
+          </div>
+        </article>
+
+        <article class="card side-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Advanced export</p>
+              <h3>Package the current run for external backtesting engines</h3>
+            </div>
+            <span class="badge">JSON bundle</span>
+          </div>
+          <p class="panel-note" id="advanced-export-summary">Generate an export bundle to package the simulation, edge model, and wallet context together.</p>
+          <div class="advanced-export-card" id="advanced-export-card"></div>
+          <pre class="code-preview" id="advanced-export-preview">No export generated yet.</pre>
         </article>
       </section>
 

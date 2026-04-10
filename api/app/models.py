@@ -161,14 +161,22 @@ class ProviderStatus(BaseModel):
     macro_provider_live_capable: bool = False
     macro_provider_ready: bool = True
     macro_provider_warning: str | None = None
+    wallet_provider_mode: str
+    wallet_provider_source: str
+    wallet_provider_configured: bool = True
+    wallet_provider_live_capable: bool = False
+    wallet_provider_ready: bool = True
+    wallet_provider_warning: str | None = None
     tracked_coin_ids: list[str]
     fred_series_ids: list[str] = Field(default_factory=list)
+    tracked_wallets: list[str] = Field(default_factory=list)
     rss_feed_urls: list[str]
     reddit_subreddits: list[str] = Field(default_factory=list)
     venue_signal_providers: list[ProviderComponentStatus] = Field(default_factory=list)
     market_fallback_active: bool = False
     signal_fallback_active: bool = False
     macro_fallback_active: bool = False
+    wallet_fallback_active: bool = False
 
 
 class SignalMixItem(BaseModel):
@@ -271,6 +279,63 @@ class PaperSimulationResult(BaseModel):
     created_positions: int = Field(ge=0)
     closed_positions: int = Field(ge=0)
     snapshot: PaperTradingSnapshot
+
+
+class WalletProfileView(BaseModel):
+    address: str
+    display_name: str
+    bio: str | None = None
+    primary_asset: str | None = None
+    portfolio_value: float = Field(ge=0)
+    lifetime_volume: float = Field(ge=0)
+    traded_markets: int = Field(ge=0)
+    recent_trades: int = Field(ge=0)
+    win_rate: float = Field(ge=0, le=1)
+    realized_pnl_30d: float
+    buy_ratio: float = Field(ge=0, le=1)
+    conviction_score: float = Field(ge=0, le=1)
+    smart_money_score: float = Field(ge=0, le=1)
+    net_bias: float = Field(ge=-1, le=1)
+    recent_markets: list[str] = Field(default_factory=list)
+    source: str
+
+
+class WalletIntelligenceSnapshot(BaseModel):
+    generated_at: str
+    summary: str
+    wallets: list[WalletProfileView] = Field(default_factory=list)
+    aggregate_bias: float = Field(ge=-1, le=1)
+
+
+class EdgeOpportunityView(BaseModel):
+    asset: str
+    market_source: str
+    market_label: str
+    market_slug: str | None = None
+    implied_probability: float = Field(ge=0, le=1)
+    fair_probability: float = Field(ge=0, le=1)
+    edge_bps: float
+    confidence: float = Field(ge=0, le=1)
+    stance: Direction
+    liquidity: float = Field(ge=0)
+    volume_24h: float = Field(ge=0)
+    supporting_signals: list[str] = Field(default_factory=list)
+    updated_at: str
+
+
+class EdgeSnapshot(BaseModel):
+    generated_at: str
+    summary: str
+    opportunities: list[EdgeOpportunityView] = Field(default_factory=list)
+
+
+class AdvancedBacktestExport(BaseModel):
+    generated_at: str
+    engine_target: str
+    asset: str
+    summary: str
+    filename: str
+    payload: dict[str, object]
 
 
 class SimulationStrategyPreset(BaseModel):
@@ -437,6 +502,8 @@ class DashboardSnapshot(BaseModel):
     recent_signals: list[SignalView]
     system_pulse: SystemPulseSnapshot
     macro_snapshot: MacroSnapshot
+    wallet_intelligence: WalletIntelligenceSnapshot
+    edge_snapshot: EdgeSnapshot
     paper_trading: PaperTradingSnapshot
     latest_operation: OperationSnapshot | None = None
     auth_session: AuthSessionSnapshot

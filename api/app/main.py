@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import Settings, get_settings
 from .database import Database
 from .models import (
+    AdvancedBacktestExport,
     AlertInbox,
     AlertRuleCreate,
     AssetHistoryEnvelope,
@@ -22,6 +23,7 @@ from .models import (
     BotSummary,
     CycleResult,
     DashboardSnapshot,
+    EdgeSnapshot,
     FollowBotRequest,
     LandingSnapshot,
     MacroSnapshot,
@@ -41,6 +43,7 @@ from .models import (
     Summary,
     SystemPulseEnvelope,
     UserProfile,
+    WalletIntelligenceSnapshot,
     WatchlistAssetRequest,
 )
 from .services import BotSocietyService
@@ -162,6 +165,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def macro_snapshot(request: Request) -> MacroSnapshot:
         return get_service(request).get_macro_snapshot()
 
+    @app.get("/api/wallet-intelligence", response_model=WalletIntelligenceSnapshot)
+    def wallet_intelligence(request: Request) -> WalletIntelligenceSnapshot:
+        return get_service(request).get_wallet_intelligence()
+
+    @app.get("/api/edge", response_model=EdgeSnapshot)
+    def edge_snapshot(request: Request) -> EdgeSnapshot:
+        return get_service(request).get_edge_snapshot()
+
     @app.get("/api/bots", response_model=list[BotSummary])
     def bots(request: Request) -> list[BotSummary]:
         return get_service(request).get_leaderboard(current_user_slug(request))
@@ -253,6 +264,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/simulation/run", response_model=SimulationRunResult)
     def run_simulation(payload: SimulationRequest, request: Request) -> SimulationRunResult:
         return run_validated(lambda: get_service(request).run_simulation(payload))
+
+    @app.post("/api/simulation/advanced-export", response_model=AdvancedBacktestExport)
+    def advanced_simulation_export(payload: SimulationRequest, request: Request) -> AdvancedBacktestExport:
+        return run_validated(lambda: get_service(request).export_advanced_backtest(payload))
 
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:

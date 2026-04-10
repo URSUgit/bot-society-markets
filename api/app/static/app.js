@@ -1,7 +1,9 @@
 const fmtPercent = (value, digits = 0) => `${(Number(value) * 100).toFixed(digits)}%`;
 const fmtScore = (value) => Number(value).toFixed(1);
 const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
+const fmtCompactNumber = (value) => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
+const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
 const AUTO_REFRESH_MS = 20000;
 const RUN_CYCLE_STAGES = [
@@ -93,10 +95,12 @@ function sentimentLabel(value) {
 function providerState(providerStatus) {
   const healthy = providerStatus?.market_provider_ready
     && providerStatus?.signal_provider_ready
-    && providerStatus?.macro_provider_ready;
+    && providerStatus?.macro_provider_ready
+    && providerStatus?.wallet_provider_ready;
   const fallback = providerStatus?.market_fallback_active
     || providerStatus?.signal_fallback_active
-    || providerStatus?.macro_fallback_active;
+    || providerStatus?.macro_fallback_active
+    || providerStatus?.wallet_fallback_active;
   if (fallback) {
     return { label: "Fallback active", variant: "warning" };
   }
@@ -127,6 +131,7 @@ let selectedMacroSeries = null;
 let chartResizeFrame = null;
 let simulationConfig = null;
 let latestSimulationResult = null;
+let latestAdvancedExport = null;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -230,7 +235,7 @@ function renderHeroMeta(snapshot) {
   const latestOperation = snapshot.latest_operation;
   const latestSignal = snapshot.recent_signals?.[0];
   const pulse = snapshot.system_pulse;
-  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${pulse?.live_provider_count ?? 0} live-capable providers · ${snapshot.summary.pending_predictions} pending predictions · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
+  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${pulse?.live_provider_count ?? 0} live-capable providers · ${snapshot.wallet_intelligence?.wallets?.length || 0} smart wallets · ${snapshot.edge_snapshot?.opportunities?.length || 0} active edge surfaces · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
 }
 
 function renderRibbon(snapshot) {
@@ -266,15 +271,17 @@ function renderRibbon(snapshot) {
 
   const providersHealthy = snapshot.provider_status.market_provider_ready
     && snapshot.provider_status.signal_provider_ready
-    && snapshot.provider_status.macro_provider_ready;
+    && snapshot.provider_status.macro_provider_ready
+    && snapshot.provider_status.wallet_provider_ready;
   const fallbackActive = snapshot.provider_status.market_fallback_active
     || snapshot.provider_status.signal_fallback_active
-    || snapshot.provider_status.macro_fallback_active;
+    || snapshot.provider_status.macro_fallback_active
+    || snapshot.provider_status.wallet_fallback_active;
   if (providerValue) {
     providerValue.textContent = fallbackActive ? "Fallback active" : (providersHealthy ? "Primary providers stable" : "Needs attention");
   }
   if (providerSubtitle) {
-    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source} + ${snapshot.provider_status.macro_provider_source}`;
+    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source} + ${snapshot.provider_status.macro_provider_source} + ${snapshot.provider_status.wallet_provider_source}`;
   }
   if (activityBadge) {
     activityBadge.textContent = autoRefreshEnabled ? `Auto-refresh ${AUTO_REFRESH_MS / 1000}s` : "Manual refresh";
@@ -650,6 +657,220 @@ function renderSimulationChart(result) {
   );
 }
 
+function renderWalletIntelligence(snapshot, targetId = "wallet-intelligence-list", summaryId = "wallet-intelligence-summary") {
+  const container = document.getElementById(targetId);
+  const summary = document.getElementById(summaryId);
+  if (summary) {
+    summary.textContent = snapshot?.summary || "Wallet intelligence is waiting on the next refresh window.";
+  }
+  if (!container) {
+    return;
+  }
+  if (!snapshot?.wallets?.length) {
+    container.innerHTML = '<p class="panel-note">No wallet intelligence is available yet.</p>';
+    return;
+  }
+  container.innerHTML = snapshot.wallets.map((wallet, index) => `
+    <article class="wallet-watch-card ${wallet.smart_money_score >= 0.75 ? "tone-high" : (wallet.smart_money_score >= 0.6 ? "tone-mid" : "tone-low")}">
+      <div class="wallet-watch-head">
+        <div>
+          <span class="wallet-rank">Wallet ${index + 1}</span>
+          <h4>${wallet.display_name}</h4>
+        </div>
+        <span class="badge">${wallet.primary_asset || "Multi-asset"}</span>
+      </div>
+      <p>${wallet.bio || "Public trader profile observed through venue activity and recent closed positions."}</p>
+      <div class="wallet-stat-row">
+        <div>
+          <span>Smart money</span>
+          <strong>${fmtPercent(wallet.smart_money_score)}</strong>
+        </div>
+        <div>
+          <span>Conviction</span>
+          <strong>${fmtPercent(wallet.conviction_score)}</strong>
+        </div>
+        <div>
+          <span>Bias</span>
+          <strong>${wallet.net_bias >= 0 ? "Net buyer" : "Net seller"}</strong>
+        </div>
+      </div>
+      <div class="wallet-stat-row">
+        <div>
+          <span>Portfolio</span>
+          <strong>${fmtCompactNumber(wallet.portfolio_value)}</strong>
+        </div>
+        <div>
+          <span>30d P&L</span>
+          <strong>${wallet.realized_pnl_30d >= 0 ? "+" : ""}${fmtCompactNumber(wallet.realized_pnl_30d)}</strong>
+        </div>
+        <div>
+          <span>Win rate</span>
+          <strong>${fmtPercent(wallet.win_rate)}</strong>
+        </div>
+      </div>
+      <div class="asset-meter-group">
+        <div>
+          <span>Buy ratio</span>
+          <div class="asset-meter"><i style="width:${(clamp(wallet.buy_ratio, 0, 1) * 100).toFixed(2)}%"></i></div>
+        </div>
+      </div>
+      <ul class="wallet-market-list">
+        ${(wallet.recent_markets || []).slice(0, 3).map((market) => `<li>${market}</li>`).join("") || "<li>No recent market labels available</li>"}
+      </ul>
+    </article>
+  `).join("");
+}
+
+function renderEdgeSnapshot(snapshot, targetId = "edge-opportunity-list", summaryId = "edge-summary") {
+  const container = document.getElementById(targetId);
+  const summary = document.getElementById(summaryId);
+  if (summary) {
+    summary.textContent = snapshot?.summary || "Edge surfaces are waiting on the next refresh window.";
+  }
+  if (!container) {
+    return;
+  }
+  if (!snapshot?.opportunities?.length) {
+    container.innerHTML = '<p class="panel-note">No market edge opportunities are available yet.</p>';
+    return;
+  }
+  container.innerHTML = snapshot.opportunities.map((opportunity) => `
+    <article class="edge-card ${Math.abs(opportunity.edge_bps) >= 120 ? "tone-high" : "tone-mid"}">
+      <div class="edge-card-head">
+        <div>
+          <span>${opportunity.market_source}</span>
+          <h4>${opportunity.asset}</h4>
+        </div>
+        <span class="confidence-chip stance-${opportunity.stance}">${opportunity.stance}</span>
+      </div>
+      <p>${opportunity.market_label}</p>
+      <div class="edge-kpis">
+        <div>
+          <span>Implied</span>
+          <strong>${fmtPercent(opportunity.implied_probability, 1)}</strong>
+        </div>
+        <div>
+          <span>Fair</span>
+          <strong>${fmtPercent(opportunity.fair_probability, 1)}</strong>
+        </div>
+        <div>
+          <span>Edge</span>
+          <strong>${fmtBps(opportunity.edge_bps)}</strong>
+        </div>
+      </div>
+      <div class="edge-kpis edge-kpis-secondary">
+        <div>
+          <span>Confidence</span>
+          <strong>${fmtPercent(opportunity.confidence)}</strong>
+        </div>
+        <div>
+          <span>Liquidity</span>
+          <strong>${fmtCompactNumber(opportunity.liquidity)}</strong>
+        </div>
+        <div>
+          <span>24h volume</span>
+          <strong>${fmtCompactNumber(opportunity.volume_24h)}</strong>
+        </div>
+      </div>
+      <ul class="edge-signal-list">
+        ${(opportunity.supporting_signals || []).map((item) => `<li>${item}</li>`).join("")}
+      </ul>
+      <small>Updated ${fmtRelativeTime(opportunity.updated_at)}</small>
+    </article>
+  `).join("");
+}
+
+function renderSimulationContext(asset, edgeSnapshot, walletSnapshot) {
+  const edgeCard = document.getElementById("simulation-edge-card");
+  const walletCard = document.getElementById("simulation-wallet-card");
+  const summary = document.getElementById("simulation-edge-summary");
+  const edge = edgeSnapshot?.opportunities?.find((item) => item.asset === asset);
+  const wallets = (walletSnapshot?.wallets || []).filter((wallet) => wallet.primary_asset === asset);
+
+  if (summary) {
+    summary.textContent = edge
+      ? `${asset} is currently showing ${fmtBps(edge.edge_bps)} of modeled dislocation versus venue pricing with ${wallets.length} relevant smart-wallet profiles.`
+      : `${asset} does not have a direct edge surface match right now, but the wallet and macro overlays are still available.`;
+  }
+
+  if (edgeCard) {
+    edgeCard.innerHTML = edge ? `
+      <article class="context-card ${Math.abs(edge.edge_bps) >= 120 ? "tone-high" : "tone-mid"}">
+        <span>Edge surface</span>
+        <h4>${edge.market_label}</h4>
+        <p>${edge.market_source} · ${fmtBps(edge.edge_bps)} · confidence ${fmtPercent(edge.confidence)}</p>
+        <div class="edge-kpis">
+          <div><span>Implied</span><strong>${fmtPercent(edge.implied_probability, 1)}</strong></div>
+          <div><span>Fair</span><strong>${fmtPercent(edge.fair_probability, 1)}</strong></div>
+          <div><span>Stance</span><strong>${edge.stance}</strong></div>
+        </div>
+        <ul class="edge-signal-list">
+          ${(edge.supporting_signals || []).map((item) => `<li>${item}</li>`).join("")}
+        </ul>
+      </article>
+    ` : `
+      <article class="context-card">
+        <span>Edge surface</span>
+        <h4>No direct market dislocation</h4>
+        <p>There is no active pricing mismatch for ${asset} in the current research layer.</p>
+      </article>
+    `;
+  }
+
+  if (walletCard) {
+    walletCard.innerHTML = wallets.length ? wallets.slice(0, 2).map((wallet) => `
+      <article class="context-card ${wallet.smart_money_score >= 0.75 ? "tone-high" : "tone-mid"}">
+        <span>Wallet overlay</span>
+        <h4>${wallet.display_name}</h4>
+        <p>${fmtPercent(wallet.smart_money_score)} smart-money score · ${wallet.net_bias >= 0 ? "buyer" : "seller"} bias · ${fmtPercent(wallet.win_rate)} win rate</p>
+        <ul class="wallet-market-list">
+          ${(wallet.recent_markets || []).slice(0, 3).map((market) => `<li>${market}</li>`).join("")}
+        </ul>
+      </article>
+    `).join("") : `
+      <article class="context-card">
+        <span>Wallet overlay</span>
+        <h4>No asset-specific wallet profile</h4>
+        <p>The current wallet watchlist does not include a primary ${asset} profile yet.</p>
+      </article>
+    `;
+  }
+}
+
+function renderAdvancedExport(exportBundle) {
+  const summary = document.getElementById("advanced-export-summary");
+  const card = document.getElementById("advanced-export-card");
+  const preview = document.getElementById("advanced-export-preview");
+  latestAdvancedExport = exportBundle;
+
+  if (!exportBundle) {
+    if (summary) {
+      summary.textContent = "Generate an export bundle to package the simulation, edge model, and wallet context together.";
+    }
+    if (card) {
+      card.innerHTML = "";
+    }
+    if (preview) {
+      preview.textContent = "No export generated yet.";
+    }
+    return;
+  }
+
+  if (summary) {
+    summary.textContent = exportBundle.summary;
+  }
+  if (card) {
+    card.innerHTML = `
+      <div><span>File</span><strong>${exportBundle.filename}</strong></div>
+      <div><span>Engine</span><strong>${exportBundle.engine_target}</strong></div>
+      <div><span>Generated</span><strong>${fmtDateTime(exportBundle.generated_at)}</strong></div>
+    `;
+  }
+  if (preview) {
+    preview.textContent = JSON.stringify(exportBundle.payload, null, 2);
+  }
+}
+
 function populateSimulationForm(config) {
   const assetSelect = document.getElementById("simulation-asset-input");
   const yearsSelect = document.getElementById("simulation-years-input");
@@ -698,6 +919,7 @@ function currentSimulationPayload() {
 
 function renderSimulationResult(result) {
   latestSimulationResult = result;
+  renderAdvancedExport(null);
   const headline = document.getElementById("simulation-headline");
   const submeta = document.getElementById("simulation-submeta");
   const summary = document.getElementById("simulation-summary-grid");
@@ -782,6 +1004,35 @@ function renderSimulationResult(result) {
   renderSimulationChart(result);
 }
 
+async function refreshSimulationContext(asset) {
+  const [edgeSnapshot, walletSnapshot] = await Promise.all([
+    fetchJson("/api/edge"),
+    fetchJson("/api/wallet-intelligence"),
+  ]);
+  renderSimulationContext(asset, edgeSnapshot, walletSnapshot);
+}
+
+async function generateAdvancedExport() {
+  const button = document.getElementById("generate-advanced-export-button");
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const exportBundle = await fetchJson("/api/simulation/advanced-export", {
+      method: "POST",
+      body: JSON.stringify(currentSimulationPayload()),
+    });
+    renderAdvancedExport(exportBundle);
+    setStatus(`Advanced export ready: ${exportBundle.filename}.`);
+  } catch (error) {
+    setStatus(`Advanced export failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 async function runSimulation() {
   const button = document.getElementById("run-simulation-button");
   if (button) {
@@ -793,6 +1044,7 @@ async function runSimulation() {
       body: JSON.stringify(currentSimulationPayload()),
     });
     renderSimulationResult(result);
+    await refreshSimulationContext(result.asset);
     setStatus(`Simulation completed for ${result.asset}. ${result.selected_result.label} finished at ${fmtPrice(result.selected_result.final_equity)}.`);
   } catch (error) {
     setStatus(`Simulation failed: ${error.message}`);
@@ -806,6 +1058,7 @@ async function runSimulation() {
 async function loadSimulationPage() {
   simulationConfig = await fetchJson("/api/simulation/config");
   populateSimulationForm(simulationConfig);
+  renderAdvancedExport(null);
   await runSimulation();
 }
 
@@ -818,7 +1071,7 @@ function renderPulseMetrics(systemPulse, targetId) {
     <article class="pulse-metric-card">
       <span>Live providers</span>
       <strong>${systemPulse.live_provider_count}</strong>
-      <small>Market, signal, and venue feeds currently live-capable</small>
+      <small>Market, signal, wallet, and venue feeds currently live-capable</small>
     </article>
     <article class="pulse-metric-card">
       <span>Recent signals</span>
@@ -932,6 +1185,8 @@ function buildActivityItems(snapshot) {
   const latestSignal = snapshot.recent_signals?.[0];
   const latestAlert = snapshot.user_profile?.recent_alerts?.[0];
   const latestOperation = snapshot.latest_operation;
+  const leadWallet = snapshot.wallet_intelligence?.wallets?.[0];
+  const topEdge = snapshot.edge_snapshot?.opportunities?.[0];
   return [
     {
       label: "Market monitor",
@@ -953,6 +1208,20 @@ function buildActivityItems(snapshot) {
       detail: latestSignal ? `${qualityLabel(latestSignal.source_quality_score)} · ${fmtRelativeTime(latestSignal.observed_at)} · ${latestSignal.title}` : "Waiting for fresh provider input",
       meta: `${snapshot.summary.signals_last_24h} signals in last 24h`,
       tone: "copper",
+    },
+    {
+      label: "Wallet watch",
+      title: leadWallet ? `${leadWallet.display_name} is ${leadWallet.net_bias >= 0 ? "accumulating" : "de-risking"} ${leadWallet.primary_asset || "risk"}` : "Wallet watchlist is warming up",
+      detail: snapshot.wallet_intelligence?.summary || "Waiting for public wallet profiles to hydrate.",
+      meta: `${snapshot.wallet_intelligence?.wallets?.length || 0} tracked wallet profiles`,
+      tone: "teal",
+    },
+    {
+      label: "Market edge",
+      title: topEdge ? `${topEdge.asset} ${topEdge.stance} ${fmtBps(topEdge.edge_bps)}` : "No edge dislocation highlighted",
+      detail: topEdge ? `${topEdge.market_label} · confidence ${fmtPercent(topEdge.confidence)}.` : "Waiting for fair value and venue pricing to diverge.",
+      meta: topEdge ? fmtRelativeTime(topEdge.updated_at) : "idle",
+      tone: "gold",
     },
     {
       label: "Bot publication",
@@ -1264,6 +1533,9 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
         </li>
       `).join("")
     : "<li>No venue providers configured</li>";
+  const trackedWallets = providerStatus.tracked_wallets?.length
+    ? providerStatus.tracked_wallets.map((wallet) => `<li>${wallet}</li>`).join("")
+    : "<li>No tracked wallets configured</li>";
   card.innerHTML = `
     <p><strong>Environment:</strong> ${providerStatus.environment_name}</p>
     <p><strong>Deployment:</strong> ${providerStatus.deployment_target}</p>
@@ -1286,11 +1558,18 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     <p><strong>Macro live capable:</strong> ${providerStatus.macro_provider_live_capable ? "yes" : "no"}</p>
     <p><strong>Macro ready:</strong> ${providerStatus.macro_provider_ready ? "yes" : "no"}</p>
     ${providerStatus.macro_provider_warning ? `<p class="error-text">${providerStatus.macro_provider_warning}</p>` : ""}
+    <p><strong>Wallet mode:</strong> ${providerStatus.wallet_provider_mode}</p>
+    <p><strong>Wallet source:</strong> ${providerStatus.wallet_provider_source}</p>
+    <p><strong>Wallet configured:</strong> ${providerStatus.wallet_provider_configured ? "yes" : "no"}</p>
+    <p><strong>Wallet live capable:</strong> ${providerStatus.wallet_provider_live_capable ? "yes" : "no"}</p>
+    <p><strong>Wallet ready:</strong> ${providerStatus.wallet_provider_ready ? "yes" : "no"}</p>
+    ${providerStatus.wallet_provider_warning ? `<p class="error-text">${providerStatus.wallet_provider_warning}</p>` : ""}
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
     <p><strong>Macro series:</strong> ${providerStatus.fred_series_ids.join(", ")}</p>
     <p><strong>Market fallback:</strong> ${providerStatus.market_fallback_active ? "yes" : "no"}</p>
     <p><strong>Signal fallback:</strong> ${providerStatus.signal_fallback_active ? "yes" : "no"}</p>
     <p><strong>Macro fallback:</strong> ${providerStatus.macro_fallback_active ? "yes" : "no"}</p>
+    <p><strong>Wallet fallback:</strong> ${providerStatus.wallet_fallback_active ? "yes" : "no"}</p>
     <div class="provider-feed-list">
       <strong>RSS feeds</strong>
       <ul>${rssFeeds}</ul>
@@ -1302,6 +1581,10 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     <div class="provider-feed-list">
       <strong>Venue providers</strong>
       <ul>${venueProviders}</ul>
+    </div>
+    <div class="provider-feed-list">
+      <strong>Tracked wallets</strong>
+      <ul>${trackedWallets}</ul>
     </div>
   `;
 }
@@ -1340,7 +1623,7 @@ function renderStatusPage(landing, systemPulse, providerStatus, operation) {
   }
 
   if (providerNote) {
-    providerNote.textContent = `${providerStatus.environment_name} environment · market ${providerStatus.market_provider_source} · signal ${providerStatus.signal_provider_source} · macro ${providerStatus.macro_provider_source} · pulse updated ${fmtRelativeTime(systemPulse.generated_at)}.`;
+    providerNote.textContent = `${providerStatus.environment_name} environment · market ${providerStatus.market_provider_source} · signal ${providerStatus.signal_provider_source} · macro ${providerStatus.macro_provider_source} · wallet ${providerStatus.wallet_provider_source} · pulse updated ${fmtRelativeTime(systemPulse.generated_at)}.`;
   }
 
   renderPulseMetrics(systemPulse, "status-pulse-metrics");
@@ -1664,6 +1947,8 @@ async function loadDashboard(options = {}) {
     renderDashboardPulse(snapshot);
     renderMacroCards(snapshot.macro_snapshot, "dashboard-macro-grid", null, "dashboard-macro-summary");
     renderMacroChart(snapshot.macro_snapshot);
+    renderWalletIntelligence(snapshot.wallet_intelligence);
+    renderEdgeSnapshot(snapshot.edge_snapshot);
     renderPaperTrading(snapshot.paper_trading);
     await renderDashboardMarketChart(snapshot.assets);
     renderActivityFeed(snapshot);
@@ -2002,6 +2287,12 @@ function bindInteractions() {
     if (target.id === "simulate-paper-trading-button") {
       event.preventDefault();
       await simulatePaperTrading();
+      return;
+    }
+
+    if (target.id === "generate-advanced-export-button") {
+      event.preventDefault();
+      await generateAdvancedExport();
       return;
     }
 

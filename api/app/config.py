@@ -15,6 +15,7 @@ MarketProviderMode = Literal["demo", "coingecko", "hyperliquid"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
 MacroProviderMode = Literal["demo", "fred"]
+WalletProviderMode = Literal["demo", "polymarket"]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -69,6 +70,7 @@ class Settings:
     signal_provider_mode: SignalProviderMode = "demo"
     venue_signal_providers: tuple[VenueSignalProviderMode, ...] = ()
     macro_provider_mode: MacroProviderMode = "demo"
+    wallet_provider_mode: WalletProviderMode = "demo"
     coingecko_api_key: str | None = None
     coingecko_plan: Literal["demo", "pro"] = "demo"
     tracked_coin_ids: tuple[str, ...] = ("bitcoin", "ethereum", "solana")
@@ -83,6 +85,8 @@ class Settings:
     reddit_post_limit: int = 15
     polymarket_tag_id: int = 21
     polymarket_event_limit: int = 30
+    tracked_wallets: tuple[str, ...] = ()
+    wallet_trade_limit: int = 25
     kalshi_category: str = "Crypto"
     kalshi_series_limit: int = 12
     kalshi_markets_per_series: int = 4
@@ -133,6 +137,10 @@ def get_settings() -> Settings:
     if macro_provider_mode not in {"demo", "fred"}:
         macro_provider_mode = "demo"
 
+    wallet_provider_mode = os.getenv("BSM_WALLET_PROVIDER", "demo").lower()
+    if wallet_provider_mode not in {"demo", "polymarket"}:
+        wallet_provider_mode = "demo"
+
     venue_signal_providers = tuple(
         provider
         for provider in _split_csv_env(os.getenv("BSM_VENUE_SIGNAL_PROVIDERS", ""))
@@ -145,6 +153,7 @@ def get_settings() -> Settings:
 
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
+    tracked_wallets = _split_csv_env(os.getenv("BSM_TRACKED_WALLETS", ""))
     rss_feed_urls = _split_csv_env(os.getenv("BSM_RSS_FEED_URLS", ""))
     reddit_subreddits = _split_csv_env(os.getenv("BSM_REDDIT_SUBREDDITS", "CryptoCurrency,Bitcoin,ethtrader,solana"))
 
@@ -156,6 +165,7 @@ def get_settings() -> Settings:
     reddit_post_limit = max(5, min(50, int(os.getenv("BSM_REDDIT_POST_LIMIT", "15"))))
     polymarket_tag_id = max(1, int(os.getenv("BSM_POLYMARKET_TAG_ID", "21")))
     polymarket_event_limit = max(5, min(100, int(os.getenv("BSM_POLYMARKET_EVENT_LIMIT", "30"))))
+    wallet_trade_limit = max(5, min(100, int(os.getenv("BSM_WALLET_TRADE_LIMIT", "25"))))
     kalshi_series_limit = max(1, min(50, int(os.getenv("BSM_KALSHI_SERIES_LIMIT", "12"))))
     kalshi_markets_per_series = max(1, min(10, int(os.getenv("BSM_KALSHI_MARKETS_PER_SERIES", "4"))))
     notification_retry_limit = max(1, int(os.getenv("BSM_NOTIFICATION_RETRY_LIMIT", "25")))
@@ -173,11 +183,13 @@ def get_settings() -> Settings:
         signal_provider_mode=signal_provider_mode,
         venue_signal_providers=venue_signal_providers,
         macro_provider_mode=macro_provider_mode,
+        wallet_provider_mode=wallet_provider_mode,
         coingecko_api_key=os.getenv("BSM_COINGECKO_API_KEY") or None,
         coingecko_plan=plan,
         tracked_coin_ids=coin_ids or ("bitcoin", "ethereum", "solana"),
         fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,
         fred_series_ids=fred_series_ids or ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS"),
+        tracked_wallets=tracked_wallets,
         hyperliquid_dex=os.getenv("BSM_HYPERLIQUID_DEX", ""),
         rss_feed_urls=rss_feed_urls,
         reddit_client_id=os.getenv("BSM_REDDIT_CLIENT_ID") or None,
@@ -187,6 +199,7 @@ def get_settings() -> Settings:
         reddit_post_limit=reddit_post_limit,
         polymarket_tag_id=polymarket_tag_id,
         polymarket_event_limit=polymarket_event_limit,
+        wallet_trade_limit=wallet_trade_limit,
         kalshi_category=os.getenv("BSM_KALSHI_CATEGORY", "Crypto"),
         kalshi_series_limit=kalshi_series_limit,
         kalshi_markets_per_series=kalshi_markets_per_series,

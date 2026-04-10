@@ -46,6 +46,39 @@ class MacroProviderBase:
         return ProviderReadiness(ready=True)
 
 
+class WalletProviderBase:
+    source_name = "wallet-provider"
+    ASSET_ALIASES = {
+        "BTC": ("bitcoin", "btc", "xbt", "blackrock etf", "spot btc"),
+        "ETH": ("ethereum", "eth", "ether", "staking", "l2"),
+        "SOL": ("solana", "sol", "jupiter", "memecoin", "validator"),
+    }
+
+    def readiness(self) -> ProviderReadiness:
+        return ProviderReadiness(ready=True)
+
+    def _infer_primary_asset(self, market_labels: list[str], tracked_assets) -> str | None:
+        joined = " ".join(label for label in market_labels if label).lower()
+        if not joined:
+            return None
+        scores: list[tuple[int, str]] = []
+        for asset, aliases in self.ASSET_ALIASES.items():
+            if asset not in tracked_assets:
+                continue
+            score = 0
+            for alias in aliases:
+                if " " in alias:
+                    score += 1 if alias in joined else 0
+                else:
+                    score += 1 if re.search(rf"\b{re.escape(alias)}\b", joined) else 0
+            if score:
+                scores.append((score, asset))
+        if not scores:
+            return None
+        scores.sort(reverse=True)
+        return scores[0][1]
+
+
 class DemoMacroProvider(MacroProviderBase):
     source_name = "demo-macro-provider"
 
@@ -1020,6 +1053,299 @@ class KalshiSignalProvider(AssetAwareSignalProvider):
                 self._safe_float(market.get("liquidity_dollars"), 0.0) or 0.0,
             ),
         )
+
+
+class DemoWalletProvider(WalletProviderBase):
+    source_name = "demo-wallet-provider"
+
+    def generate(self, tracked_assets: tuple[str, ...]) -> list[dict]:
+        from .seed_data import WALLET_INTELLIGENCE_SEEDS
+
+        generated = []
+        for row in WALLET_INTELLIGENCE_SEEDS:
+            if row.get("primary_asset") and row["primary_asset"] not in tracked_assets:
+                continue
+            generated.append(dict(row))
+        return generated
+
+
+class PolymarketWalletProvider(WalletProviderBase):
+    source_name = "polymarket-wallet-provider"
+    PROFILE_URL = "https://gamma-api.polymarket.com/public-profile"
+    DATA_API_URL = "https://data-api.polymarket.com"
+
+    def __init__(self, *, tracked_wallets: tuple[str, ...], trade_limit: int) -> None:
+        self.tracked_wallets = tracked_wallets
+        self.trade_limit = trade_limit
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.tracked_wallets:
+            return ProviderReadiness(False, "Wallet mode requires BSM_TRACKED_WALLETS")
+        return ProviderReadiness(True)
+
+    def generate(self, tracked_assets: tuple[str, ...]) -> list[dict]:
+        generated: list[dict] = []
+        for wallet in self.tracked_wallets:
+            address = wallet.strip()
+            if not address:
+                continue
+            profile = self._fetch_json(self.PROFILE_URL, {"address": address})
+            value_payload = self._fetch_json(f"{self.DATA_API_URL}/value", {"user": address})
+            traded_payload = self._fetch_json(f"{self.DATA_API_URL}/traded", {"user": address})
+            closed_positions = self._extract_items(
+                self._fetch_json(f"{self.DATA_API_URL}/closed-positions", {"user": address, "limit": str(self.trade_limit)})
+            )
+            trades = self._extract_items(
+                self._fetch_json(f"{self.DATA_API_URL}/trades", {"user": address, "limit": str(self.trade_limit)})
+            )
+
+            recent_markets = self._recent_markets(closed_positions, trades)
+            primary_asset = self._infer_primary_asset(recent_markets, tracked_assets)
+            if primary_asset is None and tracked_assets:
+                primary_asset = tracked_assets[0]
+            portfolio_value = self._extract_numeric(value_payload, ("value", "totalValue", "portfolioValue"), default=0.0)
+            traded_markets = int(self._extract_numeric(traded_payload, ("count", "traded", "markets", "total"), default=len(recent_markets)))
+            recent_trades = len(trades) if trades else len(closed_positions)
+            realized_pnl_30d = round(
+                sum(self._extract_numeric(position, ("realizedPnl", "realizedPnlUsd", "pnl", "profit", "profitLoss"), default=0.0) for position in closed_positions),
+                2,
+            )
+            positive_closes = sum(
+                1 for position in closed_positions
+                if self._extract_numeric(position, ("realizedPnl", "realizedPnlUsd", "pnl", "profit", "profitLoss"), default=0.0) > 0
+            )
+            win_rate = positive_closes / len(closed_positions) if closed_positions else 0.0
+            buy_ratio = self._buy_ratio(trades)
+            conviction_score = _clamp(
+                0.35
+                + min(0.18, portfolio_value / 75000)
+                + min(0.18, recent_trades / 50)
+                + min(0.12, max(realized_pnl_30d, 0.0) / 5000),
+                0.18,
+                0.98,
+            )
+            smart_money_score = _clamp(
+                (conviction_score * 0.4)
+                + (win_rate * 0.28)
+                + min(0.16, traded_markets / 60)
+                + min(0.16, max(realized_pnl_30d, 0.0) / 8000),
+                0.15,
+                0.99,
+            )
+            generated.append(
+                {
+                    "address": address,
+                    "display_name": profile.get("name") or profile.get("pseudonym") or f"{address[:6]}...{address[-4:]}",
+                    "bio": profile.get("bio") or None,
+                    "primary_asset": primary_asset,
+                    "portfolio_value": round(portfolio_value, 2),
+                    "lifetime_volume": round(self._extract_numeric(traded_payload, ("volume", "totalVolume", "amount"), default=0.0), 2),
+                    "traded_markets": max(0, traded_markets),
+                    "recent_trades": max(0, recent_trades),
+                    "win_rate": round(win_rate, 3),
+                    "realized_pnl_30d": realized_pnl_30d,
+                    "buy_ratio": round(buy_ratio, 3),
+                    "conviction_score": round(conviction_score, 3),
+                    "smart_money_score": round(smart_money_score, 3),
+                    "net_bias": round((buy_ratio - 0.5) * 2, 3),
+                    "recent_markets": recent_markets[:4],
+                    "source": self.source_name,
+                }
+            )
+
+        if not generated:
+            raise ValueError("Wallet provider did not yield any public wallet intelligence")
+        return generated
+
+    @staticmethod
+    def _fetch_json(url: str, params: dict[str, str]) -> dict | list:
+        request = Request(
+            f"{url}?{urlencode(params)}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _extract_items(payload: dict | list) -> list[dict]:
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if not isinstance(payload, dict):
+            return []
+        for key in ("data", "positions", "closedPositions", "trades", "activities", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return []
+
+    @staticmethod
+    def _extract_numeric(payload, keys: tuple[str, ...], *, default: float) -> float:
+        if isinstance(payload, (int, float)):
+            return float(payload)
+        if not isinstance(payload, dict):
+            return default
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, dict):
+                candidate = value.get("value")
+                if candidate not in (None, ""):
+                    try:
+                        return float(candidate)
+                    except (TypeError, ValueError):
+                        continue
+            if value not in (None, ""):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+        return default
+
+    def _buy_ratio(self, trades: list[dict]) -> float:
+        if not trades:
+            return 0.5
+        buy_like = 0
+        for trade in trades:
+            side = str(trade.get("side") or trade.get("type") or trade.get("takerSide") or "").lower()
+            if "buy" in side or "bid" in side or "long" in side:
+                buy_like += 1
+        return buy_like / len(trades)
+
+    def _recent_markets(self, closed_positions: list[dict], trades: list[dict]) -> list[str]:
+        labels: list[str] = []
+        for item in closed_positions + trades:
+            label = str(
+                item.get("title")
+                or item.get("marketTitle")
+                or item.get("marketSlug")
+                or item.get("question")
+                or item.get("slug")
+                or ""
+            ).strip()
+            if label and label not in labels:
+                labels.append(label)
+        return labels
+
+
+class DemoPredictionMarketIntelProvider(AssetAwareSignalProvider):
+    source_name = "demo-prediction-market-intel-provider"
+
+    def generate_intel(self, tracked_assets: tuple[str, ...]) -> list[dict]:
+        from .seed_data import EDGE_MARKET_SEEDS
+
+        return [dict(row) for row in EDGE_MARKET_SEEDS if row["asset"] in tracked_assets]
+
+
+class PolymarketPredictionMarketIntelProvider(AssetAwareSignalProvider):
+    source_name = "polymarket-public-market-intel-provider"
+
+    def __init__(self, *, tag_id: int, event_limit: int) -> None:
+        self.tag_id = tag_id
+        self.event_limit = event_limit
+
+    def readiness(self) -> ProviderReadiness:
+        if self.tag_id < 1:
+            return ProviderReadiness(False, "Polymarket market-intel mode requires a positive BSM_POLYMARKET_TAG_ID")
+        return ProviderReadiness(True)
+
+    def generate_intel(self, tracked_assets: tuple[str, ...]) -> list[dict]:
+        query = urlencode(
+            {
+                "tag_id": str(self.tag_id),
+                "active": "true",
+                "closed": "false",
+                "limit": str(self.event_limit),
+            }
+        )
+        request = Request(
+            f"https://gamma-api.polymarket.com/events?{query}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        generated: list[dict] = []
+        asset_counts: dict[str, int] = {}
+        for event in payload:
+            title = self._clean_text(str(event.get("title") or "Untitled Polymarket event"))
+            description = self._clean_text(str(event.get("description") or title))
+            full_text = f" {title} {description} ".lower()
+            asset = self._infer_asset(full_text, tracked_assets)
+            if not asset or asset_counts.get(asset, 0) >= 1:
+                continue
+            market = self._select_market(event.get("markets") or [])
+            if not market:
+                continue
+            probability = self._prediction_probability(
+                market.get("lastTradePrice"),
+                self._prediction_probability(market.get("bestBid"), market.get("bestAsk")),
+            )
+            if probability is None:
+                probability = self._fallback_probability_from_outcomes(market)
+            if probability is None:
+                continue
+            liquidity = self._safe_float(market.get("liquidityNum"), self._safe_float(event.get("liquidityClob"), 0.0)) or 0.0
+            volume = self._safe_float(market.get("volume24hrClob"), self._safe_float(event.get("volume24hr"), 0.0)) or 0.0
+            generated.append(
+                {
+                    "asset": asset,
+                    "market_source": "Polymarket",
+                    "market_label": self._clean_text(str(market.get("question") or title)),
+                    "market_slug": event.get("slug") or market.get("slug"),
+                    "implied_probability": float(probability),
+                    "liquidity": float(liquidity),
+                    "volume_24h": float(volume),
+                    "updated_at": market.get("updatedAt") or event.get("updatedAt") or to_timestamp(datetime.now(timezone.utc)),
+                }
+            )
+            asset_counts[asset] = asset_counts.get(asset, 0) + 1
+
+        if not generated:
+            raise ValueError("Polymarket market intel did not yield tracked-asset opportunities")
+        return generated
+
+    def _select_market(self, markets: list[dict]) -> dict | None:
+        active_markets = [
+            market
+            for market in markets
+            if bool(market.get("active")) and not bool(market.get("closed")) and bool(market.get("acceptingOrders", True))
+        ]
+        if not active_markets:
+            return None
+        return max(
+            active_markets,
+            key=lambda market: (
+                self._safe_float(market.get("volume24hrClob"), 0.0) or 0.0,
+                self._safe_float(market.get("volumeClob"), 0.0) or 0.0,
+                self._safe_float(market.get("liquidityClob"), 0.0) or 0.0,
+            ),
+        )
+
+    def _fallback_probability_from_outcomes(self, market: dict) -> float | None:
+        prices = market.get("outcomePrices")
+        outcomes = market.get("outcomes")
+        if isinstance(prices, str):
+            try:
+                prices = json.loads(prices)
+            except json.JSONDecodeError:
+                prices = None
+        if isinstance(outcomes, str):
+            try:
+                outcomes = json.loads(outcomes)
+            except json.JSONDecodeError:
+                outcomes = None
+        if not isinstance(prices, list):
+            return None
+        if isinstance(outcomes, list):
+            for index, outcome in enumerate(outcomes):
+                if str(outcome).strip().lower() in {"yes", "up"} and index < len(prices):
+                    try:
+                        return float(prices[index])
+                    except (TypeError, ValueError):
+                        return None
+        try:
+            return float(prices[0])
+        except (IndexError, TypeError, ValueError):
+            return None
 
 
 

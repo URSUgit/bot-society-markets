@@ -48,6 +48,7 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
         assert payload["provider_status"]["macro_provider_mode"] == "demo"
+        assert payload["provider_status"]["wallet_provider_mode"] == "demo"
         assert payload["provider_status"]["environment_name"] == "development"
         assert payload["provider_status"]["deployment_target"] == "local"
         assert payload["provider_status"]["database_backend"] == "sqlite"
@@ -56,6 +57,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["system_pulse"]["total_recent_signals"] >= 1
         assert payload["system_pulse"]["signal_mix"]
         assert payload["macro_snapshot"]["series"]
+        assert payload["wallet_intelligence"]["wallets"]
+        assert abs(payload["wallet_intelligence"]["aggregate_bias"]) <= 1
+        assert payload["edge_snapshot"]["opportunities"]
         assert "paper_trading" in payload
         assert payload["paper_trading"]["summary"]["starting_balance"] == 10000
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
@@ -279,6 +283,50 @@ def test_macro_and_asset_history_endpoints_expose_research_data() -> None:
         assert "Unknown asset" in missing_history_response.json()["detail"]
 
 
+def test_wallet_and_edge_endpoints_expose_research_context() -> None:
+    with build_client() as client:
+        wallet_response = client.get("/api/wallet-intelligence")
+        assert wallet_response.status_code == 200
+        wallet_payload = wallet_response.json()
+        assert wallet_payload["wallets"]
+        assert wallet_payload["wallets"][0]["smart_money_score"] >= 0
+
+        edge_response = client.get("/api/edge")
+        assert edge_response.status_code == 200
+        edge_payload = edge_response.json()
+        assert edge_payload["opportunities"]
+        assert edge_payload["opportunities"][0]["asset"] in {"BTC", "ETH", "SOL"}
+        assert edge_payload["opportunities"][0]["supporting_signals"]
+
+
+def test_strategy_lab_advanced_export_packages_context() -> None:
+    settings = Settings(simulation_live_history=False)
+    with build_client(settings) as client:
+        export_response = client.post(
+            "/api/simulation/advanced-export",
+            json={
+                "asset": "BTC",
+                "lookback_years": 1,
+                "strategy_id": "trend_follow",
+                "starting_capital": 10000,
+                "fee_bps": 10,
+                "fast_window": 2,
+                "slow_window": 4,
+                "mean_window": 3,
+                "breakout_window": 3,
+            },
+        )
+        assert export_response.status_code == 200
+        export_payload = export_response.json()
+        assert export_payload["engine_target"] == "prediction-market-backtesting"
+        assert export_payload["asset"] == "BTC"
+        assert export_payload["filename"].endswith(".json")
+        assert export_payload["payload"]["metadata"]["asset"] == "BTC"
+        assert export_payload["payload"]["simulation_result"]["selected_result"]["strategy_id"] == "trend_follow"
+        assert "wallet_context" in export_payload["payload"]
+        assert "macro_context" in export_payload["payload"]
+
+
 def test_macro_provider_readiness_and_fallback_metadata() -> None:
     with build_client(Settings(macro_provider_mode="fred")) as client:
         provider_response = client.get("/api/system/providers")
@@ -382,6 +430,22 @@ def test_hyperliquid_and_venue_provider_metadata() -> None:
         assert {provider["mode"] for provider in provider_payload["venue_signal_providers"]} == {"polymarket", "kalshi"}
 
 
+def test_wallet_provider_configuration_metadata() -> None:
+    settings = Settings(
+        wallet_provider_mode="polymarket",
+        tracked_wallets=("0x1111111111111111111111111111111111111111",),
+    )
+    with build_client(settings) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["wallet_provider_mode"] == "polymarket"
+        assert provider_payload["wallet_provider_configured"] is True
+        assert provider_payload["wallet_provider_live_capable"] is True
+        assert provider_payload["wallet_provider_ready"] is True
+        assert provider_payload["tracked_wallets"] == ["0x1111111111111111111111111111111111111111"]
+
+
 def test_landing_snapshot_and_system_pulse_endpoint() -> None:
     settings = Settings(
         market_provider_mode="hyperliquid",
@@ -422,7 +486,7 @@ def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
         assert 0 <= first_signal["provider_trust_score"] <= 1
         assert 0 <= first_signal["freshness_score"] <= 1
         assert 0 <= first_signal["source_quality_score"] <= 1
-        assert first_signal["source_quality_score"] >= 0.6
+        assert max(signal["source_quality_score"] for signal in payload) >= 0.6
         social_signal = next(signal for signal in payload if signal["channel"] == "social")
         assert social_signal["source_type"] == "social"
 

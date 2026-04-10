@@ -13,6 +13,7 @@ from .auth import AuthManager
 from .config import Settings
 from .database import Database
 from .models import (
+    AdvancedBacktestExport,
     AlertDelivery,
     AlertInbox,
     AlertRule,
@@ -27,6 +28,8 @@ from .models import (
     BotSummary,
     CycleResult,
     DashboardSnapshot,
+    EdgeOpportunityView,
+    EdgeSnapshot,
     FollowedBot,
     LandingSnapshot,
     MacroObservationPoint,
@@ -60,6 +63,8 @@ from .models import (
     UserIdentity,
     UserProfile,
     VenuePulseItem,
+    WalletIntelligenceSnapshot,
+    WalletProfileView,
     WatchlistItem,
 )
 from .notifications import NotificationDispatcher
@@ -68,11 +73,15 @@ from .providers import (
     CoinGeckoMarketProvider,
     DemoMarketProvider,
     DemoMacroProvider,
+    DemoPredictionMarketIntelProvider,
     DemoSignalProvider,
+    DemoWalletProvider,
     FredMacroProvider,
     HyperliquidMarketProvider,
     KalshiSignalProvider,
+    PolymarketPredictionMarketIntelProvider,
     PolymarketSignalProvider,
+    PolymarketWalletProvider,
     RedditSignalProvider,
     RSSNewsSignalProvider,
 )
@@ -116,6 +125,8 @@ class BotSocietyService:
         self.demo_market_provider = DemoMarketProvider()
         self.demo_signal_provider = DemoSignalProvider()
         self.demo_macro_provider = DemoMacroProvider(series_ids=self.settings.fred_series_ids)
+        self.demo_wallet_provider = DemoWalletProvider()
+        self.demo_market_intel_provider = DemoPredictionMarketIntelProvider()
         self.history_provider = CoinGeckoMarketProvider(
             plan=self.settings.coingecko_plan,
             api_key=self.settings.coingecko_api_key,
@@ -124,14 +135,23 @@ class BotSocietyService:
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
         self.macro_provider = self._build_macro_provider()
+        self.wallet_provider = self._build_wallet_provider()
+        self.market_intel_provider = PolymarketPredictionMarketIntelProvider(
+            tag_id=self.settings.polymarket_tag_id,
+            event_limit=self.settings.polymarket_event_limit,
+        )
         self.venue_signal_providers = self._build_venue_signal_providers()
         self.orchestrator = PredictionOrchestrator()
         self.market_provider_fallback = False
         self.signal_provider_fallback = False
         self.macro_provider_fallback = False
+        self.wallet_provider_fallback = False
         self.market_provider_source = self.market_provider.source_name
         self.signal_provider_source = self._compose_signal_provider_source()
         self.macro_provider_source = self.macro_provider.source_name
+        self.wallet_provider_source = self.wallet_provider.source_name
+        self.wallet_snapshot_cache: tuple[datetime, WalletIntelligenceSnapshot] | None = None
+        self.edge_snapshot_cache: tuple[datetime, EdgeSnapshot] | None = None
 
     def bootstrap(self) -> None:
         self.database.initialize()
@@ -527,6 +547,219 @@ class BotSocietyService:
             leaderboard=leaderboard,
         )
 
+    def get_wallet_intelligence(self, force_refresh: bool = False) -> WalletIntelligenceSnapshot:
+        if not force_refresh and self._cache_is_fresh(self.wallet_snapshot_cache):
+            return self.wallet_snapshot_cache[1]
+
+        tracked_assets = self._current_tracked_assets()
+        generated_rows: list[dict]
+        summary_prefix = "Demo wallet intelligence is active."
+
+        if self.settings.wallet_provider_mode == "demo":
+            generated_rows = self.demo_wallet_provider.generate(tracked_assets)
+            self.wallet_provider_fallback = False
+            self.wallet_provider_source = self.demo_wallet_provider.source_name
+        else:
+            try:
+                generated_rows = self.wallet_provider.generate(tracked_assets)
+                self.wallet_provider_fallback = False
+                self.wallet_provider_source = self.wallet_provider.source_name
+                summary_prefix = "Live public wallet intelligence is active."
+            except Exception as exc:
+                generated_rows = self.demo_wallet_provider.generate(tracked_assets)
+                self.wallet_provider_fallback = True
+                self.wallet_provider_source = f"{self.wallet_provider.source_name}-fallback"
+                summary_prefix = f"Wallet fallback active after {exc.__class__.__name__}."
+
+        wallets = [
+            WalletProfileView(**row)
+            for row in sorted(generated_rows, key=lambda item: (float(item.get("smart_money_score") or 0.0), float(item.get("portfolio_value") or 0.0)), reverse=True)
+        ]
+        weighted_bias_sum = 0.0
+        weighted_bias_denominator = 0.0
+        for wallet in wallets:
+            weight = max(0.2, wallet.smart_money_score)
+            weighted_bias_sum += wallet.net_bias * weight
+            weighted_bias_denominator += weight
+        aggregate_bias = clamp(weighted_bias_sum / weighted_bias_denominator if weighted_bias_denominator else 0.0, -1.0, 1.0)
+        lead_wallet = wallets[0] if wallets else None
+        wallet_focus = lead_wallet.primary_asset if lead_wallet and lead_wallet.primary_asset else "tracked assets"
+        bias_label = (
+            "bullish"
+            if aggregate_bias >= 0.18
+            else ("bearish" if aggregate_bias <= -0.18 else "balanced")
+        )
+        summary = (
+            f"{summary_prefix} Tracking {len(wallets)} wallets with a {bias_label} aggregate lean across {wallet_focus}. "
+            f"Lead wallet {lead_wallet.display_name} is scoring {lead_wallet.smart_money_score:.0%} on smart-money quality."
+            if lead_wallet
+            else f"{summary_prefix} No public wallet profiles are available yet."
+        )
+        snapshot = WalletIntelligenceSnapshot(
+            generated_at=self._now(),
+            summary=summary,
+            wallets=wallets,
+            aggregate_bias=round(aggregate_bias, 3),
+        )
+        self.wallet_snapshot_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def get_edge_snapshot(
+        self,
+        repository: BotSocietyRepository | None = None,
+        *,
+        force_refresh: bool = False,
+        wallet_snapshot: WalletIntelligenceSnapshot | None = None,
+        macro_snapshot: MacroSnapshot | None = None,
+    ) -> EdgeSnapshot:
+        if not force_refresh and self._cache_is_fresh(self.edge_snapshot_cache):
+            return self.edge_snapshot_cache[1]
+
+        active_repository = repository or BotSocietyRepository(self.database)
+        tracked_assets = self._current_tracked_assets(active_repository)
+        latest_assets = {row["asset"]: row for row in active_repository.list_latest_market_snapshots()}
+        recent_signals = active_repository.list_recent_signals(limit=120)
+        macro_snapshot = macro_snapshot or self.get_macro_snapshot(active_repository)
+        wallet_snapshot = wallet_snapshot or self.get_wallet_intelligence()
+        market_intel_source = self.demo_market_intel_provider.source_name
+
+        try:
+            intel_rows = self.market_intel_provider.generate_intel(tracked_assets)
+            market_intel_source = self.market_intel_provider.source_name
+        except Exception:
+            intel_rows = self.demo_market_intel_provider.generate_intel(tracked_assets)
+
+        macro_bias = clamp(mean(series.signal_bias for series in macro_snapshot.series), -1.0, 1.0) if macro_snapshot.series else 0.0
+        opportunities: list[EdgeOpportunityView] = []
+
+        for row in intel_rows:
+            asset = str(row["asset"]).upper()
+            asset_row = latest_assets.get(asset, {})
+            asset_signals = [signal for signal in recent_signals if str(signal.get("asset")).upper() == asset]
+            signal_bias = self._signal_sentiment_for_asset(asset_signals)
+            wallet_bias = self._wallet_bias_for_asset(wallet_snapshot, asset)
+            wallet_confidence = self._wallet_confidence_for_asset(wallet_snapshot, asset)
+            trend_bias = clamp(float(asset_row.get("trend_score") or 0.0), -1.0, 1.0)
+            internal_signal_bias = clamp((signal_bias * 0.45) + (wallet_bias * 0.35) + (trend_bias * 0.2), -1.0, 1.0)
+            fair_probability = self._fair_probability(
+                implied_probability=float(row["implied_probability"]),
+                macro_bias=macro_bias,
+                wallet_bias=wallet_bias,
+                signal_bias=internal_signal_bias,
+                trend_bias=trend_bias,
+            )
+            edge_bps = round((fair_probability - float(row["implied_probability"])) * 10000, 1)
+            liquidity_score = min(1.0, float(row.get("liquidity") or 0.0) / 250000)
+            quality_score = mean(float(signal.get("source_quality_score") or 0.0) for signal in asset_signals) if asset_signals else 0.45
+            confidence = clamp(
+                0.2
+                + (min(1.0, abs(edge_bps) / 500) * 0.24)
+                + (liquidity_score * 0.18)
+                + (quality_score * 0.18)
+                + (wallet_confidence * 0.12)
+                + (min(1.0, len(asset_signals) / 6) * 0.08)
+                + (min(1.0, abs(macro_bias)) * 0.05),
+                0.12,
+                0.99,
+            )
+            if edge_bps >= 80:
+                stance = "bullish"
+            elif edge_bps <= -80:
+                stance = "bearish"
+            else:
+                stance = "neutral"
+            supporting_signals: list[str] = []
+            if asset_signals:
+                top_signal = max(
+                    asset_signals,
+                    key=lambda signal: (
+                        float(signal.get("source_quality_score") or 0.0),
+                        float(signal.get("relevance") or 0.0),
+                    ),
+                )
+                supporting_signals.append(f"Signal pulse: {top_signal.get('title')}")
+                supporting_signals.append(
+                    f"Signal sentiment {signal_bias:+.2f} from {len(asset_signals)} recent items"
+                )
+            if abs(wallet_bias) >= 0.08:
+                supporting_signals.append(f"Smart-wallet bias {wallet_bias:+.2f}")
+            supporting_signals.append(f"Macro bias {macro_bias:+.2f}")
+            opportunities.append(
+                EdgeOpportunityView(
+                    asset=asset,
+                    market_source=str(row.get("market_source") or market_intel_source),
+                    market_label=str(row["market_label"]),
+                    market_slug=row.get("market_slug"),
+                    implied_probability=round(float(row["implied_probability"]), 4),
+                    fair_probability=round(fair_probability, 4),
+                    edge_bps=edge_bps,
+                    confidence=round(confidence, 3),
+                    stance=stance,
+                    liquidity=round(float(row.get("liquidity") or 0.0), 2),
+                    volume_24h=round(float(row.get("volume_24h") or 0.0), 2),
+                    supporting_signals=supporting_signals[:3],
+                    updated_at=str(row["updated_at"]),
+                )
+            )
+
+        opportunities.sort(key=lambda item: (abs(item.edge_bps), item.confidence, item.liquidity), reverse=True)
+        best_edge = opportunities[0] if opportunities else None
+        summary = (
+            f"{len(opportunities)} prediction-market surfaces ranked. Strongest dislocation is {best_edge.asset} at {best_edge.edge_bps:+.0f} bps versus implied pricing."
+            if best_edge
+            else "No prediction-market edge surfaces are available right now."
+        )
+        snapshot = EdgeSnapshot(
+            generated_at=self._now(),
+            summary=summary,
+            opportunities=opportunities,
+        )
+        self.edge_snapshot_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def export_advanced_backtest(self, payload: SimulationRequest) -> AdvancedBacktestExport:
+        result = self.run_simulation(payload)
+        repository = BotSocietyRepository(self.database)
+        macro_snapshot = self.get_macro_snapshot(repository)
+        wallet_snapshot = self.get_wallet_intelligence()
+        edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
+        asset_edge = next((item for item in edge_snapshot.opportunities if item.asset == payload.asset), None)
+        related_wallets = [wallet for wallet in wallet_snapshot.wallets if wallet.primary_asset == payload.asset][:3]
+        export_payload = {
+            "metadata": {
+                "generated_at": self._now(),
+                "engine_target": "prediction-market-backtesting",
+                "asset": payload.asset,
+                "strategy_id": payload.strategy_id,
+                "lookback_years": payload.lookback_years,
+                "data_source": result.data_source,
+            },
+            "simulation_request": payload.model_dump(),
+            "simulation_result": result.model_dump(),
+            "macro_context": macro_snapshot.model_dump(),
+            "edge_context": asset_edge.model_dump() if asset_edge else None,
+            "wallet_context": [wallet.model_dump() for wallet in related_wallets],
+            "notes": [
+                "Generated for import into an external prediction-market backtesting workflow.",
+                "Use the edge context as the prior and the strategy result as the execution benchmark.",
+                "Wallet context ranks public trader behavior by smart-money score and directional bias.",
+            ],
+        }
+        filename = f"bsm-{payload.asset.lower()}-{payload.strategy_id}-{payload.lookback_years}y-export.json"
+        summary = (
+            f"Prepared {payload.asset} advanced export for {payload.strategy_id} across {result.actual_years_covered:.2f} years "
+            f"with {len(related_wallets)} relevant wallet profiles and "
+            f"{'a matched edge surface' if asset_edge else 'no direct edge surface match'}."
+        )
+        return AdvancedBacktestExport(
+            generated_at=self._now(),
+            engine_target="prediction-market-backtesting",
+            asset=payload.asset,
+            summary=summary,
+            filename=filename,
+            payload=export_payload,
+        )
+
     def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
         alerts = [
@@ -818,9 +1051,11 @@ class BotSocietyService:
         market_readiness = self.market_provider.readiness()
         signal_ready, signal_warning, venue_statuses = self._signal_provider_health()
         macro_readiness = self.macro_provider.readiness()
+        wallet_readiness = self.wallet_provider.readiness()
         market_configured, market_live_capable = self._provider_configuration("market")
         signal_configured, signal_live_capable = self._provider_configuration("signal")
         macro_configured, macro_live_capable = self._provider_configuration("macro")
+        wallet_configured, wallet_live_capable = self._provider_configuration("wallet")
         return ProviderStatus(
             environment_name=self.settings.environment_name,
             deployment_target=self.settings.deployment_target,
@@ -844,18 +1079,29 @@ class BotSocietyService:
             macro_provider_live_capable=macro_live_capable,
             macro_provider_ready=macro_readiness.ready,
             macro_provider_warning=macro_readiness.warning,
+            wallet_provider_mode=self.settings.wallet_provider_mode,
+            wallet_provider_source=self.wallet_provider_source,
+            wallet_provider_configured=wallet_configured,
+            wallet_provider_live_capable=wallet_live_capable,
+            wallet_provider_ready=wallet_readiness.ready,
+            wallet_provider_warning=wallet_readiness.warning,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
             fred_series_ids=list(self.settings.fred_series_ids),
+            tracked_wallets=list(self.settings.tracked_wallets),
             rss_feed_urls=list(self.settings.rss_feed_urls),
             reddit_subreddits=list(self.settings.reddit_subreddits),
             venue_signal_providers=venue_statuses,
             market_fallback_active=self.market_provider_fallback,
             signal_fallback_active=self.signal_provider_fallback,
             macro_fallback_active=self.macro_provider_fallback,
+            wallet_fallback_active=self.wallet_provider_fallback,
         )
 
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
+        macro_snapshot = self.get_macro_snapshot(repository)
+        wallet_snapshot = self.get_wallet_intelligence()
+        edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
         system_pulse = self.get_system_pulse(repository)
         return DashboardSnapshot(
             summary=self.get_summary(user_slug),
@@ -864,7 +1110,9 @@ class BotSocietyService:
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             system_pulse=system_pulse,
-            macro_snapshot=self.get_macro_snapshot(repository),
+            macro_snapshot=macro_snapshot,
+            wallet_intelligence=wallet_snapshot,
+            edge_snapshot=edge_snapshot,
             paper_trading=self.get_paper_trading_snapshot(user_slug),
             latest_operation=self._latest_operation(repository),
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
@@ -894,7 +1142,12 @@ class BotSocietyService:
         generated_at = self._now()
         average_quality = mean(float(signal.get("source_quality_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
         average_freshness = mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
-        live_provider_count = int(provider_status.market_provider_live_capable) + int(provider_status.signal_provider_live_capable) + int(provider_status.macro_provider_live_capable)
+        live_provider_count = (
+            int(provider_status.market_provider_live_capable)
+            + int(provider_status.signal_provider_live_capable)
+            + int(provider_status.macro_provider_live_capable)
+            + int(provider_status.wallet_provider_live_capable)
+        )
         live_provider_count += sum(1 for venue in provider_status.venue_signal_providers if venue.live_capable)
         pending_predictions = len(active_repository.list_predictions(status="pending", limit=500))
         return SystemPulseSnapshot(
@@ -1667,6 +1920,12 @@ class BotSocietyService:
             configured = bool(self.settings.fred_api_key)
             return configured, configured
 
+        if provider_type == "wallet":
+            if self.settings.wallet_provider_mode == "demo":
+                return True, False
+            configured = bool(self.settings.tracked_wallets)
+            return configured, configured
+
         components = [self._primary_signal_provider_component()] + self._venue_signal_provider_components()
         configured = any(component.configured for component in components)
         live_capable = any(component.live_capable for component in components)
@@ -1704,6 +1963,14 @@ class BotSocietyService:
             )
         return self.demo_macro_provider
 
+    def _build_wallet_provider(self):
+        if self.settings.wallet_provider_mode == "polymarket":
+            return PolymarketWalletProvider(
+                tracked_wallets=self.settings.tracked_wallets,
+                trade_limit=self.settings.wallet_trade_limit,
+            )
+        return self.demo_wallet_provider
+
     def _build_signal_provider(self):
         if self.settings.signal_provider_mode == "rss":
             return RSSNewsSignalProvider(feed_urls=self.settings.rss_feed_urls)
@@ -1736,6 +2003,74 @@ class BotSocietyService:
                     )
                 )
         return providers
+
+    @staticmethod
+    def _cache_is_fresh(cached_entry: tuple[datetime, object] | None, ttl_seconds: int = 90) -> bool:
+        if not cached_entry:
+            return False
+        cached_at, _ = cached_entry
+        return cached_at >= datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+
+    def _current_tracked_assets(self, repository: BotSocietyRepository | None = None) -> tuple[str, ...]:
+        active_repository = repository or BotSocietyRepository(self.database)
+        assets = tuple(asset.upper() for asset in active_repository.list_assets())
+        if assets:
+            return assets
+        aliases = {
+            "bitcoin": "BTC",
+            "ethereum": "ETH",
+            "solana": "SOL",
+        }
+        return tuple(aliases.get(coin.lower(), coin.upper()) for coin in self.settings.tracked_coin_ids)
+
+    @staticmethod
+    def _wallet_bias_for_asset(snapshot: WalletIntelligenceSnapshot, asset: str) -> float:
+        relevant = [wallet for wallet in snapshot.wallets if wallet.primary_asset == asset]
+        if not relevant:
+            return snapshot.aggregate_bias * 0.35
+        numerator = sum(wallet.net_bias * max(0.2, wallet.smart_money_score) for wallet in relevant)
+        denominator = sum(max(0.2, wallet.smart_money_score) for wallet in relevant)
+        return clamp(numerator / denominator if denominator else 0.0, -1.0, 1.0)
+
+    @staticmethod
+    def _wallet_confidence_for_asset(snapshot: WalletIntelligenceSnapshot, asset: str) -> float:
+        relevant = [wallet for wallet in snapshot.wallets if wallet.primary_asset == asset]
+        if not relevant:
+            return 0.35
+        return clamp(mean(wallet.smart_money_score for wallet in relevant), 0.0, 1.0)
+
+    @staticmethod
+    def _signal_sentiment_for_asset(signals: list[dict]) -> float:
+        if not signals:
+            return 0.0
+        weighted_sum = 0.0
+        weight_total = 0.0
+        for signal in signals:
+            weight = max(
+                0.1,
+                float(signal.get("source_quality_score") or 0.0) * 0.65
+                + float(signal.get("relevance") or 0.0) * 0.35,
+            )
+            weighted_sum += float(signal.get("sentiment") or 0.0) * weight
+            weight_total += weight
+        return clamp(weighted_sum / weight_total if weight_total else 0.0, -1.0, 1.0)
+
+    @staticmethod
+    def _fair_probability(
+        *,
+        implied_probability: float,
+        macro_bias: float,
+        wallet_bias: float,
+        signal_bias: float,
+        trend_bias: float,
+    ) -> float:
+        adjustment = (
+            (signal_bias * 0.12)
+            + (wallet_bias * 0.08)
+            + (macro_bias * 0.06)
+            + (trend_bias * 0.04)
+        )
+        return clamp(implied_probability + adjustment, 0.02, 0.98)
 
     def _generate_signal_batch(self, market_batch: list[dict], cycle_index: int) -> list[dict]:
         signal_batch: list[dict] = []
