@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+import zipfile
 
 from fastapi.testclient import TestClient
 
@@ -326,10 +328,14 @@ def test_strategy_lab_advanced_export_packages_context() -> None:
         assert export_payload["saved_to_disk"] is True
         assert export_payload["download_url"].endswith(export_payload["filename"])
         assert Path(export_payload["filesystem_path"]).exists()
+        assert export_payload["package_filename"].endswith(".zip")
+        assert export_payload["package_download_url"].endswith(export_payload["package_filename"])
+        assert Path(export_payload["package_filesystem_path"]).exists()
         assert export_payload["payload"]["metadata"]["asset"] == "BTC"
         assert export_payload["payload"]["simulation_result"]["selected_result"]["strategy_id"] == "trend_follow"
         assert "wallet_context" in export_payload["payload"]
         assert "macro_context" in export_payload["payload"]
+        assert "prediction_market_adapter" in export_payload["payload"]
 
 
 def test_strategy_lab_export_artifact_routes_expose_saved_bundles() -> None:
@@ -360,6 +366,7 @@ def test_strategy_lab_export_artifact_routes_expose_saved_bundles() -> None:
         assert saved_artifact["asset"] == "ETH"
         assert saved_artifact["strategy_id"] == "mean_reversion"
         assert saved_artifact["download_url"] == export_payload["download_url"]
+        assert saved_artifact["package_download_url"] == export_payload["package_download_url"]
 
         download_response = client.get(export_payload["download_url"])
         assert download_response.status_code == 200
@@ -368,6 +375,21 @@ def test_strategy_lab_export_artifact_routes_expose_saved_bundles() -> None:
         assert download_payload["metadata"]["asset"] == "ETH"
         assert download_payload["metadata"]["lookback_years"] == 2
         assert download_payload["simulation_result"]["selected_result"]["strategy_id"] == "mean_reversion"
+
+        package_response = client.get(export_payload["package_download_url"])
+        assert package_response.status_code == 200
+        assert "application/zip" in package_response.headers["content-type"]
+        with zipfile.ZipFile(BytesIO(package_response.content)) as archive:
+            names = set(archive.namelist())
+            assert any(name.endswith("/README.md") for name in names)
+            assert any(name.endswith("/runner_template.py") for name in names)
+            assert any(name.endswith("/strategy_config.json") for name in names)
+            readme_name = next(name for name in names if name.endswith("/README.md"))
+            runner_name = next(name for name in names if name.endswith("/runner_template.py"))
+            strategy_config_name = next(name for name in names if name.endswith("/strategy_config.json"))
+            assert "asset-level Bot Society Markets simulation" in archive.read(readme_name).decode("utf-8")
+            assert "QuoteReplay" in archive.read(runner_name).decode("utf-8")
+            assert "QuoteTickMeanReversionStrategy" in archive.read(strategy_config_name).decode("utf-8")
 
 
 def test_macro_provider_readiness_and_fallback_metadata() -> None:

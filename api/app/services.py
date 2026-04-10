@@ -4,8 +4,10 @@ from collections import defaultdict
 import json
 from pathlib import Path
 import re
+from textwrap import dedent
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
+import zipfile
 
 from sqlalchemy.exc import IntegrityError
 
@@ -726,6 +728,16 @@ class BotSocietyService:
         edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
         asset_edge = next((item for item in edge_snapshot.opportunities if item.asset == payload.asset), None)
         related_wallets = [wallet for wallet in wallet_snapshot.wallets if wallet.primary_asset == payload.asset][:3]
+        filename = self._build_export_filename(payload)
+        package_filename = self._build_adapter_package_filename(filename)
+        adapter_manifest = self._build_prediction_market_adapter_manifest(
+            filename=filename,
+            package_filename=package_filename,
+            payload=payload,
+            result=result,
+            asset_edge=asset_edge,
+            related_wallets=related_wallets,
+        )
         export_payload = {
             "metadata": {
                 "generated_at": self._now(),
@@ -740,17 +752,27 @@ class BotSocietyService:
             "macro_context": macro_snapshot.model_dump(),
             "edge_context": asset_edge.model_dump() if asset_edge else None,
             "wallet_context": [wallet.model_dump() for wallet in related_wallets],
+            "prediction_market_adapter": adapter_manifest,
             "notes": [
                 "Generated for import into an external prediction-market backtesting workflow.",
                 "Use the edge context as the prior and the strategy result as the execution benchmark.",
                 "Wallet context ranks public trader behavior by smart-money score and directional bias.",
             ],
         }
-        filename = self._build_export_filename(payload)
         artifact_path = self._write_export_artifact(filename, export_payload)
+        package_path = self._write_prediction_market_adapter_package(
+            package_filename=package_filename,
+            export_filename=filename,
+            export_payload=export_payload,
+            payload=payload,
+            result=result,
+            asset_edge=asset_edge,
+            related_wallets=related_wallets,
+        )
         summary = (
             f"Prepared {payload.asset} advanced export for {payload.strategy_id} across {result.actual_years_covered:.2f} years "
-            f"with {len(related_wallets)} relevant wallet profiles and "
+            f"with {len(related_wallets)} relevant wallet profiles, "
+            f"a prediction-market adapter pack, and "
             f"{'a matched edge surface' if asset_edge else 'no direct edge surface match'}."
         )
         return AdvancedBacktestExport(
@@ -762,6 +784,9 @@ class BotSocietyService:
             download_url=f"/api/simulation/exports/{filename}",
             filesystem_path=str(artifact_path),
             saved_to_disk=True,
+            package_filename=package_filename,
+            package_download_url=f"/api/simulation/packages/{package_filename}",
+            package_filesystem_path=str(package_path),
             payload=export_payload,
         )
 
@@ -776,6 +801,9 @@ class BotSocietyService:
             metadata = payload.get("metadata") if isinstance(payload, dict) else {}
             if not isinstance(metadata, dict):
                 metadata = {}
+            adapter = payload.get("prediction_market_adapter") if isinstance(payload, dict) else {}
+            if not isinstance(adapter, dict):
+                adapter = {}
             artifacts.append(
                 SimulationExportArtifact(
                     filename=path.name,
@@ -786,6 +814,12 @@ class BotSocietyService:
                     generated_at=str(metadata.get("generated_at") or self._now()),
                     size_bytes=max(0, path.stat().st_size),
                     download_url=f"/api/simulation/exports/{path.name}",
+                    package_filename=str(adapter.get("package_filename")) if adapter.get("package_filename") else None,
+                    package_download_url=(
+                        f"/api/simulation/packages/{adapter.get('package_filename')}"
+                        if adapter.get("package_filename")
+                        else None
+                    ),
                 )
             )
         return artifacts
@@ -799,6 +833,17 @@ class BotSocietyService:
             raise ValueError("Invalid export filename")
         if not candidate.exists() or not candidate.is_file():
             raise ValueError("Export artifact not found")
+        return candidate
+
+    def get_simulation_package_path(self, filename: str) -> Path:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+\.zip", filename):
+            raise ValueError("Invalid package filename")
+        candidate = (self._export_artifacts_dir() / filename).resolve()
+        artifacts_dir = self._export_artifacts_dir().resolve()
+        if artifacts_dir not in candidate.parents:
+            raise ValueError("Invalid package filename")
+        if not candidate.exists() or not candidate.is_file():
+            raise ValueError("Export package not found")
         return candidate
 
     def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
@@ -2058,6 +2103,426 @@ class BotSocietyService:
         target = self._export_artifacts_dir() / filename
         target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return target
+
+    @staticmethod
+    def _build_adapter_package_filename(export_filename: str) -> str:
+        stem = export_filename[:-5] if export_filename.endswith(".json") else export_filename
+        return f"{stem}-adapter-pack.zip"
+
+    def _build_prediction_market_adapter_manifest(
+        self,
+        *,
+        filename: str,
+        package_filename: str,
+        payload: SimulationRequest,
+        result: SimulationRunResult,
+        asset_edge: EdgeOpportunityView | None,
+        related_wallets: list[WalletProfileView],
+    ) -> dict[str, object]:
+        strategy_mapping = self._prediction_market_strategy_mapping(payload)
+        return {
+            "generated_at": self._now(),
+            "bridge_mode": "asset-to-event-market",
+            "package_filename": package_filename,
+            "export_filename": filename,
+            "target_repository": "https://github.com/evan-kolberg/prediction-market-backtesting",
+            "target_repository_inspected_on": "2026-04-10",
+            "requires_market_mapping": True,
+            "bridge_note": (
+                "Bot Society Markets simulates asset-level research on BTC, ETH, and SOL. "
+                "prediction-market-backtesting replays specific Polymarket event markets using PMXT historical order-book data, "
+                "so the operator must map this asset thesis to one or more market slugs before running the external engine."
+            ),
+            "recommended_runner_data": {
+                "platform": "Polymarket",
+                "data_type": "QuoteTick",
+                "vendor": "PMXT",
+                "sources": (
+                    "local:/path/to/pmxt/raw",
+                    "archive:r2.pmxt.dev",
+                    "relay:209-209-10-83.sslip.io",
+                ),
+            },
+            "supported_local_file_layout": [
+                "<raw_root>/polymarket_orderbook_YYYY-MM-DDTHH.parquet",
+                "<raw_root>/YYYY/MM/DD/polymarket_orderbook_YYYY-MM-DDTHH.parquet",
+            ],
+            "required_raw_parquet_columns": ["market_id", "update_type", "data"],
+            "required_json_payload_types": ["book_snapshot", "price_change"],
+            "simulation_window": {
+                "start_time": result.period_start,
+                "end_time": result.period_end,
+                "requested_lookback_years": payload.lookback_years,
+                "actual_years_covered": result.actual_years_covered,
+                "history_points": result.history_points,
+                "data_source": result.data_source,
+            },
+            "selected_result_summary": {
+                "strategy_id": result.selected_result.strategy_id,
+                "label": result.selected_result.label,
+                "total_return": result.selected_result.total_return,
+                "cagr": result.selected_result.cagr,
+                "max_drawdown": result.selected_result.max_drawdown,
+                "sharpe_ratio": result.selected_result.sharpe_ratio,
+                "trade_count": result.selected_result.trade_count,
+                "win_rate": result.selected_result.win_rate,
+                "benchmark_total_return": result.benchmark_total_return,
+            },
+            "suggested_strategy_mapping": strategy_mapping,
+            "suggested_market_mapping": self._prediction_market_mapping_template(payload, result, asset_edge),
+            "edge_context": asset_edge.model_dump() if asset_edge else None,
+            "wallet_names": [wallet.display_name for wallet in related_wallets],
+        }
+
+    def _write_prediction_market_adapter_package(
+        self,
+        *,
+        package_filename: str,
+        export_filename: str,
+        export_payload: dict[str, object],
+        payload: SimulationRequest,
+        result: SimulationRunResult,
+        asset_edge: EdgeOpportunityView | None,
+        related_wallets: list[WalletProfileView],
+    ) -> Path:
+        package_root = package_filename[:-4]
+        target = self._export_artifacts_dir() / package_filename
+        adapter_manifest = export_payload.get("prediction_market_adapter") or {}
+        strategy_mapping = self._prediction_market_strategy_mapping(payload)
+        market_mapping = self._prediction_market_mapping_template(payload, result, asset_edge)
+
+        with zipfile.ZipFile(target, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                f"{package_root}/README.md",
+                self._render_prediction_market_adapter_readme(
+                    payload=payload,
+                    result=result,
+                    asset_edge=asset_edge,
+                    related_wallets=related_wallets,
+                    strategy_mapping=strategy_mapping,
+                ),
+            )
+            archive.writestr(
+                f"{package_root}/{export_filename}",
+                json.dumps(export_payload, indent=2),
+            )
+            archive.writestr(
+                f"{package_root}/adapter_manifest.json",
+                json.dumps(adapter_manifest, indent=2),
+            )
+            archive.writestr(
+                f"{package_root}/market_mapping_template.json",
+                json.dumps(market_mapping, indent=2),
+            )
+            archive.writestr(
+                f"{package_root}/strategy_config.json",
+                json.dumps(strategy_mapping, indent=2),
+            )
+            archive.writestr(
+                f"{package_root}/pmxt.env.example",
+                self._render_prediction_market_env_example(),
+            )
+            archive.writestr(
+                f"{package_root}/runner_template.py",
+                self._render_prediction_market_runner_template(
+                    payload=payload,
+                    result=result,
+                    strategy_mapping=strategy_mapping,
+                ),
+            )
+        return target
+
+    @staticmethod
+    def _prediction_market_strategy_mapping(payload: SimulationRequest) -> dict[str, object]:
+        trade_size = str(max(1, round(payload.starting_capital / 2000)))
+        if payload.strategy_id == "trend_follow":
+            return {
+                "runner_label": "QuoteTick EMA crossover",
+                "strategy_path": "strategies:QuoteTickEMACrossoverStrategy",
+                "config_path": "strategies:QuoteTickEMACrossoverConfig",
+                "config": {
+                    "trade_size": trade_size,
+                    "fast_period": payload.fast_window,
+                    "slow_period": payload.slow_window,
+                    "entry_buffer": round(max(0.0, payload.fee_bps / 10000), 4),
+                    "take_profit": 0.01,
+                    "stop_loss": 0.01,
+                },
+                "mapping_note": "Direct fit for Bot Society trend_follow.",
+            }
+        if payload.strategy_id == "mean_reversion":
+            return {
+                "runner_label": "QuoteTick mean reversion",
+                "strategy_path": "strategies:QuoteTickMeanReversionStrategy",
+                "config_path": "strategies:QuoteTickMeanReversionConfig",
+                "config": {
+                    "trade_size": trade_size,
+                    "window": payload.mean_window,
+                    "entry_threshold": 0.01,
+                    "take_profit": 0.01,
+                    "stop_loss": 0.015,
+                },
+                "mapping_note": "Direct fit for Bot Society mean_reversion.",
+            }
+        if payload.strategy_id == "breakout":
+            return {
+                "runner_label": "QuoteTick breakout",
+                "strategy_path": "strategies:QuoteTickBreakoutStrategy",
+                "config_path": "strategies:QuoteTickBreakoutConfig",
+                "config": {
+                    "trade_size": trade_size,
+                    "window": payload.breakout_window,
+                    "breakout_std": 1.5,
+                    "take_profit": 0.015,
+                    "stop_loss": 0.02,
+                },
+                "mapping_note": "Direct fit for Bot Society breakout.",
+            }
+        return {
+            "runner_label": "QuoteTick deep value hold benchmark proxy",
+            "strategy_path": "strategies:QuoteTickDeepValueHoldStrategy",
+            "config_path": "strategies:QuoteTickDeepValueHoldConfig",
+            "config": {
+                "trade_size": trade_size,
+                "entry_price_max": 0.55,
+            },
+            "mapping_note": "Buy-and-hold is approximated with a long-only hold proxy and should be tuned manually.",
+        }
+
+    @staticmethod
+    def _prediction_market_mapping_template(
+        payload: SimulationRequest,
+        result: SimulationRunResult,
+        asset_edge: EdgeOpportunityView | None,
+    ) -> dict[str, object]:
+        return {
+            "mapped_from_asset": payload.asset,
+            "market_slug": asset_edge.market_slug if asset_edge and asset_edge.market_slug else "replace-with-polymarket-market-slug",
+            "token_index": 0,
+            "condition_id": "replace-with-condition-id",
+            "token_id": "replace-with-token-id",
+            "outcome_label": "YES",
+            "runner_start_time": result.period_start,
+            "runner_end_time": result.period_end,
+            "mapping_rationale": (
+                f"Map the {payload.asset} thesis to a Polymarket event whose outcome depends materially on {payload.asset} direction, price, dominance, or macro spillover."
+            ),
+        }
+
+    def _render_prediction_market_adapter_readme(
+        self,
+        *,
+        payload: SimulationRequest,
+        result: SimulationRunResult,
+        asset_edge: EdgeOpportunityView | None,
+        related_wallets: list[WalletProfileView],
+        strategy_mapping: dict[str, object],
+    ) -> str:
+        edge_line = (
+            f"- Matched edge surface: {asset_edge.market_label} ({asset_edge.edge_bps:+.0f} bps)\n"
+            if asset_edge
+            else "- Matched edge surface: none in the current snapshot\n"
+        )
+        wallet_line = (
+            "- Smart-wallet overlays: " + ", ".join(wallet.display_name for wallet in related_wallets) + "\n"
+            if related_wallets
+            else "- Smart-wallet overlays: none specific to this asset export\n"
+        )
+        return dedent(
+            f"""\
+            # Bot Society Markets -> prediction-market-backtesting Adapter
+
+            Generated: {self._now()}
+            Asset: {payload.asset}
+            Strategy: {payload.strategy_id}
+            Window: {result.period_start} to {result.period_end}
+
+            This package bridges an asset-level Bot Society Markets simulation into a prediction-market-backtesting research workflow.
+
+            Important boundary:
+            - Bot Society Markets currently simulates asset histories such as BTC, ETH, and SOL.
+            - prediction-market-backtesting replays specific Polymarket event markets with PMXT historical order-book data.
+            - You must map this asset thesis to a concrete Polymarket market before the runner can be used.
+
+            Included files:
+            - the original export bundle
+            - `runner_template.py` shaped after the public runner contract used by prediction-market-backtesting
+            - `market_mapping_template.json` for market slug, token index, condition ID, and token ID
+            - `pmxt.env.example` for local raw PMXT archive setup
+
+            Suggested bridge workflow:
+            1. Open `market_mapping_template.json` and choose a Polymarket market tied to the same thesis.
+            2. Fill in `market_slug`, `token_index`, `condition_id`, and `token_id`.
+            3. Review `strategy_config.json` and tune the placeholder execution parameters if needed.
+            4. Copy `runner_template.py` into the external repo's `backtests/` directory and run it there.
+
+            Snapshot:
+            - Selected result final equity: {result.selected_result.final_equity:.2f}
+            - Selected result total return: {result.selected_result.total_return:+.4f}
+            - Selected result sharpe: {result.selected_result.sharpe_ratio:.2f}
+            - Selected result trade count: {result.selected_result.trade_count}
+            - Benchmark total return: {result.benchmark_total_return:+.4f}
+            {edge_line}{wallet_line}
+            Suggested external runner:
+            - Label: {strategy_mapping.get("runner_label")}
+            - Strategy path: {strategy_mapping.get("strategy_path")}
+            - Config path: {strategy_mapping.get("config_path")}
+            - Mapping note: {strategy_mapping.get("mapping_note")}
+
+            PMXT local raw archive expectations:
+            - Supported layouts:
+              - `<raw_root>/polymarket_orderbook_YYYY-MM-DDTHH.parquet`
+              - `<raw_root>/YYYY/MM/DD/polymarket_orderbook_YYYY-MM-DDTHH.parquet`
+            - Required raw parquet columns: `market_id`, `update_type`, `data`
+            - Required JSON payload types: `book_snapshot`, `price_change`
+            """
+        )
+
+    @staticmethod
+    def _render_prediction_market_env_example() -> str:
+        return dedent(
+            """\
+            # Point the external runner at a local PMXT raw archive mirror.
+            PMXT_DATA_SOURCE=raw-local
+            PMXT_LOCAL_RAWS_DIR=/data/pmxt/raw
+
+            # Optional filtered-cache location.
+            PMXT_CACHE_DIR=~/.cache/nautilus_trader/pmxt
+
+            # Optional remote fallbacks.
+            PMXT_SOURCE_PRIORITY=raw-local,raw-remote,relay-raw
+            PMXT_REMOTE_BASE_URL=https://r2.pmxt.dev
+            PMXT_RELAY_BASE_URL=https://209-209-10-83.sslip.io
+            """
+        )
+
+    def _render_prediction_market_runner_template(
+        self,
+        *,
+        payload: SimulationRequest,
+        result: SimulationRunResult,
+        strategy_mapping: dict[str, object],
+    ) -> str:
+        config = strategy_mapping.get("config") if isinstance(strategy_mapping.get("config"), dict) else {}
+        config_lines = []
+        for key, value in config.items():
+            if key == "trade_size":
+                config_lines.append(f'            "{key}": Decimal("{value}"),')
+            elif isinstance(value, str):
+                config_lines.append(f'            "{key}": "{value}",')
+            else:
+                config_lines.append(f'            "{key}": {value!r},')
+        config_block = "\n".join(config_lines) if config_lines else '            # Fill strategy config values here.'
+        runner_name = f"bot_society_{payload.asset.lower()}_{payload.strategy_id}_bridge"
+        return dedent(
+            f"""\
+            \"\"\"
+            Bot Society Markets bridge runner for prediction-market-backtesting.
+
+            Fill in MARKET_MAPPING before running this file in the external repository.
+            \"\"\"
+
+            from __future__ import annotations
+
+            from decimal import Decimal
+
+            from prediction_market_extensions.backtesting._execution_config import ExecutionModelConfig
+            from prediction_market_extensions.backtesting._execution_config import StaticLatencyConfig
+            from prediction_market_extensions.backtesting._experiments import build_replay_experiment
+            from prediction_market_extensions.backtesting._experiments import run_experiment
+            from prediction_market_extensions.backtesting._prediction_market_backtest import MarketReportConfig
+            from prediction_market_extensions.backtesting._prediction_market_runner import MarketDataConfig
+            from prediction_market_extensions.backtesting._replay_specs import QuoteReplay
+            from prediction_market_extensions.backtesting._timing_harness import timing_harness
+            from prediction_market_extensions.backtesting.data_sources import PMXT, Polymarket, QuoteTick
+
+
+            NAME = "{runner_name}"
+            DESCRIPTION = "Bridge runner generated from a Bot Society Markets asset-level export"
+            EMIT_HTML = True
+            CHART_OUTPUT_PATH = "output"
+
+            DATA = MarketDataConfig(
+                platform=Polymarket,
+                data_type=QuoteTick,
+                vendor=PMXT,
+                sources=(
+                    "local:/path/to/pmxt/raw",
+                    "archive:r2.pmxt.dev",
+                    "relay:209-209-10-83.sslip.io",
+                ),
+            )
+
+            MARKET_MAPPING = {{
+                "market_slug": "replace-with-polymarket-market-slug",
+                "token_index": 0,
+                "condition_id": "replace-with-condition-id",
+                "token_id": "replace-with-token-id",
+                "mapped_from_asset": "{payload.asset}",
+            }}
+
+            REPLAYS = (
+                QuoteReplay(
+                    market_slug=MARKET_MAPPING["market_slug"],
+                    token_index=MARKET_MAPPING["token_index"],
+                    start_time="{result.period_start}",
+                    end_time="{result.period_end}",
+                ),
+            )
+
+            STRATEGY_CONFIGS = [
+                {{
+                    "strategy_path": "{strategy_mapping.get("strategy_path")}",
+                    "config_path": "{strategy_mapping.get("config_path")}",
+                    "config": {{
+            {config_block}
+                    }},
+                }}
+            ]
+
+            REPORT = MarketReportConfig(
+                count_key="quotes",
+                count_label="Quotes",
+                pnl_label="PnL (USDC)",
+            )
+
+            EXECUTION = ExecutionModelConfig(
+                queue_position=True,
+                latency_model=StaticLatencyConfig(
+                    base_latency_ms=75.0,
+                    insert_latency_ms=10.0,
+                    update_latency_ms=5.0,
+                    cancel_latency_ms=5.0,
+                ),
+            )
+
+            EXPERIMENT = build_replay_experiment(
+                name=NAME,
+                description=DESCRIPTION,
+                data=DATA,
+                replays=REPLAYS,
+                strategy_configs=STRATEGY_CONFIGS,
+                initial_cash={max(100.0, round(payload.starting_capital * 0.01, 2))},
+                probability_window=256,
+                min_quotes=500,
+                min_price_range=0.005,
+                execution=EXECUTION,
+                report=REPORT,
+                empty_message="No bridge sims met the quote-tick requirements.",
+                emit_html=EMIT_HTML,
+                chart_output_path=CHART_OUTPUT_PATH,
+            )
+
+
+            @timing_harness
+            def run() -> None:
+                run_experiment(EXPERIMENT)
+
+
+            if __name__ == "__main__":
+                run()
+            """
+        )
 
     @staticmethod
     def _cache_is_fresh(cached_entry: tuple[datetime, object] | None, ttl_seconds: int = 90) -> bool:

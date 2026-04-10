@@ -279,6 +279,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = run_validated(lambda: get_service(request).get_simulation_export_path(filename))
         return FileResponse(path, media_type="application/json", filename=path.name)
 
+    @app.get("/api/simulation/packages/{filename}")
+    def simulation_package_download(filename: str, request: Request) -> FileResponse:
+        path = run_validated(lambda: get_service(request).get_simulation_package_path(filename))
+        return FileResponse(path, media_type="application/zip", filename=path.name)
+
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
         return run_validated(lambda: get_service(request).add_notification_channel(authenticated_user_slug(request), payload))

@@ -885,6 +885,7 @@ function renderAdvancedExport(exportBundle) {
       ${exportBundle.filesystem_path ? `<div><span>Saved path</span><strong class="advanced-export-path">${exportBundle.filesystem_path}</strong></div>` : ""}
       <footer class="advanced-export-actions">
         ${exportBundle.download_url ? `<a class="button secondary" href="${exportBundle.download_url}" download>Download JSON</a>` : ""}
+        ${exportBundle.package_download_url ? `<a class="button secondary" href="${exportBundle.package_download_url}" download>Download Adapter Pack</a>` : ""}
         <p class="panel-note">${storageNote}</p>
       </footer>
     `;
@@ -921,7 +922,10 @@ function renderSimulationExportHistory(artifacts) {
       </div>
       <div class="workspace-actions export-history-actions">
         <span>${fmtDateTime(artifact.generated_at)}</span>
-        <a class="text-link" href="${artifact.download_url}" download>Download JSON</a>
+        <div class="export-link-stack">
+          <a class="text-link" href="${artifact.download_url}" download>Download JSON</a>
+          ${artifact.package_download_url ? `<a class="text-link" href="${artifact.package_download_url}" download>Adapter pack</a>` : ""}
+        </div>
       </div>
     </li>
   `).join("");

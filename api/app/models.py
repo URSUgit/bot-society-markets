@@ -338,6 +338,9 @@ class AdvancedBacktestExport(BaseModel):
     download_url: str | None = None
     filesystem_path: str | None = None
     saved_to_disk: bool = False
+    package_filename: str | None = None
+    package_download_url: str | None = None
+    package_filesystem_path: str | None = None
     payload: dict[str, object]
 
 
@@ -350,6 +353,8 @@ class SimulationExportArtifact(BaseModel):
     generated_at: str
     size_bytes: int = Field(ge=0)
     download_url: str
+    package_filename: str | None = None
+    package_download_url: str | None = None
 
 
 class SimulationStrategyPreset(BaseModel):

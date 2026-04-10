@@ -21,6 +21,7 @@ This repository contains both the founder documentation package and a profession
 - [Deployment Guide](docs/12-deployment-guide.md)
 - [Open-Source Stack Watchlist](docs/13-open-source-stack-watchlist.md)
 - [Polymarket Open-Source Integration Memo](docs/14-polymarket-open-source-integration-memo.md)
+- [Prediction Market Adapter Guide](docs/15-prediction-market-backtesting-adapter.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -71,6 +72,7 @@ Included today:
 - fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
 - advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines
 - saved Strategy Lab export artifacts with download history and configurable storage paths
+- adapter ZIP packs that bridge Strategy Lab exports into prediction-market-backtesting runner workflows
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
@@ -94,6 +96,7 @@ Key endpoints include:
 - `GET /api/simulation/config`
 - `GET /api/simulation/exports`
 - `GET /api/simulation/exports/{filename}`
+- `GET /api/simulation/packages/{filename}`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
@@ -262,6 +265,14 @@ $env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
 For local secret handling, create `.env` or `.env.local` in the repo root. `.env.local` overrides `.env`.
 
 Strategy Lab export bundles are saved under `artifacts/strategy-exports` by default and can be redirected with `BSM_EXPORT_ARTIFACTS_DIR`.
+
+Each advanced export now also writes a companion adapter ZIP pack with:
+
+- the original export bundle
+- a prediction-market-backtesting runner template
+- a market-mapping template
+- a PMXT environment example
+- strategy mapping metadata and bridge notes
 
 Runtime behavior:
 

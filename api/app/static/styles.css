@@ -1787,6 +1787,12 @@ form:has(:disabled) {
   min-width: 170px;
 }
 
+.export-link-stack {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
 .code-preview {
   margin: 0;
   max-height: 420px;
@@ -1861,5 +1867,9 @@ form:has(:disabled) {
   .advanced-export-actions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .export-link-stack {
+    justify-items: start;
   }
 }
