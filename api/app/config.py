@@ -104,6 +104,8 @@ class Settings:
     paper_starting_balance: float = 10000.0
     paper_trade_fee_bps: float = 10.0
     paper_trade_slippage_bps: float = 15.0
+    simulation_live_history: bool = True
+    simulation_cache_hours: int = 12
 
 
 def _split_csv_env(value: str) -> tuple[str, ...]:
@@ -159,6 +161,7 @@ def get_settings() -> Settings:
     notification_retry_limit = max(1, int(os.getenv("BSM_NOTIFICATION_RETRY_LIMIT", "25")))
     notification_max_attempts = max(1, int(os.getenv("BSM_NOTIFICATION_MAX_ATTEMPTS", "4")))
     notification_retry_base_seconds = max(30, int(os.getenv("BSM_NOTIFICATION_RETRY_BASE_SECONDS", "300")))
+    simulation_cache_hours = max(1, int(os.getenv("BSM_SIMULATION_CACHE_HOURS", "12")))
 
     return Settings(
         environment_name=os.getenv("BSM_ENVIRONMENT_NAME", "development"),
@@ -205,4 +208,6 @@ def get_settings() -> Settings:
         paper_starting_balance=max(1000.0, float(os.getenv("BSM_PAPER_STARTING_BALANCE", "10000"))),
         paper_trade_fee_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_FEE_BPS", "10"))),
         paper_trade_slippage_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_SLIPPAGE_BPS", "15"))),
+        simulation_live_history=_env_bool("BSM_SIMULATION_LIVE_HISTORY", True),
+        simulation_cache_hours=simulation_cache_hours,
     )

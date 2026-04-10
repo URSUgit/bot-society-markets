@@ -326,6 +326,40 @@ def test_paper_trading_endpoints_support_simulation_flow() -> None:
         assert simulation_payload["snapshot"]["positions"]
 
 
+def test_strategy_lab_config_and_run_support_local_backtests() -> None:
+    settings = Settings(simulation_live_history=False)
+    with build_client(settings) as client:
+        config_response = client.get("/api/simulation/config")
+        assert config_response.status_code == 200
+        config_payload = config_response.json()
+        assert "BTC" in config_payload["available_assets"]
+        assert config_payload["strategy_presets"]
+        assert config_payload["live_history_capable"] is False
+
+        run_response = client.post(
+            "/api/simulation/run",
+            json={
+                "asset": "BTC",
+                "lookback_years": 1,
+                "strategy_id": "trend_follow",
+                "starting_capital": 10000,
+                "fee_bps": 10,
+                "fast_window": 2,
+                "slow_window": 4,
+                "mean_window": 3,
+                "breakout_window": 3,
+            },
+        )
+        assert run_response.status_code == 200
+        run_payload = run_response.json()
+        assert run_payload["asset"] == "BTC"
+        assert run_payload["data_source"] == "local-archive"
+        assert run_payload["selected_result"]["strategy_id"] == "trend_follow"
+        assert run_payload["selected_result"]["equity_curve"]
+        assert run_payload["benchmark_curve"]
+        assert run_payload["leaderboard"]
+
+
 def test_hyperliquid_and_venue_provider_metadata() -> None:
     settings = Settings(
         market_provider_mode="hyperliquid",

@@ -125,6 +125,8 @@ let selectedLandingAsset = null;
 let selectedDashboardAsset = null;
 let selectedMacroSeries = null;
 let chartResizeFrame = null;
+let simulationConfig = null;
+let latestSimulationResult = null;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -564,6 +566,247 @@ function renderPaperTrading(paperTrading) {
       </div>
     </li>
   `).join("") || "<li><p>No paper positions have been simulated yet.</p></li>";
+}
+
+function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {
+  const container = document.getElementById(targetId);
+  if (!container || !window.LightweightCharts) {
+    return;
+  }
+  destroyChart(targetId);
+  container.innerHTML = "";
+
+  const primaryData = normalizeChartPoints(primaryPoints || []);
+  const secondaryData = normalizeChartPoints(secondaryPoints || []);
+  if (!primaryData.length) {
+    container.innerHTML = '<p class="panel-note">No simulation chart data is available yet.</p>';
+    return;
+  }
+
+  const chart = window.LightweightCharts.createChart(container, {
+    width: Math.max(container.clientWidth, 320),
+    height: options.height || 320,
+    layout: {
+      background: { color: "transparent" },
+      textColor: "#5a6a75",
+      fontFamily: '"Avenir Next", "Franklin Gothic Book", "Trebuchet MS", sans-serif',
+    },
+    grid: {
+      vertLines: { color: "rgba(16, 38, 54, 0.08)" },
+      horzLines: { color: "rgba(16, 38, 54, 0.08)" },
+    },
+    rightPriceScale: {
+      borderColor: "rgba(16, 38, 54, 0.12)",
+    },
+    timeScale: {
+      borderColor: "rgba(16, 38, 54, 0.12)",
+      timeVisible: true,
+      secondsVisible: false,
+    },
+  });
+
+  const primarySeries = chart.addSeries(window.LightweightCharts.LineSeries, {
+    color: options.primaryColor || "#1f7a78",
+    lineWidth: 3,
+    priceLineVisible: false,
+  });
+  primarySeries.setData(primaryData);
+
+  if (secondaryData.length) {
+    const secondarySeries = chart.addSeries(window.LightweightCharts.LineSeries, {
+      color: options.secondaryColor || "#c46a37",
+      lineWidth: 2,
+      priceLineVisible: false,
+    });
+    secondarySeries.setData(secondaryData);
+  }
+
+  chart.timeScale().fitContent();
+  chartInstances.set(targetId, chart);
+}
+
+function renderSimulationChart(result) {
+  if (!result?.selected_result) {
+    return;
+  }
+  renderSimulationMultiSeriesChart(
+    "simulation-equity-chart",
+    result.selected_result.equity_curve,
+    result.benchmark_curve,
+    {
+      primaryColor: "#1f7a78",
+      secondaryColor: "#c46a37",
+      height: 340,
+    },
+  );
+  renderSimulationMultiSeriesChart(
+    "simulation-drawdown-chart",
+    result.selected_result.drawdown_curve,
+    [],
+    {
+      primaryColor: "#18354a",
+      height: 240,
+    },
+  );
+}
+
+function populateSimulationForm(config) {
+  const assetSelect = document.getElementById("simulation-asset-input");
+  const yearsSelect = document.getElementById("simulation-years-input");
+  const strategySelect = document.getElementById("simulation-strategy-input");
+  const capitalInput = document.getElementById("simulation-capital-input");
+  const feeInput = document.getElementById("simulation-fee-input");
+  const note = document.getElementById("simulation-config-note");
+
+  if (assetSelect) {
+    assetSelect.innerHTML = (config.available_assets || []).map((asset) => `<option value="${asset}">${asset}</option>`).join("");
+  }
+  if (yearsSelect) {
+    yearsSelect.innerHTML = (config.lookback_year_options || []).map((years) => `<option value="${years}">${years} year${years === 1 ? "" : "s"}</option>`).join("");
+    yearsSelect.value = String(config.default_lookback_years);
+  }
+  if (strategySelect) {
+    strategySelect.innerHTML = (config.strategy_presets || []).map((preset) => `
+      <option value="${preset.strategy_id}">${preset.label}</option>
+    `).join("");
+    strategySelect.value = config.default_strategy_id;
+  }
+  if (capitalInput) {
+    capitalInput.value = String(config.default_starting_capital);
+  }
+  if (feeInput) {
+    feeInput.value = String(config.default_fee_bps);
+  }
+  if (note) {
+    note.textContent = config.note;
+  }
+}
+
+function currentSimulationPayload() {
+  return {
+    asset: document.getElementById("simulation-asset-input")?.value || "BTC",
+    lookback_years: Number(document.getElementById("simulation-years-input")?.value || 5),
+    strategy_id: document.getElementById("simulation-strategy-input")?.value || "trend_follow",
+    starting_capital: Number(document.getElementById("simulation-capital-input")?.value || 10000),
+    fee_bps: Number(document.getElementById("simulation-fee-input")?.value || 10),
+    fast_window: Number(document.getElementById("simulation-fast-input")?.value || 20),
+    slow_window: Number(document.getElementById("simulation-slow-input")?.value || 50),
+    mean_window: Number(document.getElementById("simulation-mean-input")?.value || 20),
+    breakout_window: Number(document.getElementById("simulation-breakout-input")?.value || 55),
+  };
+}
+
+function renderSimulationResult(result) {
+  latestSimulationResult = result;
+  const headline = document.getElementById("simulation-headline");
+  const submeta = document.getElementById("simulation-submeta");
+  const summary = document.getElementById("simulation-summary-grid");
+  const leaderboard = document.getElementById("simulation-leaderboard-body");
+  const trades = document.getElementById("simulation-trade-list");
+  const note = document.getElementById("simulation-history-note");
+
+  if (headline) {
+    headline.textContent = `${result.selected_result.label} on ${result.asset} over ${result.actual_years_covered.toFixed(2)} years`;
+  }
+  if (submeta) {
+    submeta.textContent = `Data source: ${result.data_source} · ${result.history_points} daily points · benchmark ${fmtSignedPercent(result.benchmark_total_return)}`;
+  }
+  if (note) {
+    note.textContent = result.history_note || "Historical coverage matches the requested backtest window.";
+  }
+  if (summary) {
+    summary.innerHTML = `
+      <article class="pulse-metric-card metric-live">
+        <span>Final equity</span>
+        <strong>${fmtPrice(result.selected_result.final_equity)}</strong>
+        <small>${result.selected_result.label}</small>
+      </article>
+      <article class="pulse-metric-card ${result.selected_result.total_return >= result.benchmark_total_return ? "tone-high" : "tone-mid"}">
+        <span>Total return</span>
+        <strong>${fmtSignedPercent(result.selected_result.total_return)}</strong>
+        <small>Benchmark ${fmtSignedPercent(result.benchmark_total_return)}</small>
+      </article>
+      <article class="pulse-metric-card">
+        <span>CAGR</span>
+        <strong>${fmtSignedPercent(result.selected_result.cagr)}</strong>
+        <small>Annualized growth across the tested window</small>
+      </article>
+      <article class="pulse-metric-card ${result.selected_result.max_drawdown >= -0.2 ? "tone-high" : "tone-low"}">
+        <span>Max drawdown</span>
+        <strong>${fmtSignedPercent(result.selected_result.max_drawdown)}</strong>
+        <small>Worst equity pullback</small>
+      </article>
+      <article class="pulse-metric-card">
+        <span>Sharpe</span>
+        <strong>${Number(result.selected_result.sharpe_ratio).toFixed(2)}</strong>
+        <small>Risk-adjusted daily return</small>
+      </article>
+      <article class="pulse-metric-card">
+        <span>Trades</span>
+        <strong>${result.selected_result.trade_count}</strong>
+        <small>${fmtPercent(result.selected_result.win_rate)} win rate · ${fmtPercent(result.selected_result.exposure_ratio)} exposure</small>
+      </article>
+    `;
+  }
+
+  if (leaderboard) {
+    leaderboard.innerHTML = (result.leaderboard || []).map((entry, index) => `
+      <tr class="${entry.strategy_id === result.selected_result.strategy_id ? "row-up" : ""}">
+        <td>${index + 1}</td>
+        <td>${entry.label}</td>
+        <td>${fmtSignedPercent(entry.total_return)}</td>
+        <td>${fmtSignedPercent(entry.cagr)}</td>
+        <td>${fmtSignedPercent(entry.max_drawdown)}</td>
+        <td>${Number(entry.sharpe_ratio).toFixed(2)}</td>
+        <td>${entry.trade_count}</td>
+        <td>${entry.beat_buy_hold ? "Yes" : "No"}</td>
+      </tr>
+    `).join("");
+  }
+
+  if (trades) {
+    trades.innerHTML = (result.selected_result.trades || []).map((trade) => `
+      <li>
+        <div>
+          <strong>${fmtDateTime(trade.opened_at)} to ${fmtDateTime(trade.closed_at)}</strong>
+          <p>Entry ${fmtPrice(trade.entry_price)} · Exit ${fmtPrice(trade.exit_price)}</p>
+        </div>
+        <div class="workspace-actions">
+          <span>${fmtSignedPercent(trade.return_pct)}</span>
+          <span>${trade.holding_days} days</span>
+        </div>
+      </li>
+    `).join("") || "<li><p>No closed trades were generated for the selected setup yet.</p></li>";
+  }
+
+  renderSimulationChart(result);
+}
+
+async function runSimulation() {
+  const button = document.getElementById("run-simulation-button");
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const result = await fetchJson("/api/simulation/run", {
+      method: "POST",
+      body: JSON.stringify(currentSimulationPayload()),
+    });
+    renderSimulationResult(result);
+    setStatus(`Simulation completed for ${result.asset}. ${result.selected_result.label} finished at ${fmtPrice(result.selected_result.final_equity)}.`);
+  } catch (error) {
+    setStatus(`Simulation failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function loadSimulationPage() {
+  simulationConfig = await fetchJson("/api/simulation/config");
+  populateSimulationForm(simulationConfig);
+  await runSimulation();
 }
 
 function renderPulseMetrics(systemPulse, targetId) {
@@ -1623,11 +1866,19 @@ async function logoutUser() {
 }
 
 function bindForms() {
+  const simulationForm = document.getElementById("simulation-form");
   const watchlistForm = document.getElementById("watchlist-form");
   const alertRuleForm = document.getElementById("alert-rule-form");
   const loginForm = document.getElementById("login-form");
   const registerForm = document.getElementById("register-form");
   const notificationChannelForm = document.getElementById("notification-channel-form");
+
+  if (simulationForm) {
+    simulationForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await runSimulation();
+    });
+  }
 
   if (watchlistForm) {
     watchlistForm.addEventListener("submit", async (event) => {
@@ -1891,6 +2142,10 @@ async function boot() {
 
     if (document.getElementById("dashboard-metrics")) {
       await loadDashboard();
+    }
+
+    if (document.getElementById("simulation-form")) {
+      await loadSimulationPage();
     }
 
     if (document.getElementById("status-page")) {

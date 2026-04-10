@@ -65,6 +65,7 @@ Included today:
 - macro regime tracking with demo data or optional FRED ingestion across configurable economic series
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
+- a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
@@ -83,6 +84,7 @@ Key endpoints include:
 - `GET /api/assets`
 - `GET /api/assets/{asset}/history`
 - `GET /api/macro`
+- `GET /api/simulation/config`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
@@ -95,6 +97,7 @@ Key endpoints include:
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
+- `POST /api/simulation/run`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
@@ -202,6 +205,8 @@ $env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
 $env:BSM_PAPER_STARTING_BALANCE = "10000"
 $env:BSM_PAPER_TRADE_FEE_BPS = "10"
 $env:BSM_PAPER_TRADE_SLIPPAGE_BPS = "15"
+$env:BSM_SIMULATION_LIVE_HISTORY = "true"
+$env:BSM_SIMULATION_CACHE_HOURS = "12"
 ```
 
 Optional live provider setup:

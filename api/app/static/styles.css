@@ -1605,6 +1605,16 @@ form:has(:disabled) {
   min-width: 160px;
 }
 
+.strategy-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.strategy-chart-grid {
+  align-items: stretch;
+}
+
 @keyframes section-rise {
   0% {
     opacity: 0;
@@ -1621,6 +1631,10 @@ form:has(:disabled) {
     grid-template-columns: 1fr;
   }
 
+  .strategy-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pill-row {
     justify-content: flex-start;
   }
@@ -1634,6 +1648,10 @@ form:has(:disabled) {
   .chart-surface,
   .chart-surface-large {
     min-height: 260px;
+  }
+
+  .strategy-control-grid {
+    grid-template-columns: 1fr;
   }
 
   .paper-position-list .workspace-actions {

@@ -35,6 +35,9 @@ from .models import (
     PredictionView,
     ProviderStatusEnvelope,
     SignalView,
+    SimulationConfig,
+    SimulationRequest,
+    SimulationRunResult,
     Summary,
     SystemPulseEnvelope,
     UserProfile,
@@ -243,6 +246,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def paper_trading_snapshot(request: Request) -> PaperTradingSnapshot:
         return get_service(request).get_paper_trading_snapshot(current_user_slug(request) or active_settings.default_user_slug)
 
+    @app.get("/api/simulation/config", response_model=SimulationConfig)
+    def simulation_config(request: Request) -> SimulationConfig:
+        return get_service(request).get_simulation_config()
+
+    @app.post("/api/simulation/run", response_model=SimulationRunResult)
+    def run_simulation(payload: SimulationRequest, request: Request) -> SimulationRunResult:
+        return run_validated(lambda: get_service(request).run_simulation(payload))
+
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
         return run_validated(lambda: get_service(request).add_notification_channel(authenticated_user_slug(request), payload))
@@ -283,6 +294,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
 
+    @app.get("/simulation")
+    def simulation_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "simulation.html")
+
     @app.get("/status")
     def status_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "status.html")
@@ -293,6 +308,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/app")
     def dashboard_aliases() -> RedirectResponse:
         return RedirectResponse(url="/dashboard", status_code=307)
+
+    @app.get("/simulation/")
+    @app.get("/lab")
+    def simulation_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/simulation", status_code=307)
 
     @app.get("/status/")
     @app.get("/ops")

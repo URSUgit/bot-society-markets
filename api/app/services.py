@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
+from pathlib import Path
 import re
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
@@ -46,6 +47,14 @@ from .models import (
     ProviderStatus,
     SignalView,
     SignalMixItem,
+    SimulationConfig,
+    SimulationLeaderboardEntry,
+    SimulationRequest,
+    SimulationRunResult,
+    SimulationSeriesPoint,
+    SimulationStrategyPreset,
+    SimulationStrategyResult,
+    SimulationTradeView,
     Summary,
     SystemPulseSnapshot,
     UserIdentity,
@@ -76,6 +85,29 @@ SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
 class BotSocietyService:
+    SIMULATION_PRESETS = [
+        SimulationStrategyPreset(
+            strategy_id="buy_hold",
+            label="Buy and hold",
+            description="Stay long the entire test window and use it as the benchmark.",
+        ),
+        SimulationStrategyPreset(
+            strategy_id="trend_follow",
+            label="Trend follow",
+            description="Go long when price is above both fast and slow moving averages.",
+        ),
+        SimulationStrategyPreset(
+            strategy_id="mean_reversion",
+            label="Mean reversion",
+            description="Buy sharp pullbacks below the rolling mean and exit when the move normalizes.",
+        ),
+        SimulationStrategyPreset(
+            strategy_id="breakout",
+            label="Breakout",
+            description="Enter when price breaks the recent high and step aside when momentum fails.",
+        ),
+    ]
+
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
         self.settings = settings
@@ -84,6 +116,11 @@ class BotSocietyService:
         self.demo_market_provider = DemoMarketProvider()
         self.demo_signal_provider = DemoSignalProvider()
         self.demo_macro_provider = DemoMacroProvider(series_ids=self.settings.fred_series_ids)
+        self.history_provider = CoinGeckoMarketProvider(
+            plan=self.settings.coingecko_plan,
+            api_key=self.settings.coingecko_api_key,
+            tracked_coin_ids=self.settings.tracked_coin_ids,
+        )
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
         self.macro_provider = self._build_macro_provider()
@@ -419,6 +456,75 @@ class BotSocietyService:
             created_positions=created_positions,
             closed_positions=closed_positions,
             snapshot=self.get_paper_trading_snapshot(user_slug),
+        )
+
+    def get_simulation_config(self) -> SimulationConfig:
+        repository = BotSocietyRepository(self.database)
+        assets = repository.list_assets()
+        live_history_capable = self.settings.simulation_live_history
+        note = (
+            "Strategy Lab can fetch long-range daily history and compare multiple algorithm presets quickly."
+            if live_history_capable
+            else "Strategy Lab is using the local archive only. Enable live history to test deeper lookback windows."
+        )
+        return SimulationConfig(
+            available_assets=assets,
+            lookback_year_options=[1, 3, 5, 10],
+            strategy_presets=self.SIMULATION_PRESETS,
+            default_strategy_id="trend_follow",
+            default_lookback_years=5,
+            default_starting_capital=10000,
+            default_fee_bps=10,
+            live_history_capable=live_history_capable,
+            note=note,
+        )
+
+    def run_simulation(self, payload: SimulationRequest) -> SimulationRunResult:
+        if payload.asset not in BotSocietyRepository(self.database).list_assets():
+            raise ValueError(f"Unknown asset: {payload.asset}")
+
+        history_points, data_source, history_note = self._load_simulation_history(payload.asset, payload.lookback_years)
+        if len(history_points) < 3:
+            raise ValueError(f"Not enough historical data to simulate {payload.asset}")
+
+        results = {
+            preset.strategy_id: self._run_strategy_backtest(history_points, payload, preset.strategy_id)
+            for preset in self.SIMULATION_PRESETS
+        }
+        benchmark = results["buy_hold"]
+        leaderboard = [
+            SimulationLeaderboardEntry(
+                strategy_id=result.strategy_id,
+                label=result.label,
+                total_return=result.total_return,
+                cagr=result.cagr,
+                max_drawdown=result.max_drawdown,
+                sharpe_ratio=result.sharpe_ratio,
+                win_rate=result.win_rate,
+                trade_count=result.trade_count,
+                exposure_ratio=result.exposure_ratio,
+                final_equity=result.final_equity,
+                beat_buy_hold=result.total_return > benchmark.total_return,
+            )
+            for result in sorted(results.values(), key=lambda item: (item.total_return, item.sharpe_ratio), reverse=True)
+        ]
+        period_start = history_points[0].time
+        period_end = history_points[-1].time
+        actual_days = max(1, (parse_timestamp(period_end) - parse_timestamp(period_start)).days)
+        return SimulationRunResult(
+            asset=payload.asset,
+            requested_lookback_years=payload.lookback_years,
+            actual_years_covered=round(actual_days / 365.25, 2),
+            period_start=period_start,
+            period_end=period_end,
+            history_points=len(history_points),
+            data_source=data_source,
+            history_note=history_note,
+            benchmark_label=benchmark.label,
+            benchmark_total_return=benchmark.total_return,
+            benchmark_curve=benchmark.equity_curve,
+            selected_result=results[payload.strategy_id],
+            leaderboard=leaderboard,
         )
 
     def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
@@ -1268,6 +1374,283 @@ class BotSocietyService:
         if direction == "neutral":
             return -abs(quantity * (mark_price - entry_price)) * 0.25
         return quantity * (mark_price - entry_price)
+
+    def _load_simulation_history(self, asset: str, lookback_years: int) -> tuple[list[SimulationSeriesPoint], str, str | None]:
+        repository = BotSocietyRepository(self.database)
+        local_rows = repository.list_market_history(asset)
+        local_points = [
+            SimulationSeriesPoint(time=row["as_of"], value=float(row["price"]))
+            for row in local_rows
+        ]
+        requested_end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        requested_start = requested_end - timedelta(days=365 * lookback_years)
+        points = local_points
+        data_source = "local-archive"
+        history_note: str | None = None
+
+        if self.settings.simulation_live_history:
+            coin_id = self._asset_coin_id(asset)
+            if coin_id:
+                cached_payload = self._read_simulation_history_cache(asset)
+                if self._simulation_cache_is_usable(cached_payload, requested_start, requested_end):
+                    points = [
+                        SimulationSeriesPoint(time=point["time"], value=float(point["value"]))
+                        for point in cached_payload.get("points", [])
+                    ]
+                    data_source = "coingecko-history-cache"
+                    history_note = "Using cached daily history for fast simulation runs."
+                else:
+                    try:
+                        fetched_points = self.history_provider.fetch_history_range(
+                            coin_id,
+                            from_timestamp=int(requested_start.timestamp()),
+                            to_timestamp=int(requested_end.timestamp()),
+                        )
+                    except Exception:
+                        fetched_points = []
+                    if fetched_points:
+                        points = [
+                            SimulationSeriesPoint(time=point["time"], value=float(point["value"]))
+                            for point in fetched_points
+                        ]
+                        data_source = "coingecko-history"
+                        history_note = "Using daily CoinGecko history for the requested lookback window."
+                        self._write_simulation_history_cache(
+                            asset,
+                            {
+                                "asset": asset,
+                                "coin_id": coin_id,
+                                "fetched_at": self._now(),
+                                "start": points[0].time,
+                                "end": points[-1].time,
+                                "points": [point.model_dump() for point in points],
+                            },
+                        )
+
+        filtered_points = [
+            point for point in points
+            if parse_timestamp(point.time) >= requested_start
+        ]
+        if len(filtered_points) >= 3:
+            points = filtered_points
+
+        if data_source == "local-archive":
+            history_note = (
+                "Live history is disabled, so the simulation is running on the local archive."
+                if not self.settings.simulation_live_history
+                else "Live history was unavailable, so the simulation fell back to the local archive."
+            )
+
+        if len(points) >= 2:
+            actual_years = (parse_timestamp(points[-1].time) - parse_timestamp(points[0].time)).days / 365.25
+            if actual_years + 0.15 < lookback_years:
+                suffix = f" Available coverage is {actual_years:.2f} years for {asset}."
+                history_note = f"{history_note or ''}{suffix}".strip()
+
+        return points, data_source, history_note
+
+    def _asset_coin_id(self, asset: str) -> str | None:
+        reverse_map = {symbol: coin_id for coin_id, symbol in CoinGeckoMarketProvider.SYMBOL_MAP.items()}
+        return reverse_map.get(asset.upper())
+
+    def _simulation_cache_path(self, asset: str) -> Path:
+        cache_dir = self.settings.database_path.parent / "simulation_history_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / f"{asset.lower()}.json"
+
+    def _read_simulation_history_cache(self, asset: str) -> dict | None:
+        cache_path = self._simulation_cache_path(asset)
+        if not cache_path.exists():
+            return None
+        try:
+            return json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def _write_simulation_history_cache(self, asset: str, payload: dict) -> None:
+        cache_path = self._simulation_cache_path(asset)
+        try:
+            cache_path.write_text(json.dumps(payload), encoding="utf-8")
+        except OSError:
+            return
+
+    def _simulation_cache_is_usable(
+        self,
+        payload: dict | None,
+        requested_start: datetime,
+        requested_end: datetime,
+    ) -> bool:
+        if not payload:
+            return False
+        try:
+            fetched_at = parse_timestamp(payload["fetched_at"])
+            cached_start = parse_timestamp(payload["start"])
+            cached_end = parse_timestamp(payload["end"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if fetched_at < datetime.now(timezone.utc) - timedelta(hours=self.settings.simulation_cache_hours):
+            return False
+        return cached_start <= requested_start and cached_end >= requested_end - timedelta(days=2)
+
+    def _run_strategy_backtest(
+        self,
+        history_points: list[SimulationSeriesPoint],
+        payload: SimulationRequest,
+        strategy_id: str,
+    ) -> SimulationStrategyResult:
+        prices = [point.value for point in history_points]
+        times = [point.time for point in history_points]
+        fee_rate = payload.fee_bps / 10000
+        equity = payload.starting_capital
+        peak_equity = equity
+        equity_curve = [SimulationSeriesPoint(time=times[0], value=round(equity, 2))]
+        drawdown_curve = [SimulationSeriesPoint(time=times[0], value=0.0)]
+        daily_returns: list[float] = []
+        trades: list[SimulationTradeView] = []
+        position = 0.0
+        entry_time: str | None = None
+        entry_price: float | None = None
+        exposure_days = 0
+
+        for index in range(1, len(prices)):
+            previous_equity = equity
+            desired_position = self._simulation_target_position(strategy_id, prices, index, position, payload)
+            execution_time = times[index - 1]
+            execution_price = prices[index - 1]
+
+            if desired_position != position:
+                equity *= max(0.0, 1 - (fee_rate * abs(desired_position - position)))
+                if position > 0 and entry_time is not None and entry_price is not None:
+                    trades.append(
+                        self._build_simulation_trade(
+                            entry_time=entry_time,
+                            exit_time=execution_time,
+                            entry_price=entry_price,
+                            exit_price=execution_price,
+                            fee_rate=fee_rate,
+                        )
+                    )
+                    entry_time = None
+                    entry_price = None
+                if desired_position > 0:
+                    entry_time = execution_time
+                    entry_price = execution_price
+                position = desired_position
+
+            interval_return = ((prices[index] / prices[index - 1]) - 1) if prices[index - 1] else 0.0
+            equity *= 1 + (interval_return * position)
+            if position > 0:
+                exposure_days += 1
+            realized_return = (equity / previous_equity) - 1 if previous_equity else 0.0
+            daily_returns.append(realized_return)
+            peak_equity = max(peak_equity, equity)
+            drawdown = (equity / peak_equity) - 1 if peak_equity else 0.0
+            equity_curve.append(SimulationSeriesPoint(time=times[index], value=round(equity, 2)))
+            drawdown_curve.append(SimulationSeriesPoint(time=times[index], value=round(drawdown, 6)))
+
+        if position > 0 and entry_time is not None and entry_price is not None:
+            trades.append(
+                self._build_simulation_trade(
+                    entry_time=entry_time,
+                    exit_time=times[-1],
+                    entry_price=entry_price,
+                    exit_price=prices[-1],
+                    fee_rate=fee_rate,
+                )
+            )
+
+        total_return = (equity / payload.starting_capital) - 1 if payload.starting_capital else 0.0
+        total_days = max(1, (parse_timestamp(times[-1]) - parse_timestamp(times[0])).days)
+        cagr = ((equity / payload.starting_capital) ** (365.25 / total_days) - 1) if total_days and payload.starting_capital else 0.0
+        sharpe_ratio = 0.0
+        if len(daily_returns) >= 2:
+            volatility = pstdev(daily_returns)
+            if volatility > 0:
+                sharpe_ratio = (mean(daily_returns) / volatility) * (252 ** 0.5)
+        positive_trades = sum(1 for trade in trades if trade.return_pct > 0)
+        win_rate = (positive_trades / len(trades)) if trades else 0.0
+        max_drawdown = min((point.value for point in drawdown_curve), default=0.0)
+        preset = self._simulation_preset(strategy_id)
+        return SimulationStrategyResult(
+            strategy_id=preset.strategy_id,
+            label=preset.label,
+            summary=preset.description,
+            total_return=round(total_return, 6),
+            cagr=round(cagr, 6),
+            max_drawdown=round(max_drawdown, 6),
+            sharpe_ratio=round(sharpe_ratio, 3),
+            win_rate=round(win_rate, 3),
+            trade_count=len(trades),
+            exposure_ratio=round(exposure_days / max(1, len(prices) - 1), 3),
+            final_equity=round(equity, 2),
+            equity_curve=equity_curve,
+            drawdown_curve=drawdown_curve,
+            trades=trades[-12:],
+        )
+
+    def _simulation_target_position(
+        self,
+        strategy_id: str,
+        prices: list[float],
+        index: int,
+        current_position: float,
+        payload: SimulationRequest,
+    ) -> float:
+        previous_price = prices[index - 1]
+        if strategy_id == "buy_hold":
+            return 1.0
+        if strategy_id == "trend_follow":
+            if index < payload.slow_window:
+                return 0.0
+            fast_average = mean(prices[index - payload.fast_window:index])
+            slow_average = mean(prices[index - payload.slow_window:index])
+            return 1.0 if previous_price >= fast_average and fast_average > slow_average else 0.0
+        if strategy_id == "mean_reversion":
+            if index < payload.mean_window:
+                return 0.0
+            baseline = mean(prices[index - payload.mean_window:index])
+            deviation = ((previous_price / baseline) - 1) if baseline else 0.0
+            if current_position > 0:
+                return 0.0 if deviation >= -0.005 else 1.0
+            return 1.0 if deviation <= -0.04 else 0.0
+        if strategy_id == "breakout":
+            if index < payload.breakout_window:
+                return 0.0
+            recent_window = prices[index - payload.breakout_window:index]
+            recent_high = max(recent_window)
+            trailing_window = prices[max(0, index - max(3, payload.breakout_window // 2)):index]
+            trailing_low = min(trailing_window)
+            if current_position > 0:
+                return 0.0 if previous_price < trailing_low else 1.0
+            return 1.0 if previous_price >= recent_high else 0.0
+        return 0.0
+
+    def _build_simulation_trade(
+        self,
+        *,
+        entry_time: str,
+        exit_time: str,
+        entry_price: float,
+        exit_price: float,
+        fee_rate: float,
+    ) -> SimulationTradeView:
+        gross_return = ((exit_price / entry_price) - 1) if entry_price else 0.0
+        net_return = gross_return - (fee_rate * 2)
+        holding_days = max(0, (parse_timestamp(exit_time) - parse_timestamp(entry_time)).days)
+        return SimulationTradeView(
+            opened_at=entry_time,
+            closed_at=exit_time,
+            entry_price=round(entry_price, 4),
+            exit_price=round(exit_price, 4),
+            return_pct=round(net_return, 6),
+            holding_days=holding_days,
+        )
+
+    def _simulation_preset(self, strategy_id: str) -> SimulationStrategyPreset:
+        for preset in self.SIMULATION_PRESETS:
+            if preset.strategy_id == strategy_id:
+                return preset
+        return self.SIMULATION_PRESETS[0]
 
     def _provider_configuration(self, provider_type: str) -> tuple[bool, bool]:
         if provider_type == "market":

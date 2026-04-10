@@ -9,6 +9,7 @@ PredictionStatus = Literal["pending", "scored"]
 NotificationChannelType = Literal["email", "webhook"]
 NotificationDeliveryStatus = Literal["delivered", "retry_scheduled", "failed", "exhausted"]
 PaperPositionStatus = Literal["open", "closed"]
+SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout"]
 
 
 class Summary(BaseModel):
@@ -270,6 +271,94 @@ class PaperSimulationResult(BaseModel):
     created_positions: int = Field(ge=0)
     closed_positions: int = Field(ge=0)
     snapshot: PaperTradingSnapshot
+
+
+class SimulationStrategyPreset(BaseModel):
+    strategy_id: SimulationStrategyId
+    label: str
+    description: str
+
+
+class SimulationConfig(BaseModel):
+    available_assets: list[str] = Field(default_factory=list)
+    lookback_year_options: list[int] = Field(default_factory=list)
+    strategy_presets: list[SimulationStrategyPreset] = Field(default_factory=list)
+    default_strategy_id: SimulationStrategyId
+    default_lookback_years: int = Field(ge=1, le=10)
+    default_starting_capital: float = Field(ge=1000)
+    default_fee_bps: float = Field(ge=0)
+    live_history_capable: bool
+    note: str
+
+
+class SimulationRequest(BaseModel):
+    asset: str = Field(min_length=2, max_length=10)
+    lookback_years: int = Field(default=5, ge=1, le=10)
+    strategy_id: SimulationStrategyId = "trend_follow"
+    starting_capital: float = Field(default=10000, ge=1000, le=100000000)
+    fee_bps: float = Field(default=10, ge=0, le=500)
+    fast_window: int = Field(default=20, ge=2, le=240)
+    slow_window: int = Field(default=50, ge=3, le=400)
+    mean_window: int = Field(default=20, ge=3, le=240)
+    breakout_window: int = Field(default=55, ge=3, le=400)
+
+    @model_validator(mode="after")
+    def validate_windows(self) -> "SimulationRequest":
+        self.asset = self.asset.strip().upper()
+        if self.fast_window >= self.slow_window:
+            raise ValueError("fast_window must be smaller than slow_window")
+        return self
+
+
+class SimulationSeriesPoint(BaseModel):
+    time: str
+    value: float
+
+
+class SimulationTradeView(BaseModel):
+    opened_at: str
+    closed_at: str
+    entry_price: float = Field(ge=0)
+    exit_price: float = Field(ge=0)
+    return_pct: float
+    holding_days: int = Field(ge=0)
+
+
+class SimulationLeaderboardEntry(BaseModel):
+    strategy_id: SimulationStrategyId
+    label: str
+    total_return: float
+    cagr: float
+    max_drawdown: float
+    sharpe_ratio: float
+    win_rate: float = Field(ge=0, le=1)
+    trade_count: int = Field(ge=0)
+    exposure_ratio: float = Field(ge=0, le=1)
+    final_equity: float = Field(ge=0)
+    beat_buy_hold: bool = False
+
+
+class SimulationStrategyResult(SimulationLeaderboardEntry):
+    summary: str
+    equity_curve: list[SimulationSeriesPoint] = Field(default_factory=list)
+    drawdown_curve: list[SimulationSeriesPoint] = Field(default_factory=list)
+    trades: list[SimulationTradeView] = Field(default_factory=list)
+
+
+class SimulationRunResult(BaseModel):
+    asset: str
+    requested_lookback_years: int = Field(ge=1, le=10)
+    actual_years_covered: float = Field(ge=0)
+    period_start: str
+    period_end: str
+    history_points: int = Field(ge=0)
+    data_source: str
+    history_note: str | None = None
+    benchmark_label: str
+    benchmark_total_return: float
+    benchmark_curve: list[SimulationSeriesPoint] = Field(default_factory=list)
+    selected_result: SimulationStrategyResult
+    leaderboard: list[SimulationLeaderboardEntry] = Field(default_factory=list)
 
 
 class NotificationChannel(BaseModel):

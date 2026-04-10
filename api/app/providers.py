@@ -347,6 +347,36 @@ class CoinGeckoMarketProvider(MarketProviderBase):
             return ProviderReadiness(False, "CoinGecko Pro mode requires BSM_COINGECKO_API_KEY")
         return ProviderReadiness(True)
 
+    def fetch_history_range(self, coin_id: str, *, from_timestamp: int, to_timestamp: int) -> list[dict]:
+        query = urlencode(
+            {
+                "vs_currency": "usd",
+                "from": from_timestamp,
+                "to": to_timestamp,
+            }
+        )
+        headers = {"accept": "application/json"}
+        if self.api_key:
+            headers["x-cg-pro-api-key"] = self.api_key
+        request = Request(f"{self.base_url}/coins/{coin_id}/market_chart/range?{query}", headers=headers)
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        prices = payload.get("prices") or []
+        if not prices:
+            return []
+
+        daily_points: dict[str, float] = {}
+        for timestamp_ms, value in prices:
+            point_time = datetime.fromtimestamp(float(timestamp_ms) / 1000, tz=timezone.utc)
+            normalized = point_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            daily_points[to_timestamp(normalized)] = float(value)
+
+        return [
+            {"time": timestamp, "value": daily_points[timestamp]}
+            for timestamp in sorted(daily_points)
+        ]
+
     def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
         query = urlencode(
             {

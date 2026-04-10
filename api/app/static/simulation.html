@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Society Markets Strategy Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark">BSM</span>
+        <div>
+          <p class="eyebrow">Bot Society Markets</p>
+          <h1>Strategy Lab for rapid backtesting and algorithm comparison.</h1>
+        </div>
+      </div>
+      <nav class="topnav">
+        <a href="/">Landing</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/status">Status</a>
+        <a href="/simulation">Strategy Lab</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">Separate simulation surface</p>
+          <h2 id="simulation-headline">Backtest faster, compare harder, and keep iterating until the edge is real.</h2>
+          <p class="lead" id="simulation-submeta">Loading strategy presets, historical coverage, and benchmark curves...</p>
+          <div class="hero-actions">
+            <a class="button primary" href="/dashboard">Open Operations Dashboard</a>
+            <a class="button secondary" href="/status">Open Public Status</a>
+          </div>
+          <p class="notice notice-soft" id="simulation-history-note">Preparing historical data access...</p>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-header">
+            <span>Backtest mission</span>
+            <span class="badge">Algorithm lab</span>
+          </div>
+          <div class="leader-mini">
+            <div><span>Goal</span><strong>Beat buy-and-hold with discipline</strong></div>
+            <div><span>Window</span><strong>Choose 1 to 10 years</strong></div>
+            <div><span>Mode</span><strong>Fast historical comparison</strong></div>
+          </div>
+          <p class="panel-note" id="simulation-config-note">Loading simulation configuration...</p>
+        </div>
+      </section>
+
+      <section class="grid-two">
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Simulation setup</p>
+              <h3>Choose the market, years, and algorithm behavior</h3>
+            </div>
+            <span class="badge">Rapid run</span>
+          </div>
+          <form class="stack-form" id="simulation-form">
+            <div class="strategy-control-grid">
+              <label>
+                <span>Asset</span>
+                <select id="simulation-asset-input" name="asset"></select>
+              </label>
+              <label>
+                <span>Lookback</span>
+                <select id="simulation-years-input" name="lookback_years"></select>
+              </label>
+              <label>
+                <span>Strategy</span>
+                <select id="simulation-strategy-input" name="strategy_id"></select>
+              </label>
+              <label>
+                <span>Starting capital</span>
+                <input id="simulation-capital-input" name="starting_capital" type="number" min="1000" step="1000">
+              </label>
+              <label>
+                <span>Fee bps</span>
+                <input id="simulation-fee-input" name="fee_bps" type="number" min="0" max="500" step="1">
+              </label>
+              <label>
+                <span>Fast MA</span>
+                <input id="simulation-fast-input" name="fast_window" type="number" min="2" max="240" value="20">
+              </label>
+              <label>
+                <span>Slow MA</span>
+                <input id="simulation-slow-input" name="slow_window" type="number" min="3" max="400" value="50">
+              </label>
+              <label>
+                <span>Mean window</span>
+                <input id="simulation-mean-input" name="mean_window" type="number" min="3" max="240" value="20">
+              </label>
+              <label>
+                <span>Breakout window</span>
+                <input id="simulation-breakout-input" name="breakout_window" type="number" min="3" max="400" value="55">
+              </label>
+            </div>
+            <div class="hero-actions compact-actions">
+              <button class="button primary" id="run-simulation-button" type="submit">Run Simulation</button>
+              <a class="button secondary" href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Open Repository</a>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Result snapshot</p>
+              <h3>Selected algorithm performance</h3>
+            </div>
+            <span class="badge">Updated on run</span>
+          </div>
+          <div class="pulse-metric-grid" id="simulation-summary-grid"></div>
+        </article>
+      </section>
+
+      <p class="notice" id="cycle-status"></p>
+
+      <section class="content-grid strategy-chart-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Equity curve</p>
+              <h3>Selected strategy versus buy-and-hold benchmark</h3>
+            </div>
+          </div>
+          <div class="chart-surface chart-surface-large" id="simulation-equity-chart"></div>
+        </article>
+
+        <article class="card side-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Drawdown</p>
+              <h3>Capital pain profile</h3>
+            </div>
+          </div>
+          <div class="chart-surface" id="simulation-drawdown-chart"></div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Leaderboard</p>
+              <h3>Rank the strategy presets on the same historical window</h3>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Strategy</th>
+                  <th>Total Return</th>
+                  <th>CAGR</th>
+                  <th>Max DD</th>
+                  <th>Sharpe</th>
+                  <th>Trades</th>
+                  <th>Beat Benchmark</th>
+                </tr>
+              </thead>
+              <tbody id="simulation-leaderboard-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card side-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Trade log</p>
+              <h3>Most recent closed trades</h3>
+            </div>
+          </div>
+          <ul class="workspace-list paper-position-list" id="simulation-trade-list"></ul>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
