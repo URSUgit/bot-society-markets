@@ -19,6 +19,7 @@ This repository contains both the founder documentation package and a profession
 - [Scoring Specification](docs/10-scoring-specification.md)
 - [Data Provider Decision Memo](docs/11-data-provider-decision-memo.md)
 - [Deployment Guide](docs/12-deployment-guide.md)
+- [Open-Source Stack Watchlist](docs/13-open-source-stack-watchlist.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
