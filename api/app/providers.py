@@ -39,6 +39,123 @@ class SignalProviderBase:
         return ProviderReadiness(ready=True)
 
 
+class MacroProviderBase:
+    source_name = "macro-provider"
+
+    def readiness(self) -> ProviderReadiness:
+        return ProviderReadiness(ready=True)
+
+
+class DemoMacroProvider(MacroProviderBase):
+    source_name = "demo-macro-provider"
+
+    def __init__(self, *, series_ids: tuple[str, ...]) -> None:
+        self.series_ids = series_ids
+
+    def generate(self, cycle_index: int) -> list[dict]:
+        from .seed_data import MACRO_SNAPSHOT_SEEDS
+
+        allowed = set(self.series_ids)
+        return [dict(row) for row in MACRO_SNAPSHOT_SEEDS if not allowed or row["series_id"] in allowed]
+
+
+class FredMacroProvider(MacroProviderBase):
+    source_name = "fredapi-provider"
+    SERIES_META = {
+        "FEDFUNDS": {"label": "Fed Funds Rate", "unit": "%", "higher_supportive": False, "scale": 14.0},
+        "DGS10": {"label": "US 10Y Treasury", "unit": "%", "higher_supportive": False, "scale": 10.0},
+        "CPIAUCSL": {"label": "CPI Index", "unit": "index", "higher_supportive": False, "scale": 11.0},
+        "WALCL": {"label": "Fed Balance Sheet", "unit": "USD mn", "higher_supportive": True, "scale": 8.0},
+        "VIXCLS": {"label": "VIX", "unit": "index", "higher_supportive": False, "scale": 8.0},
+    }
+
+    def __init__(self, *, api_key: str | None, series_ids: tuple[str, ...]) -> None:
+        self.api_key = api_key
+        self.series_ids = series_ids
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.api_key:
+            return ProviderReadiness(False, "FRED mode requires BSM_FRED_API_KEY")
+        try:
+            from fredapi import Fred  # noqa: F401
+        except ImportError:
+            return ProviderReadiness(False, "FRED mode requires fredapi to be installed")
+        return ProviderReadiness(True)
+
+    def generate(self, cycle_index: int) -> list[dict]:
+        if not self.api_key:
+            raise ValueError("FRED macro provider requires BSM_FRED_API_KEY")
+        try:
+            from fredapi import Fred
+        except ImportError as exc:  # pragma: no cover - exercised only in live environments without dep
+            raise ValueError("FRED macro provider requires fredapi to be installed") from exc
+
+        fred = Fred(api_key=self.api_key)
+        observation_start = (datetime.now(timezone.utc) - timedelta(days=420)).date().isoformat()
+        generated: list[dict] = []
+
+        for series_id in self.series_ids:
+            meta = self.SERIES_META.get(
+                series_id,
+                {"label": series_id, "unit": "value", "higher_supportive": True, "scale": 8.0},
+            )
+            series = fred.get_series(series_id, observation_start=observation_start)
+            if series is None:
+                continue
+            cleaned = series.dropna().tail(18)
+            previous_value: float | None = None
+            for observed_at, raw_value in cleaned.items():
+                value = float(raw_value)
+                change_percent = ((value - previous_value) / abs(previous_value)) if previous_value not in (None, 0.0) else 0.0
+                signal_bias = round(self._signal_bias(meta["higher_supportive"], meta["scale"], change_percent), 6)
+                generated.append(
+                    {
+                        "series_id": series_id,
+                        "label": str(meta["label"]),
+                        "unit": str(meta["unit"]),
+                        "observation_date": self._normalize_timestamp(observed_at),
+                        "value": value,
+                        "change_percent": round(change_percent, 6),
+                        "signal_bias": signal_bias,
+                        "regime_label": self._regime_label(signal_bias),
+                        "source": self.source_name,
+                    }
+                )
+                previous_value = value
+
+        if not generated:
+            raise ValueError("FRED did not yield macro observations for the configured series")
+        return generated
+
+    @staticmethod
+    def _signal_bias(higher_supportive: bool, scale: float, change_percent: float) -> float:
+        raw_bias = change_percent * scale
+        if not higher_supportive:
+            raw_bias = -raw_bias
+        return _clamp(raw_bias, -1.0, 1.0)
+
+    @staticmethod
+    def _regime_label(signal_bias: float) -> str:
+        if signal_bias >= 0.2:
+            return "supportive"
+        if signal_bias <= -0.2:
+            return "restrictive"
+        return "balanced"
+
+    @staticmethod
+    def _normalize_timestamp(value) -> str:
+        to_datetime = getattr(value, "to_pydatetime", None)
+        if callable(to_datetime):
+            value = to_datetime()
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return to_timestamp(value)
+        if hasattr(value, "isoformat"):
+            return f"{value.isoformat()}T00:00:00Z"
+        return to_timestamp(datetime.now(timezone.utc))
+
+
 class AssetAwareSignalProvider(SignalProviderBase):
     ASSET_ALIASES = {
         "BTC": ("bitcoin", "btc", "xbt", "blackrock etf", "spot btc"),

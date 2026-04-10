@@ -57,6 +57,22 @@ market_snapshots_table = Table(
     UniqueConstraint("asset", "as_of", name="uq_market_snapshots_asset_as_of"),
 )
 
+macro_snapshots_table = Table(
+    "macro_snapshots",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("series_id", String(64), nullable=False),
+    Column("label", String(255), nullable=False),
+    Column("unit", String(64), nullable=False),
+    Column("observation_date", String(64), nullable=False),
+    Column("value", Float, nullable=False),
+    Column("change_percent", Float, nullable=False),
+    Column("signal_bias", Float, nullable=False),
+    Column("regime_label", String(64), nullable=False),
+    Column("source", String(120), nullable=False),
+    UniqueConstraint("series_id", "observation_date", name="uq_macro_snapshots_series_date"),
+)
+
 signals_table = Table(
     "signals",
     metadata,
@@ -106,6 +122,29 @@ predictions_table = Table(
     Column("calibration_score", Float),
     Column("directional_success", Boolean),
     Column("scoring_version", String(32)),
+)
+
+paper_positions_table = Table(
+    "paper_positions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("prediction_id", Integer, ForeignKey("predictions.id", ondelete="CASCADE"), nullable=False),
+    Column("bot_slug", String(120), ForeignKey("bots.slug", ondelete="CASCADE"), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("direction", String(16), nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("allocation_usd", Float, nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("entry_price", Float, nullable=False),
+    Column("fees_paid", Float, nullable=False, default=0.0, server_default="0"),
+    Column("slippage_bps", Float, nullable=False, default=0.0, server_default="0"),
+    Column("status", String(16), nullable=False),
+    Column("opened_at", String(64), nullable=False),
+    Column("closed_at", String(64)),
+    Column("exit_price", Float),
+    Column("realized_pnl", Float),
+    UniqueConstraint("user_slug", "prediction_id", name="uq_paper_positions_user_prediction"),
 )
 
 pipeline_runs_table = Table(
@@ -223,10 +262,12 @@ alert_delivery_events_table = Table(
 )
 
 Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
+Index("idx_macro_snapshots_series_date", macro_snapshots_table.c.series_id, macro_snapshots_table.c.observation_date.desc())
 Index("idx_signals_source_type_observed_at", signals_table.c.source_type, signals_table.c.observed_at.desc())
 Index("idx_signals_observed_at", signals_table.c.observed_at.desc())
 Index("idx_predictions_published_at", predictions_table.c.published_at.desc())
 Index("idx_predictions_status", predictions_table.c.status, predictions_table.c.published_at.desc())
+Index("idx_paper_positions_user_status_opened", paper_positions_table.c.user_slug, paper_positions_table.c.status, paper_positions_table.c.opened_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
 Index("idx_alert_rules_user", alert_rules_table.c.user_slug, alert_rules_table.c.created_at.desc())
 Index("idx_notification_channels_user", notification_channels_table.c.user_slug, notification_channels_table.c.created_at.desc())

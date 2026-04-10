@@ -8,6 +8,7 @@ Direction = Literal["bullish", "bearish", "neutral"]
 PredictionStatus = Literal["pending", "scored"]
 NotificationChannelType = Literal["email", "webhook"]
 NotificationDeliveryStatus = Literal["delivered", "retry_scheduled", "failed", "exhausted"]
+PaperPositionStatus = Literal["open", "closed"]
 
 
 class Summary(BaseModel):
@@ -33,6 +34,16 @@ class AssetSnapshot(BaseModel):
     trend_score: float = Field(ge=-1, le=1)
     signal_bias: float = Field(ge=-1, le=1)
     source: str
+
+
+class AssetHistoryPoint(BaseModel):
+    time: str
+    value: float
+
+
+class AssetHistoryEnvelope(BaseModel):
+    asset: str
+    points: list[AssetHistoryPoint]
 
 
 class SignalView(BaseModel):
@@ -143,12 +154,20 @@ class ProviderStatus(BaseModel):
     signal_provider_live_capable: bool = False
     signal_provider_ready: bool = True
     signal_provider_warning: str | None = None
+    macro_provider_mode: str
+    macro_provider_source: str
+    macro_provider_configured: bool = True
+    macro_provider_live_capable: bool = False
+    macro_provider_ready: bool = True
+    macro_provider_warning: str | None = None
     tracked_coin_ids: list[str]
+    fred_series_ids: list[str] = Field(default_factory=list)
     rss_feed_urls: list[str]
     reddit_subreddits: list[str] = Field(default_factory=list)
     venue_signal_providers: list[ProviderComponentStatus] = Field(default_factory=list)
     market_fallback_active: bool = False
     signal_fallback_active: bool = False
+    macro_fallback_active: bool = False
 
 
 class SignalMixItem(BaseModel):
@@ -180,6 +199,77 @@ class SystemPulseSnapshot(BaseModel):
     retry_queue_depth: int = Field(ge=0)
     signal_mix: list[SignalMixItem] = Field(default_factory=list)
     venue_pulse: list[VenuePulseItem] = Field(default_factory=list)
+
+
+class MacroObservationPoint(BaseModel):
+    time: str
+    value: float
+
+
+class MacroSeriesSnapshot(BaseModel):
+    series_id: str
+    label: str
+    unit: str
+    latest_value: float
+    change_percent: float
+    signal_bias: float = Field(ge=-1, le=1)
+    regime_label: str
+    source: str
+    observed_at: str
+    history: list[MacroObservationPoint] = Field(default_factory=list)
+
+
+class MacroSnapshot(BaseModel):
+    generated_at: str
+    posture: str
+    summary: str
+    series: list[MacroSeriesSnapshot] = Field(default_factory=list)
+
+
+class PaperPortfolioSummary(BaseModel):
+    starting_balance: float = Field(ge=0)
+    cash_balance: float
+    open_exposure: float = Field(ge=0)
+    equity: float = Field(ge=0)
+    realized_pnl: float
+    unrealized_pnl: float
+    total_return: float
+    win_rate: float = Field(ge=0, le=1)
+    open_positions: int = Field(ge=0)
+    closed_positions: int = Field(ge=0)
+
+
+class PaperPositionView(BaseModel):
+    id: int
+    prediction_id: int
+    bot_slug: str
+    bot_name: str
+    asset: str
+    direction: Direction
+    confidence: float = Field(ge=0, le=1)
+    status: PaperPositionStatus
+    opened_at: str
+    closed_at: str | None = None
+    allocation_usd: float = Field(ge=0)
+    quantity: float = Field(ge=0)
+    entry_price: float = Field(ge=0)
+    current_price: float = Field(ge=0)
+    exit_price: float | None = None
+    fees_paid: float = Field(ge=0)
+    unrealized_pnl: float
+    realized_pnl: float | None = None
+
+
+class PaperTradingSnapshot(BaseModel):
+    generated_at: str
+    summary: PaperPortfolioSummary
+    positions: list[PaperPositionView] = Field(default_factory=list)
+
+
+class PaperSimulationResult(BaseModel):
+    created_positions: int = Field(ge=0)
+    closed_positions: int = Field(ge=0)
+    snapshot: PaperTradingSnapshot
 
 
 class NotificationChannel(BaseModel):
@@ -257,6 +347,8 @@ class DashboardSnapshot(BaseModel):
     recent_predictions: list[PredictionView]
     recent_signals: list[SignalView]
     system_pulse: SystemPulseSnapshot
+    macro_snapshot: MacroSnapshot
+    paper_trading: PaperTradingSnapshot
     latest_operation: OperationSnapshot | None = None
     auth_session: AuthSessionSnapshot
     user_profile: "UserProfile"
@@ -270,6 +362,7 @@ class LandingSnapshot(BaseModel):
     leaderboard: list[BotSummary]
     recent_signals: list[SignalView]
     system_pulse: SystemPulseSnapshot
+    macro_snapshot: MacroSnapshot
     provider_status: ProviderStatus
 
 

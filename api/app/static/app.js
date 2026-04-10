@@ -91,8 +91,12 @@ function sentimentLabel(value) {
 }
 
 function providerState(providerStatus) {
-  const healthy = providerStatus?.market_provider_ready && providerStatus?.signal_provider_ready;
-  const fallback = providerStatus?.market_fallback_active || providerStatus?.signal_fallback_active;
+  const healthy = providerStatus?.market_provider_ready
+    && providerStatus?.signal_provider_ready
+    && providerStatus?.macro_provider_ready;
+  const fallback = providerStatus?.market_fallback_active
+    || providerStatus?.signal_fallback_active
+    || providerStatus?.macro_fallback_active;
   if (fallback) {
     return { label: "Fallback active", variant: "warning" };
   }
@@ -104,6 +108,7 @@ function providerState(providerStatus) {
 
 let selectedBotSlug = null;
 let latestSnapshot = null;
+let latestLandingSnapshot = null;
 let lastDashboardRefreshAt = null;
 let nextDashboardRefreshAt = null;
 let autoRefreshEnabled = true;
@@ -114,6 +119,12 @@ let statusPageLoadInFlight = false;
 let statusPageTimer = null;
 let previousLeaderboardScores = new Map();
 let runCycleStageTimer = null;
+let chartInstances = new Map();
+let assetHistoryCache = new Map();
+let selectedLandingAsset = null;
+let selectedDashboardAsset = null;
+let selectedMacroSeries = null;
+let chartResizeFrame = null;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -251,13 +262,17 @@ function renderRibbon(snapshot) {
     pressureSubtitle.textContent = `${snapshot.system_pulse?.total_recent_signals ?? snapshot.summary.signals_last_24h} recent signals · ${snapshot.notification_health.retry_queue_depth} notification retries waiting`;
   }
 
-  const providersHealthy = snapshot.provider_status.market_provider_ready && snapshot.provider_status.signal_provider_ready;
-  const fallbackActive = snapshot.provider_status.market_fallback_active || snapshot.provider_status.signal_fallback_active;
+  const providersHealthy = snapshot.provider_status.market_provider_ready
+    && snapshot.provider_status.signal_provider_ready
+    && snapshot.provider_status.macro_provider_ready;
+  const fallbackActive = snapshot.provider_status.market_fallback_active
+    || snapshot.provider_status.signal_fallback_active
+    || snapshot.provider_status.macro_fallback_active;
   if (providerValue) {
     providerValue.textContent = fallbackActive ? "Fallback active" : (providersHealthy ? "Primary providers stable" : "Needs attention");
   }
   if (providerSubtitle) {
-    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source}`;
+    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source} + ${snapshot.provider_status.macro_provider_source}`;
   }
   if (activityBadge) {
     activityBadge.textContent = autoRefreshEnabled ? `Auto-refresh ${AUTO_REFRESH_MS / 1000}s` : "Manual refresh";
@@ -285,6 +300,270 @@ function renderMarketTape(assets) {
     </article>
   `).join("");
   track.innerHTML = `${chips}${chips}`;
+}
+
+function destroyChart(targetId) {
+  const existing = chartInstances.get(targetId);
+  if (existing) {
+    existing.remove();
+    chartInstances.delete(targetId);
+  }
+}
+
+function normalizeChartPoints(points = []) {
+  return points
+    .map((point) => ({
+      time: Math.floor(new Date(point.time).getTime() / 1000),
+      value: Number(point.value),
+    }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
+}
+
+async function loadAssetHistory(asset) {
+  const symbol = String(asset || "").toUpperCase();
+  if (!symbol) {
+    return null;
+  }
+  if (assetHistoryCache.has(symbol)) {
+    return assetHistoryCache.get(symbol);
+  }
+  const payload = await fetchJson(`/api/assets/${encodeURIComponent(symbol)}/history`);
+  assetHistoryCache.set(symbol, payload);
+  return payload;
+}
+
+function renderTimeSeriesChart(targetId, points, options = {}) {
+  const container = document.getElementById(targetId);
+  if (!container || !window.LightweightCharts) {
+    return;
+  }
+  destroyChart(targetId);
+  container.innerHTML = "";
+
+  const data = normalizeChartPoints(points);
+  if (!data.length) {
+    container.innerHTML = '<p class="panel-note">No chart data is available yet.</p>';
+    return;
+  }
+
+  const chart = window.LightweightCharts.createChart(container, {
+    width: Math.max(container.clientWidth, 320),
+    height: options.height || 280,
+    layout: {
+      background: { color: "transparent" },
+      textColor: "#5a6a75",
+      fontFamily: '"Avenir Next", "Franklin Gothic Book", "Trebuchet MS", sans-serif',
+    },
+    grid: {
+      vertLines: { color: "rgba(16, 38, 54, 0.08)" },
+      horzLines: { color: "rgba(16, 38, 54, 0.08)" },
+    },
+    rightPriceScale: {
+      borderColor: "rgba(16, 38, 54, 0.12)",
+    },
+    timeScale: {
+      borderColor: "rgba(16, 38, 54, 0.12)",
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    crosshair: {
+      vertLine: { color: "rgba(196, 106, 55, 0.28)" },
+      horzLine: { color: "rgba(31, 122, 120, 0.22)" },
+    },
+  });
+
+  const seriesKind = options.seriesKind === "line"
+    ? window.LightweightCharts.LineSeries
+    : window.LightweightCharts.AreaSeries;
+  const series = chart.addSeries(seriesKind, {
+    color: options.lineColor || "#1f7a78",
+    lineWidth: 3,
+    topColor: options.topColor || "rgba(31, 122, 120, 0.28)",
+    bottomColor: options.bottomColor || "rgba(31, 122, 120, 0.04)",
+    priceLineVisible: false,
+    lastValueVisible: true,
+  });
+  series.setData(data);
+  chart.timeScale().fitContent();
+  chartInstances.set(targetId, chart);
+}
+
+function resizeVisibleCharts() {
+  chartInstances.forEach((chart, targetId) => {
+    const container = document.getElementById(targetId);
+    if (!container) {
+      return;
+    }
+    chart.resize(
+      Math.max(container.clientWidth, 320),
+      Math.max(container.clientHeight, 240),
+    );
+  });
+}
+
+function renderPillRow(targetId, items, selectedValue, action) {
+  const container = document.getElementById(targetId);
+  if (!container) {
+    return;
+  }
+  container.innerHTML = items.map((item) => `
+    <button
+      class="pill-button ${item.value === selectedValue ? "is-active" : ""}"
+      type="button"
+      data-action="${action}"
+      data-value="${item.value}"
+    >${item.label}</button>
+  `).join("");
+}
+
+async function renderLandingMarketChart(assets) {
+  const selectedAsset = selectedLandingAsset || assets?.[0]?.asset;
+  if (!selectedAsset) {
+    return;
+  }
+  selectedLandingAsset = selectedAsset;
+  renderPillRow(
+    "landing-chart-tabs",
+    (assets || []).map((asset) => ({ value: asset.asset, label: asset.asset })),
+    selectedLandingAsset,
+    "select-landing-asset",
+  );
+  const history = await loadAssetHistory(selectedLandingAsset);
+  renderTimeSeriesChart("landing-market-chart", history?.points || [], {
+    lineColor: "#1f7a78",
+    topColor: "rgba(31, 122, 120, 0.24)",
+    bottomColor: "rgba(31, 122, 120, 0.03)",
+    height: 300,
+  });
+  const note = document.getElementById("landing-chart-note");
+  if (note) {
+    note.innerHTML = `${selectedLandingAsset} history from the market snapshot archive. Charts powered by <a class="text-link" href="https://github.com/tradingview/lightweight-charts" target="_blank" rel="noreferrer">TradingView Lightweight Charts</a>.`;
+  }
+}
+
+async function renderDashboardMarketChart(assets) {
+  const selectedAsset = selectedDashboardAsset || assets?.[0]?.asset;
+  if (!selectedAsset) {
+    return;
+  }
+  selectedDashboardAsset = selectedAsset;
+  renderPillRow(
+    "dashboard-chart-tabs",
+    (assets || []).map((asset) => ({ value: asset.asset, label: asset.asset })),
+    selectedDashboardAsset,
+    "select-dashboard-asset",
+  );
+  const history = await loadAssetHistory(selectedDashboardAsset);
+  renderTimeSeriesChart("dashboard-market-chart", history?.points || [], {
+    lineColor: "#c46a37",
+    topColor: "rgba(196, 106, 55, 0.24)",
+    bottomColor: "rgba(196, 106, 55, 0.04)",
+    height: 320,
+  });
+  const note = document.getElementById("dashboard-chart-note");
+  if (note) {
+    note.innerHTML = `${selectedDashboardAsset} price history from the Bot Society Markets archive. Charts powered by <a class="text-link" href="https://github.com/tradingview/lightweight-charts" target="_blank" rel="noreferrer">TradingView Lightweight Charts</a>.`;
+  }
+}
+
+function renderMacroCards(macroSnapshot, gridId, postureId, summaryId) {
+  const grid = document.getElementById(gridId);
+  const posture = document.getElementById(postureId);
+  const summary = document.getElementById(summaryId);
+  if (!grid || !macroSnapshot) {
+    return;
+  }
+  if (posture) {
+    posture.textContent = macroSnapshot.posture;
+  }
+  if (summary) {
+    summary.textContent = macroSnapshot.summary;
+  }
+  grid.innerHTML = (macroSnapshot.series || []).map((series) => `
+    <article class="macro-card ${qualityCardClass(Math.abs(series.signal_bias))}">
+      <span>${series.label}</span>
+      <strong>${fmtPrice(series.latest_value)}</strong>
+      <p>${series.regime_label} · ${fmtSignedPercent(series.change_percent)}</p>
+      <small>${series.unit} · updated ${fmtRelativeTime(series.observed_at)}</small>
+    </article>
+  `).join("");
+}
+
+function renderMacroChart(macroSnapshot) {
+  if (!macroSnapshot?.series?.length) {
+    return;
+  }
+  selectedMacroSeries = selectedMacroSeries || macroSnapshot.series[0].series_id;
+  renderPillRow(
+    "dashboard-macro-tabs",
+    macroSnapshot.series.map((series) => ({ value: series.series_id, label: series.label })),
+    selectedMacroSeries,
+    "select-macro-series",
+  );
+  const activeSeries = macroSnapshot.series.find((series) => series.series_id === selectedMacroSeries) || macroSnapshot.series[0];
+  if (!activeSeries) {
+    return;
+  }
+  renderTimeSeriesChart("dashboard-macro-chart", activeSeries.history || [], {
+    lineColor: "#18354a",
+    topColor: "rgba(24, 53, 74, 0.18)",
+    bottomColor: "rgba(24, 53, 74, 0.03)",
+    seriesKind: "line",
+    height: 320,
+  });
+  const note = document.getElementById("dashboard-macro-note");
+  if (note) {
+    note.textContent = `${activeSeries.label} (${activeSeries.unit}) · ${activeSeries.regime_label} · latest change ${fmtSignedPercent(activeSeries.change_percent)}.`;
+  }
+}
+
+function renderPaperTrading(paperTrading) {
+  const summary = document.getElementById("paper-trading-summary");
+  const list = document.getElementById("paper-trading-list");
+  if (!summary || !list || !paperTrading) {
+    return;
+  }
+  summary.innerHTML = `
+    <article class="pulse-metric-card">
+      <span>Equity</span>
+      <strong>${fmtPrice(paperTrading.summary.equity)}</strong>
+      <small>Total simulated portfolio value</small>
+    </article>
+    <article class="pulse-metric-card">
+      <span>Cash</span>
+      <strong>${fmtPrice(paperTrading.summary.cash_balance)}</strong>
+      <small>Unallocated simulated buying power</small>
+    </article>
+    <article class="pulse-metric-card ${paperTrading.summary.unrealized_pnl >= 0 ? "tone-high" : "tone-low"}">
+      <span>Unrealized P&L</span>
+      <strong>${fmtSignedPercent(paperTrading.summary.unrealized_pnl / paperTrading.summary.starting_balance)}</strong>
+      <small>${fmtPrice(paperTrading.summary.unrealized_pnl)} open position mark-to-market</small>
+    </article>
+    <article class="pulse-metric-card ${paperTrading.summary.realized_pnl >= 0 ? "tone-high" : "tone-low"}">
+      <span>Realized P&L</span>
+      <strong>${fmtSignedPercent(paperTrading.summary.realized_pnl / paperTrading.summary.starting_balance)}</strong>
+      <small>${fmtPrice(paperTrading.summary.realized_pnl)} closed position result</small>
+    </article>
+    <article class="pulse-metric-card">
+      <span>Win rate</span>
+      <strong>${fmtPercent(paperTrading.summary.win_rate)}</strong>
+      <small>${paperTrading.summary.open_positions} open · ${paperTrading.summary.closed_positions} closed</small>
+    </article>
+  `;
+
+  list.innerHTML = (paperTrading.positions || []).map((position) => `
+    <li>
+      <div>
+        <strong>${position.bot_name} · ${position.asset} · ${position.direction}</strong>
+        <p>${position.status === "open" ? "Open simulated position" : "Closed simulated position"} · ${fmtPercent(position.confidence)} confidence</p>
+        <p class="panel-note">Entry ${fmtPrice(position.entry_price)} · current ${fmtPrice(position.current_price)} · allocation ${fmtPrice(position.allocation_usd)}</p>
+      </div>
+      <div class="workspace-actions">
+        <span>${position.status === "open" ? `Unrealized ${fmtPrice(position.unrealized_pnl)}` : `Realized ${fmtPrice(position.realized_pnl || 0)}`}</span>
+        <span>${position.opened_at ? fmtRelativeTime(position.opened_at) : "n/a"}</span>
+      </div>
+    </li>
+  `).join("") || "<li><p>No paper positions have been simulated yet.</p></li>";
 }
 
 function renderPulseMetrics(systemPulse, targetId) {
@@ -417,6 +696,13 @@ function buildActivityItems(snapshot) {
       detail: `${snapshot.summary.tracked_assets} tracked assets across ${snapshot.provider_status.environment_name} environment`,
       meta: snapshot.provider_status.market_provider_live_capable ? "live-capable" : "demo-safe",
       tone: "teal",
+    },
+    {
+      label: "Macro regime",
+      title: snapshot.macro_snapshot?.posture || "Macro context loading",
+      detail: snapshot.macro_snapshot?.summary || "Waiting for macro observations to hydrate.",
+      meta: `${snapshot.macro_snapshot?.series?.length || 0} series active`,
+      tone: "ink",
     },
     {
       label: "Signal intake",
@@ -553,6 +839,7 @@ function setRunCycleStageAnimation(active) {
 }
 
 function renderLanding(snapshot) {
+  latestLandingSnapshot = snapshot;
   const stats = document.getElementById("summary-stats");
   const mini = document.getElementById("leaderboard-mini");
   const botGrid = document.getElementById("launch-bots");
@@ -625,6 +912,8 @@ function renderLanding(snapshot) {
   }
 
   renderLandingPulse(snapshot);
+  renderMacroCards(snapshot.macro_snapshot, "landing-macro-grid", "landing-macro-posture", "landing-macro-summary");
+  renderLandingMarketChart(snapshot.assets).catch((error) => console.error(error));
 }
 
 function renderMetrics(summary) {
@@ -748,9 +1037,17 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     <p><strong>Signal live capable:</strong> ${providerStatus.signal_provider_live_capable ? "yes" : "no"}</p>
     <p><strong>Signal ready:</strong> ${providerStatus.signal_provider_ready ? "yes" : "no"}</p>
     ${providerStatus.signal_provider_warning ? `<p class="error-text">${providerStatus.signal_provider_warning}</p>` : ""}
+    <p><strong>Macro mode:</strong> ${providerStatus.macro_provider_mode}</p>
+    <p><strong>Macro source:</strong> ${providerStatus.macro_provider_source}</p>
+    <p><strong>Macro configured:</strong> ${providerStatus.macro_provider_configured ? "yes" : "no"}</p>
+    <p><strong>Macro live capable:</strong> ${providerStatus.macro_provider_live_capable ? "yes" : "no"}</p>
+    <p><strong>Macro ready:</strong> ${providerStatus.macro_provider_ready ? "yes" : "no"}</p>
+    ${providerStatus.macro_provider_warning ? `<p class="error-text">${providerStatus.macro_provider_warning}</p>` : ""}
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
+    <p><strong>Macro series:</strong> ${providerStatus.fred_series_ids.join(", ")}</p>
     <p><strong>Market fallback:</strong> ${providerStatus.market_fallback_active ? "yes" : "no"}</p>
     <p><strong>Signal fallback:</strong> ${providerStatus.signal_fallback_active ? "yes" : "no"}</p>
+    <p><strong>Macro fallback:</strong> ${providerStatus.macro_fallback_active ? "yes" : "no"}</p>
     <div class="provider-feed-list">
       <strong>RSS feeds</strong>
       <ul>${rssFeeds}</ul>
@@ -800,7 +1097,7 @@ function renderStatusPage(landing, systemPulse, providerStatus, operation) {
   }
 
   if (providerNote) {
-    providerNote.textContent = `${providerStatus.environment_name} environment · market ${providerStatus.market_provider_source} · signal ${providerStatus.signal_provider_source} · pulse updated ${fmtRelativeTime(systemPulse.generated_at)}.`;
+    providerNote.textContent = `${providerStatus.environment_name} environment · market ${providerStatus.market_provider_source} · signal ${providerStatus.signal_provider_source} · macro ${providerStatus.macro_provider_source} · pulse updated ${fmtRelativeTime(systemPulse.generated_at)}.`;
   }
 
   renderPulseMetrics(systemPulse, "status-pulse-metrics");
@@ -1122,6 +1419,10 @@ async function loadDashboard(options = {}) {
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);
     renderDashboardPulse(snapshot);
+    renderMacroCards(snapshot.macro_snapshot, "dashboard-macro-grid", null, "dashboard-macro-summary");
+    renderMacroChart(snapshot.macro_snapshot);
+    renderPaperTrading(snapshot.paper_trading);
+    await renderDashboardMarketChart(snapshot.assets);
     renderActivityFeed(snapshot);
     renderOperation(snapshot.latest_operation);
     renderProviderStatus(snapshot.provider_status);
@@ -1204,6 +1505,26 @@ async function retryNotifications() {
     setStatus(`Retry pass finished. Scanned ${result.scanned_events}, delivered ${result.delivered}, rescheduled ${result.rescheduled}, exhausted ${result.exhausted}.`);
   } catch (error) {
     setStatus(`Retry pass failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function simulatePaperTrading() {
+  const button = document.getElementById("simulate-paper-trading-button");
+  setStatus("Simulating paper positions from the highest-conviction unresolved bot calls...");
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const endpoint = workspaceEditable() ? "/api/me/paper-trading/simulate" : "/api/admin/simulate-paper-trading";
+    const result = await fetchJson(endpoint, { method: "POST" });
+    await loadDashboard({ silent: true });
+    setStatus(`Paper trading updated. Created ${result.created_positions} positions and closed ${result.closed_positions} resolved positions.`);
+  } catch (error) {
+    setStatus(`Paper trading simulation failed: ${error.message}`);
   } finally {
     if (button) {
       button.disabled = false;
@@ -1427,6 +1748,12 @@ function bindInteractions() {
       return;
     }
 
+    if (target.id === "simulate-paper-trading-button") {
+      event.preventDefault();
+      await simulatePaperTrading();
+      return;
+    }
+
     if (target.id === "mark-all-alerts-button") {
       event.preventDefault();
       if (!requireEditable()) {
@@ -1446,6 +1773,30 @@ function bindInteractions() {
 
     const action = target.dataset.action;
     try {
+      if (action === "select-landing-asset") {
+        selectedLandingAsset = target.dataset.value;
+        if (latestLandingSnapshot?.assets?.length) {
+          await renderLandingMarketChart(latestLandingSnapshot.assets);
+        } else {
+          const landing = await fetchJson("/api/landing");
+          renderLanding(landing);
+        }
+        return;
+      }
+      if (action === "select-dashboard-asset") {
+        selectedDashboardAsset = target.dataset.value;
+        if (latestSnapshot?.assets?.length) {
+          await renderDashboardMarketChart(latestSnapshot.assets);
+        }
+        return;
+      }
+      if (action === "select-macro-series") {
+        selectedMacroSeries = target.dataset.value;
+        if (latestSnapshot?.macro_snapshot) {
+          renderMacroChart(latestSnapshot.macro_snapshot);
+        }
+        return;
+      }
       if (action === "follow") {
         if (!requireEditable()) {
           return;
@@ -1523,6 +1874,15 @@ async function boot() {
   bindInteractions();
   bindForms();
   window.addEventListener("beforeunload", clearRefreshTimers);
+  window.addEventListener("resize", () => {
+    if (chartResizeFrame) {
+      window.cancelAnimationFrame(chartResizeFrame);
+    }
+    chartResizeFrame = window.requestAnimationFrame(() => {
+      chartResizeFrame = null;
+      resizeVisibleCharts();
+    });
+  });
   try {
     if (document.getElementById("summary-stats")) {
       const landing = await fetchJson("/api/landing");

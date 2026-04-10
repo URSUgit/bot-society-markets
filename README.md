@@ -62,6 +62,9 @@ Included today:
 - signal provenance scoring with provider trust, freshness, and composite source-quality weighting
 - leaderboard provenance weighting so bot rankings reflect both performance and input quality
 - notification retry scheduling, retry jobs, and per-channel observability for outbound alert delivery
+- macro regime tracking with demo data or optional FRED ingestion across configurable economic series
+- chart-driven research surfaces powered by vendored TradingView Lightweight Charts
+- paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - GitHub Actions CI for Python tests and Docker image validation
@@ -78,6 +81,8 @@ Key endpoints include:
 - `GET /api/dashboard`
 - `GET /api/summary`
 - `GET /api/assets`
+- `GET /api/assets/{asset}/history`
+- `GET /api/macro`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
@@ -89,13 +94,16 @@ Key endpoints include:
 - `GET /api/me`
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`
+- `GET /api/paper-trading`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
 - `POST /api/me/watchlist`
 - `POST /api/me/alert-rules`
+- `POST /api/me/paper-trading/simulate`
 - `GET /api/system/providers`
 - `POST /api/admin/run-cycle`
+- `POST /api/admin/simulate-paper-trading`
 - `POST /api/admin/retry-notifications`
 
 ## Run Locally
@@ -182,6 +190,7 @@ The application reads optional runtime settings from environment variables.
 $env:BSM_ENVIRONMENT_NAME = "development"
 $env:BSM_DEPLOYMENT_TARGET = "local"
 $env:BSM_MARKET_PROVIDER = "demo"
+$env:BSM_MACRO_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
@@ -190,6 +199,9 @@ $env:BSM_WORKER_MAX_CYCLES = "0"
 $env:BSM_NOTIFICATION_RETRY_LIMIT = "25"
 $env:BSM_NOTIFICATION_MAX_ATTEMPTS = "4"
 $env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
+$env:BSM_PAPER_STARTING_BALANCE = "10000"
+$env:BSM_PAPER_TRADE_FEE_BPS = "10"
+$env:BSM_PAPER_TRADE_SLIPPAGE_BPS = "15"
 ```
 
 Optional live provider setup:
@@ -201,6 +213,10 @@ $env:BSM_COINGECKO_API_KEY = "your-key-here"
 
 $env:BSM_MARKET_PROVIDER = "hyperliquid"
 $env:BSM_HYPERLIQUID_DEX = ""
+
+$env:BSM_MACRO_PROVIDER = "fred"
+$env:BSM_FRED_API_KEY = "your-fred-api-key"
+$env:BSM_FRED_SERIES_IDS = "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"
 
 $env:BSM_SIGNAL_PROVIDER = "rss"
 $env:BSM_RSS_FEED_URLS = "https://your-feed-1.example/rss,https://your-feed-2.example/rss"

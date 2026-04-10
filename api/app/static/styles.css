@@ -1477,3 +1477,168 @@ form:has(:disabled) {
     min-height: auto;
   }
 }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.chart-panel {
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.52)),
+    radial-gradient(circle at top right, rgba(31, 122, 120, 0.08), transparent 32%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  animation: section-rise 0.65s ease both;
+}
+
+#markets .chart-panel {
+  margin-bottom: 22px;
+}
+
+.chart-surface {
+  min-height: 280px;
+  border-radius: 20px;
+  border: 1px solid rgba(16, 38, 54, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.24)),
+    radial-gradient(circle at top left, rgba(196, 106, 55, 0.08), transparent 28%);
+  overflow: hidden;
+}
+
+.chart-surface-large {
+  min-height: 320px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pill-button {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--text-soft);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.pill-button:hover {
+  transform: translateY(-1px);
+  color: var(--text);
+  border-color: rgba(196, 106, 55, 0.34);
+}
+
+.pill-button.is-active {
+  background: rgba(18, 48, 71, 0.92);
+  color: #f8f0e6;
+  border-color: rgba(18, 48, 71, 0.92);
+}
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.compact-macro-grid {
+  grid-template-columns: 1fr;
+}
+
+.macro-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.6);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.macro-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(16, 38, 54, 0.08);
+}
+
+.macro-card span,
+.macro-card small {
+  color: var(--text-soft);
+}
+
+.macro-card strong {
+  font-size: 1.45rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+.macro-card p {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.paper-position-list {
+  margin-top: 18px;
+}
+
+.paper-position-list li {
+  align-items: flex-start;
+}
+
+.paper-position-list strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.paper-position-list p {
+  color: var(--text-soft);
+}
+
+.paper-position-list .workspace-actions {
+  min-width: 160px;
+}
+
+@keyframes section-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1080px) {
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pill-row {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .chart-panel {
+    padding: 18px;
+  }
+
+  .chart-surface,
+  .chart-surface-large {
+    min-height: 260px;
+  }
+
+  .paper-position-list .workspace-actions {
+    min-width: 0;
+    justify-items: start;
+    text-align: left;
+  }
+}

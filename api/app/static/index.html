@@ -112,6 +112,17 @@
             <h3>Live market overview</h3>
           </div>
         </div>
+        <div class="chart-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Market chart</p>
+              <h3>Price history for the current tracked universe</h3>
+            </div>
+            <div class="pill-row" id="landing-chart-tabs"></div>
+          </div>
+          <div class="chart-surface" id="landing-market-chart"></div>
+          <p class="panel-note" id="landing-chart-note">Charts powered by TradingView Lightweight Charts.</p>
+        </div>
         <div class="asset-grid" id="asset-grid"></div>
       </section>
 
@@ -135,8 +146,21 @@
         </div>
         <div class="bot-grid" id="launch-bots"></div>
       </section>
+
+      <section class="card" id="macro">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Macro regime</p>
+            <h3>Economic context the network can learn from</h3>
+          </div>
+          <span class="badge" id="landing-macro-posture">Loading macro posture</span>
+        </div>
+        <p class="panel-note" id="landing-macro-summary">Refreshing macro state...</p>
+        <div class="macro-grid" id="landing-macro-grid"></div>
+      </section>
     </main>
   </div>
+  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -47,6 +47,7 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert "notification_health" in payload
         assert payload["provider_status"]["market_provider_source"]
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
+        assert payload["provider_status"]["macro_provider_mode"] == "demo"
         assert payload["provider_status"]["environment_name"] == "development"
         assert payload["provider_status"]["deployment_target"] == "local"
         assert payload["provider_status"]["database_backend"] == "sqlite"
@@ -54,6 +55,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["system_pulse"]["live_provider_count"] >= 0
         assert payload["system_pulse"]["total_recent_signals"] >= 1
         assert payload["system_pulse"]["signal_mix"]
+        assert payload["macro_snapshot"]["series"]
+        assert "paper_trading" in payload
+        assert payload["paper_trading"]["summary"]["starting_balance"] == 10000
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
@@ -252,6 +256,74 @@ def test_live_provider_configuration_metadata() -> None:
         assert provider_payload["market_provider_live_capable"] is True
         assert provider_payload["signal_provider_configured"] is True
         assert provider_payload["signal_provider_live_capable"] is True
+
+
+def test_macro_and_asset_history_endpoints_expose_research_data() -> None:
+    with build_client() as client:
+        history_response = client.get("/api/assets/BTC/history")
+        assert history_response.status_code == 200
+        history_payload = history_response.json()
+        assert history_payload["asset"] == "BTC"
+        assert len(history_payload["points"]) >= 2
+
+        macro_response = client.get("/api/macro")
+        assert macro_response.status_code == 200
+        macro_payload = macro_response.json()
+        assert macro_payload["posture"]
+        assert macro_payload["summary"]
+        assert len(macro_payload["series"]) >= 3
+        assert any(series["series_id"] == "FEDFUNDS" for series in macro_payload["series"])
+
+        missing_history_response = client.get("/api/assets/DOGE/history")
+        assert missing_history_response.status_code == 400
+        assert "Unknown asset" in missing_history_response.json()["detail"]
+
+
+def test_macro_provider_readiness_and_fallback_metadata() -> None:
+    with build_client(Settings(macro_provider_mode="fred")) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["macro_provider_mode"] == "fred"
+        assert provider_payload["macro_provider_configured"] is False
+        assert provider_payload["macro_provider_live_capable"] is False
+        assert provider_payload["macro_provider_ready"] is False
+        assert provider_payload["macro_fallback_active"] is True
+        assert provider_payload["macro_provider_source"] == "fredapi-provider-fallback"
+        assert "BSM_FRED_API_KEY" in provider_payload["macro_provider_warning"]
+
+        macro_response = client.get("/api/macro")
+        assert macro_response.status_code == 200
+        assert macro_response.json()["series"]
+
+
+def test_paper_trading_endpoints_support_simulation_flow() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Paper Trader",
+                "email": "paper@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        cycle_response = client.post("/api/admin/run-cycle")
+        assert cycle_response.status_code == 200
+        assert cycle_response.json()["operation"]["generated_predictions"] >= 1
+
+        snapshot_response = client.get("/api/paper-trading")
+        assert snapshot_response.status_code == 200
+        snapshot_payload = snapshot_response.json()
+        assert snapshot_payload["summary"]["starting_balance"] == 10000
+
+        simulation_response = client.post("/api/me/paper-trading/simulate")
+        assert simulation_response.status_code == 200
+        simulation_payload = simulation_response.json()
+        assert simulation_payload["created_positions"] >= 1
+        assert simulation_payload["snapshot"]["summary"]["open_positions"] >= 1
+        assert simulation_payload["snapshot"]["positions"]
 
 
 def test_hyperliquid_and_venue_provider_metadata() -> None:

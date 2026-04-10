@@ -13,6 +13,7 @@ from .database import Database
 from .models import (
     AlertInbox,
     AlertRuleCreate,
+    AssetHistoryEnvelope,
     AssetSnapshot,
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -23,11 +24,14 @@ from .models import (
     DashboardSnapshot,
     FollowBotRequest,
     LandingSnapshot,
+    MacroSnapshot,
     NotificationChannel,
     NotificationChannelCreate,
     NotificationHealthSnapshot,
     NotificationRetryResult,
     OperationSnapshot,
+    PaperSimulationResult,
+    PaperTradingSnapshot,
     PredictionView,
     ProviderStatusEnvelope,
     SignalView,
@@ -147,6 +151,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def assets(request: Request) -> list[AssetSnapshot]:
         return get_service(request).get_assets()
 
+    @app.get("/api/assets/{asset}/history", response_model=AssetHistoryEnvelope)
+    def asset_history(asset: str, request: Request) -> AssetHistoryEnvelope:
+        return run_validated(lambda: get_service(request).get_asset_history(asset))
+
+    @app.get("/api/macro", response_model=MacroSnapshot)
+    def macro_snapshot(request: Request) -> MacroSnapshot:
+        return get_service(request).get_macro_snapshot()
+
     @app.get("/api/bots", response_model=list[BotSummary])
     def bots(request: Request) -> list[BotSummary]:
         return get_service(request).get_leaderboard(current_user_slug(request))
@@ -227,6 +239,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def notification_health(request: Request) -> NotificationHealthSnapshot:
         return get_service(request).get_notification_health(current_user_slug(request) or active_settings.default_user_slug)
 
+    @app.get("/api/paper-trading", response_model=PaperTradingSnapshot)
+    def paper_trading_snapshot(request: Request) -> PaperTradingSnapshot:
+        return get_service(request).get_paper_trading_snapshot(current_user_slug(request) or active_settings.default_user_slug)
+
     @app.post("/api/me/notification-channels", response_model=UserProfile)
     def add_notification_channel(payload: NotificationChannelCreate, request: Request) -> UserProfile:
         return run_validated(lambda: get_service(request).add_notification_channel(authenticated_user_slug(request), payload))
@@ -246,6 +262,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:
         return get_service(request).run_pipeline_cycle()
+
+    @app.post("/api/me/paper-trading/simulate", response_model=PaperSimulationResult)
+    def simulate_my_paper_trading(request: Request) -> PaperSimulationResult:
+        return get_service(request).simulate_paper_trading(authenticated_user_slug(request))
+
+    @app.post("/api/admin/simulate-paper-trading", response_model=PaperSimulationResult)
+    def simulate_demo_paper_trading(request: Request) -> PaperSimulationResult:
+        return get_service(request).simulate_paper_trading(active_settings.default_user_slug)
 
     @app.post("/api/admin/retry-notifications", response_model=NotificationRetryResult)
     def retry_notifications(request: Request) -> NotificationRetryResult:

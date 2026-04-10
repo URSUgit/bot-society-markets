@@ -16,6 +16,8 @@ from .models import (
     AlertInbox,
     AlertRule,
     AlertRuleCreate,
+    AssetHistoryEnvelope,
+    AssetHistoryPoint,
     AssetSnapshot,
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -26,12 +28,19 @@ from .models import (
     DashboardSnapshot,
     FollowedBot,
     LandingSnapshot,
+    MacroObservationPoint,
+    MacroSeriesSnapshot,
+    MacroSnapshot,
     NotificationChannel,
     NotificationChannelHealth,
     NotificationChannelCreate,
     NotificationHealthSnapshot,
     NotificationRetryResult,
     OperationSnapshot,
+    PaperPortfolioSummary,
+    PaperPositionView,
+    PaperSimulationResult,
+    PaperTradingSnapshot,
     PredictionView,
     ProviderComponentStatus,
     ProviderStatus,
@@ -49,7 +58,9 @@ from .orchestration import PredictionOrchestrator
 from .providers import (
     CoinGeckoMarketProvider,
     DemoMarketProvider,
+    DemoMacroProvider,
     DemoSignalProvider,
+    FredMacroProvider,
     HyperliquidMarketProvider,
     KalshiSignalProvider,
     PolymarketSignalProvider,
@@ -72,24 +83,30 @@ class BotSocietyService:
         self.dispatcher = NotificationDispatcher(settings)
         self.demo_market_provider = DemoMarketProvider()
         self.demo_signal_provider = DemoSignalProvider()
+        self.demo_macro_provider = DemoMacroProvider(series_ids=self.settings.fred_series_ids)
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
+        self.macro_provider = self._build_macro_provider()
         self.venue_signal_providers = self._build_venue_signal_providers()
         self.orchestrator = PredictionOrchestrator()
         self.market_provider_fallback = False
         self.signal_provider_fallback = False
+        self.macro_provider_fallback = False
         self.market_provider_source = self.market_provider.source_name
         self.signal_provider_source = self._compose_signal_provider_source()
+        self.macro_provider_source = self.macro_provider.source_name
 
     def bootstrap(self) -> None:
         self.database.initialize()
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
         ensure_demo_user_state(repository)
+        macro_refreshed = self._refresh_macro_data(repository)
         refreshed_signals = repository.refresh_signal_quality_scores()
         repository.delete_expired_sessions(self._now())
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
+        demo_paper_positions = self._seed_demo_paper_trading(repository)
         alert_deliveries = self._deliver_alerts_for_predictions(repository, repository.list_predictions(limit=12))
         if seeded:
             repository.insert_pipeline_run(
@@ -103,7 +120,8 @@ class BotSocietyService:
                     "scored_predictions": scored,
                     "message": (
                         "Seeded demo market data, user state, historical signals, and scored the initial prediction archive. "
-                        f"Initialized {alert_deliveries} alert deliveries and refreshed {refreshed_signals} signal quality records."
+                        f"Initialized {alert_deliveries} alert deliveries, refreshed {refreshed_signals} signal quality records, "
+                        f"hydrated {macro_refreshed} macro observations, and seeded {demo_paper_positions} demo paper positions."
                     ),
                 }
             )
@@ -206,6 +224,58 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         return [self._to_asset_model(row) for row in repository.list_latest_market_snapshots()]
 
+    def get_asset_history(self, asset: str) -> AssetHistoryEnvelope:
+        repository = BotSocietyRepository(self.database)
+        rows = repository.list_market_history(asset.upper())
+        if not rows:
+            raise ValueError(f"Unknown asset: {asset.upper()}")
+        return AssetHistoryEnvelope(
+            asset=asset.upper(),
+            points=[AssetHistoryPoint(time=row["as_of"], value=float(row["price"])) for row in rows],
+        )
+
+    def get_macro_snapshot(self, repository: BotSocietyRepository | None = None) -> MacroSnapshot:
+        active_repository = repository or BotSocietyRepository(self.database)
+        latest_rows = active_repository.list_latest_macro_snapshots()
+        series = []
+        for row in latest_rows:
+            history_rows = active_repository.list_macro_history(str(row["series_id"]))
+            series.append(
+                MacroSeriesSnapshot(
+                    series_id=row["series_id"],
+                    label=row["label"],
+                    unit=row["unit"],
+                    latest_value=float(row["value"]),
+                    change_percent=float(row["change_percent"]),
+                    signal_bias=float(row["signal_bias"]),
+                    regime_label=row["regime_label"],
+                    source=row["source"],
+                    observed_at=row["observation_date"],
+                    history=[
+                        MacroObservationPoint(time=history_row["observation_date"], value=float(history_row["value"]))
+                        for history_row in history_rows
+                    ],
+                )
+            )
+
+        posture_score = mean(item.signal_bias for item in series) if series else 0.0
+        posture = "Macro supportive" if posture_score >= 0.18 else ("Macro restrictive" if posture_score <= -0.18 else "Macro balanced")
+        strongest = sorted(series, key=lambda item: abs(item.signal_bias), reverse=True)[:2]
+        summary = (
+            "Watching "
+            + ", ".join(
+                f"{item.label} ({'supportive' if item.signal_bias >= 0 else 'restrictive'})" for item in strongest
+            )
+            if strongest
+            else "Macro provider is online but no series have been hydrated yet."
+        )
+        return MacroSnapshot(
+            generated_at=self._now(),
+            posture=posture,
+            summary=summary,
+            series=series,
+        )
+
     def get_signals(self, limit: int = 12) -> list[SignalView]:
         repository = BotSocietyRepository(self.database)
         return [self._to_signal_model(row) for row in repository.list_recent_signals(limit=limit)]
@@ -226,6 +296,130 @@ class BotSocietyService:
             return None
         recent_predictions = [self._to_prediction_model(row) for row in repository.list_predictions(bot_slug=slug, limit=8)]
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
+
+    def get_paper_trading_snapshot(self, user_slug: str) -> PaperTradingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        closed_positions = self._sync_paper_positions(repository, user_slug)
+        positions = repository.list_paper_positions(user_slug)
+        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
+        views: list[PaperPositionView] = []
+
+        for row in positions:
+            current_price = float(latest_assets.get(row["asset"], {}).get("price") or row.get("exit_price") or row["entry_price"])
+            unrealized_pnl = 0.0
+            if row["status"] == "open":
+                unrealized_pnl = self._position_pnl(
+                    direction=str(row["direction"]),
+                    quantity=float(row["quantity"]),
+                    entry_price=float(row["entry_price"]),
+                    mark_price=current_price,
+                )
+            views.append(
+                PaperPositionView(
+                    id=int(row["id"]),
+                    prediction_id=int(row["prediction_id"]),
+                    bot_slug=row["bot_slug"],
+                    bot_name=row.get("bot_name") or row["bot_slug"],
+                    asset=row["asset"],
+                    direction=row["direction"],
+                    confidence=float(row["confidence"]),
+                    status=row["status"],
+                    opened_at=row["opened_at"],
+                    closed_at=row.get("closed_at"),
+                    allocation_usd=float(row["allocation_usd"]),
+                    quantity=float(row["quantity"]),
+                    entry_price=float(row["entry_price"]),
+                    current_price=current_price,
+                    exit_price=float(row["exit_price"]) if row.get("exit_price") is not None else None,
+                    fees_paid=float(row.get("fees_paid") or 0.0),
+                    unrealized_pnl=round(unrealized_pnl, 2),
+                    realized_pnl=round(float(row["realized_pnl"]), 2) if row.get("realized_pnl") is not None else None,
+                )
+            )
+
+        open_views = [view for view in views if view.status == "open"]
+        closed_views = [view for view in views if view.status == "closed"]
+        realized_pnl = sum(view.realized_pnl or 0.0 for view in closed_views)
+        unrealized_pnl = sum(view.unrealized_pnl for view in open_views)
+        open_exposure = sum(view.allocation_usd for view in open_views)
+        cash_balance = self.settings.paper_starting_balance
+        cash_balance -= sum(view.allocation_usd + view.fees_paid for view in open_views)
+        cash_balance -= sum(view.fees_paid for view in closed_views)
+        cash_balance += sum(view.allocation_usd + (view.realized_pnl or 0.0) for view in closed_views)
+        equity = cash_balance + open_exposure + unrealized_pnl
+        win_rate = (
+            sum(1 for view in closed_views if (view.realized_pnl or 0.0) > 0) / len(closed_views)
+            if closed_views
+            else 0.0
+        )
+        summary = PaperPortfolioSummary(
+            starting_balance=round(self.settings.paper_starting_balance, 2),
+            cash_balance=round(cash_balance, 2),
+            open_exposure=round(open_exposure, 2),
+            equity=round(equity, 2),
+            realized_pnl=round(realized_pnl, 2),
+            unrealized_pnl=round(unrealized_pnl, 2),
+            total_return=round(((equity - self.settings.paper_starting_balance) / self.settings.paper_starting_balance), 6),
+            win_rate=round(win_rate, 3),
+            open_positions=len(open_views),
+            closed_positions=len(closed_views),
+        )
+        return PaperTradingSnapshot(generated_at=self._now(), summary=summary, positions=views[:12])
+
+    def simulate_paper_trading(self, user_slug: str, limit: int = 3) -> PaperSimulationResult:
+        repository = BotSocietyRepository(self.database)
+        closed_positions = self._sync_paper_positions(repository, user_slug)
+        snapshot_before = self.get_paper_trading_snapshot(user_slug)
+        existing_prediction_ids = {position.prediction_id for position in snapshot_before.positions}
+        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
+        pending_predictions = [
+            row
+            for row in repository.list_predictions(status="pending", limit=50)
+            if int(row["id"]) not in existing_prediction_ids and row["asset"] in latest_assets
+        ]
+        available_cash = snapshot_before.summary.cash_balance
+        created_positions = 0
+
+        for prediction in sorted(pending_predictions, key=lambda row: float(row["confidence"]), reverse=True)[:limit]:
+            entry_price = float(latest_assets[prediction["asset"]]["price"])
+            allocation = self._paper_trade_allocation(available_cash, float(prediction["confidence"]))
+            if allocation <= 0:
+                break
+            fee_cost = allocation * ((self.settings.paper_trade_fee_bps + self.settings.paper_trade_slippage_bps) / 10000)
+            if allocation + fee_cost > available_cash:
+                allocation = max(0.0, available_cash - fee_cost)
+            if allocation <= 0:
+                break
+            quantity = allocation / entry_price if entry_price else 0.0
+            inserted = repository.create_paper_position(
+                {
+                    "user_slug": user_slug,
+                    "prediction_id": int(prediction["id"]),
+                    "bot_slug": prediction["bot_slug"],
+                    "asset": prediction["asset"],
+                    "direction": prediction["direction"],
+                    "confidence": float(prediction["confidence"]),
+                    "allocation_usd": round(allocation, 2),
+                    "quantity": round(quantity, 8),
+                    "entry_price": entry_price,
+                    "fees_paid": round(fee_cost, 2),
+                    "slippage_bps": self.settings.paper_trade_slippage_bps,
+                    "status": "open",
+                    "opened_at": self._now(),
+                    "closed_at": None,
+                    "exit_price": None,
+                    "realized_pnl": None,
+                }
+            )
+            if inserted:
+                created_positions += 1
+                available_cash -= allocation + fee_cost
+
+        return PaperSimulationResult(
+            created_positions=created_positions,
+            closed_positions=closed_positions,
+            snapshot=self.get_paper_trading_snapshot(user_slug),
+        )
 
     def get_alert_inbox(self, user_slug: str, unread_only: bool = False) -> AlertInbox:
         repository = BotSocietyRepository(self.database)
@@ -517,8 +711,10 @@ class BotSocietyService:
     def get_provider_status(self) -> ProviderStatus:
         market_readiness = self.market_provider.readiness()
         signal_ready, signal_warning, venue_statuses = self._signal_provider_health()
+        macro_readiness = self.macro_provider.readiness()
         market_configured, market_live_capable = self._provider_configuration("market")
         signal_configured, signal_live_capable = self._provider_configuration("signal")
+        macro_configured, macro_live_capable = self._provider_configuration("macro")
         return ProviderStatus(
             environment_name=self.settings.environment_name,
             deployment_target=self.settings.deployment_target,
@@ -536,12 +732,20 @@ class BotSocietyService:
             signal_provider_live_capable=signal_live_capable,
             signal_provider_ready=signal_ready,
             signal_provider_warning=signal_warning,
+            macro_provider_mode=self.settings.macro_provider_mode,
+            macro_provider_source=self.macro_provider_source,
+            macro_provider_configured=macro_configured,
+            macro_provider_live_capable=macro_live_capable,
+            macro_provider_ready=macro_readiness.ready,
+            macro_provider_warning=macro_readiness.warning,
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
+            fred_series_ids=list(self.settings.fred_series_ids),
             rss_feed_urls=list(self.settings.rss_feed_urls),
             reddit_subreddits=list(self.settings.reddit_subreddits),
             venue_signal_providers=venue_statuses,
             market_fallback_active=self.market_provider_fallback,
             signal_fallback_active=self.signal_provider_fallback,
+            macro_fallback_active=self.macro_provider_fallback,
         )
 
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
@@ -554,6 +758,8 @@ class BotSocietyService:
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             system_pulse=system_pulse,
+            macro_snapshot=self.get_macro_snapshot(repository),
+            paper_trading=self.get_paper_trading_snapshot(user_slug),
             latest_operation=self._latest_operation(repository),
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
             user_profile=self.get_user_profile(user_slug),
@@ -569,6 +775,7 @@ class BotSocietyService:
             leaderboard=self._build_bot_summaries(repository, user_slug)[:4],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=4)],
             system_pulse=self.get_system_pulse(repository),
+            macro_snapshot=self.get_macro_snapshot(repository),
             provider_status=self.get_provider_status(),
         )
 
@@ -581,7 +788,7 @@ class BotSocietyService:
         generated_at = self._now()
         average_quality = mean(float(signal.get("source_quality_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
         average_freshness = mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
-        live_provider_count = int(provider_status.market_provider_live_capable) + int(provider_status.signal_provider_live_capable)
+        live_provider_count = int(provider_status.market_provider_live_capable) + int(provider_status.signal_provider_live_capable) + int(provider_status.macro_provider_live_capable)
         live_provider_count += sum(1 for venue in provider_status.venue_signal_providers if venue.live_capable)
         pending_predictions = len(active_repository.list_predictions(status="pending", limit=500))
         return SystemPulseSnapshot(
@@ -636,6 +843,7 @@ class BotSocietyService:
         live_market_active = False
         live_signal_active = False
         message_prefixes: list[str] = []
+        macro_observations = self._refresh_macro_data(repository)
 
         try:
             market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
@@ -699,7 +907,7 @@ class BotSocietyService:
                 "message": " ".join(
                     [
                         *message_prefixes,
-                        f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, and delivered {delivered_alerts} alerts.",
+                        f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, delivered {delivered_alerts} alerts, and refreshed {macro_observations} macro observations.",
                     ]
                 ).strip(),
             }
@@ -1003,6 +1211,64 @@ class BotSocietyService:
             )
         return items
 
+    def _refresh_macro_data(self, repository: BotSocietyRepository) -> int:
+        try:
+            rows = self.macro_provider.generate(repository.count_pipeline_runs())
+            self.macro_provider_fallback = False
+            self.macro_provider_source = self.macro_provider.source_name
+        except Exception:
+            rows = self.demo_macro_provider.generate(repository.count_pipeline_runs())
+            self.macro_provider_fallback = self.settings.macro_provider_mode != "demo"
+            self.macro_provider_source = (
+                f"{self.macro_provider.source_name}-fallback"
+                if self.settings.macro_provider_mode != "demo"
+                else self.demo_macro_provider.source_name
+            )
+        repository.upsert_macro_snapshots(rows)
+        return len(rows)
+
+    def _seed_demo_paper_trading(self, repository: BotSocietyRepository) -> int:
+        if repository.list_paper_positions(self.settings.default_user_slug):
+            return 0
+        return self.simulate_paper_trading(self.settings.default_user_slug, limit=3).created_positions
+
+    def _sync_paper_positions(self, repository: BotSocietyRepository, user_slug: str) -> int:
+        closed_positions = 0
+        for position in repository.list_paper_positions(user_slug, status="open"):
+            prediction = repository.get_prediction(int(position["prediction_id"]))
+            if not prediction or prediction.get("status") != "scored" or prediction.get("end_price") is None:
+                continue
+            realized_pnl = self._position_pnl(
+                direction=str(position["direction"]),
+                quantity=float(position["quantity"]),
+                entry_price=float(position["entry_price"]),
+                mark_price=float(prediction["end_price"]),
+            ) - float(position.get("fees_paid") or 0.0)
+            repository.update_paper_position(
+                int(position["id"]),
+                {
+                    "status": "closed",
+                    "closed_at": self._now(),
+                    "exit_price": float(prediction["end_price"]),
+                    "realized_pnl": round(realized_pnl, 2),
+                },
+            )
+            closed_positions += 1
+        return closed_positions
+
+    def _paper_trade_allocation(self, available_cash: float, confidence: float) -> float:
+        target = self.settings.paper_starting_balance * (0.04 + (0.09 * confidence))
+        target = clamp(target, 350.0, self.settings.paper_starting_balance * 0.22)
+        return round(min(available_cash, target), 2)
+
+    @staticmethod
+    def _position_pnl(*, direction: str, quantity: float, entry_price: float, mark_price: float) -> float:
+        if direction == "bearish":
+            return quantity * (entry_price - mark_price)
+        if direction == "neutral":
+            return -abs(quantity * (mark_price - entry_price)) * 0.25
+        return quantity * (mark_price - entry_price)
+
     def _provider_configuration(self, provider_type: str) -> tuple[bool, bool]:
         if provider_type == "market":
             if self.settings.market_provider_mode == "demo":
@@ -1010,6 +1276,12 @@ class BotSocietyService:
             if self.settings.market_provider_mode == "hyperliquid":
                 return True, True
             configured = self.settings.coingecko_plan != "pro" or bool(self.settings.coingecko_api_key)
+            return configured, configured
+
+        if provider_type == "macro":
+            if self.settings.macro_provider_mode == "demo":
+                return True, False
+            configured = bool(self.settings.fred_api_key)
             return configured, configured
 
         components = [self._primary_signal_provider_component()] + self._venue_signal_provider_components()
@@ -1040,6 +1312,14 @@ class BotSocietyService:
                 dex=self.settings.hyperliquid_dex,
             )
         return self.demo_market_provider
+
+    def _build_macro_provider(self):
+        if self.settings.macro_provider_mode == "fred":
+            return FredMacroProvider(
+                api_key=self.settings.fred_api_key,
+                series_ids=self.settings.fred_series_ids,
+            )
+        return self.demo_macro_provider
 
     def _build_signal_provider(self):
         if self.settings.signal_provider_mode == "rss":

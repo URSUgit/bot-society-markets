@@ -11,8 +11,10 @@ from .database import (
     alert_delivery_events_table,
     alert_rules_table,
     bots_table,
+    macro_snapshots_table,
     market_snapshots_table,
     notification_channels_table,
+    paper_positions_table,
     pipeline_runs_table,
     predictions_table,
     signals_table,
@@ -185,6 +187,58 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
+    def upsert_macro_snapshots(self, snapshots: Iterable[dict[str, Any]]) -> None:
+        snapshot_list = list(snapshots)
+        if not snapshot_list:
+            return
+        stmt = self.database.upsert_insert(macro_snapshots_table).values(snapshot_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[macro_snapshots_table.c.series_id, macro_snapshots_table.c.observation_date],
+            set_={
+                "label": stmt.excluded.label,
+                "unit": stmt.excluded.unit,
+                "value": stmt.excluded.value,
+                "change_percent": stmt.excluded.change_percent,
+                "signal_bias": stmt.excluded.signal_bias,
+                "regime_label": stmt.excluded.regime_label,
+                "source": stmt.excluded.source,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def list_latest_macro_snapshots(self) -> list[dict[str, Any]]:
+        latest = (
+            select(
+                macro_snapshots_table.c.series_id,
+                func.max(macro_snapshots_table.c.observation_date).label("max_observation_date"),
+            )
+            .group_by(macro_snapshots_table.c.series_id)
+            .subquery()
+        )
+        stmt = (
+            select(macro_snapshots_table)
+            .join(
+                latest,
+                and_(
+                    latest.c.series_id == macro_snapshots_table.c.series_id,
+                    latest.c.max_observation_date == macro_snapshots_table.c.observation_date,
+                ),
+            )
+            .order_by(macro_snapshots_table.c.series_id)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def list_macro_history(self, series_id: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(macro_snapshots_table)
+            .where(macro_snapshots_table.c.series_id == series_id)
+            .order_by(macro_snapshots_table.c.observation_date)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
     def list_assets(self) -> list[str]:
         stmt = select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
         with self.database.connect() as connection:
@@ -264,6 +318,15 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._row(connection.execute(stmt))
 
+    def get_prediction(self, prediction_id: int) -> dict[str, Any] | None:
+        stmt = (
+            select(predictions_table, bots_table.c.name.label("bot_name"))
+            .join(bots_table, bots_table.c.slug == predictions_table.c.bot_slug)
+            .where(predictions_table.c.id == prediction_id)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
     def bot_has_pending_prediction(self, bot_slug: str) -> bool:
         stmt = select(func.count()).select_from(predictions_table).where(
             and_(predictions_table.c.bot_slug == bot_slug, predictions_table.c.status == "pending")
@@ -286,6 +349,40 @@ class BotSocietyRepository:
             result = connection.execute(stmt)
             inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
             return int(inserted or 0)
+
+    def create_paper_position(self, payload: dict[str, Any]) -> int:
+        stmt = self.database.upsert_insert(paper_positions_table).values(**payload)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[paper_positions_table.c.user_slug, paper_positions_table.c.prediction_id])
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_paper_positions(self, user_slug: str, status: str | None = None) -> list[dict[str, Any]]:
+        stmt = (
+            select(paper_positions_table, bots_table.c.name.label("bot_name"))
+            .join(bots_table, bots_table.c.slug == paper_positions_table.c.bot_slug)
+            .where(paper_positions_table.c.user_slug == user_slug)
+        )
+        if status:
+            stmt = stmt.where(paper_positions_table.c.status == status)
+        stmt = stmt.order_by(desc(paper_positions_table.c.opened_at), desc(paper_positions_table.c.id))
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_paper_position_for_prediction(self, user_slug: str, prediction_id: int) -> dict[str, Any] | None:
+        stmt = (
+            select(paper_positions_table)
+            .where(and_(paper_positions_table.c.user_slug == user_slug, paper_positions_table.c.prediction_id == prediction_id))
+            .limit(1)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def update_paper_position(self, position_id: int, payload: dict[str, Any]) -> None:
+        stmt = update(paper_positions_table).where(paper_positions_table.c.id == position_id).values(**payload)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
 
     def get_latest_pipeline_run(self) -> dict[str, Any] | None:
         stmt = select(pipeline_runs_table).order_by(desc(pipeline_runs_table.c.started_at), desc(pipeline_runs_table.c.id)).limit(1)

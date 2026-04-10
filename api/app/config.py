@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover - optional during bootstrap before deps 
 MarketProviderMode = Literal["demo", "coingecko", "hyperliquid"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
+MacroProviderMode = Literal["demo", "fred"]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -67,9 +68,12 @@ class Settings:
     market_provider_mode: MarketProviderMode = "demo"
     signal_provider_mode: SignalProviderMode = "demo"
     venue_signal_providers: tuple[VenueSignalProviderMode, ...] = ()
+    macro_provider_mode: MacroProviderMode = "demo"
     coingecko_api_key: str | None = None
     coingecko_plan: Literal["demo", "pro"] = "demo"
     tracked_coin_ids: tuple[str, ...] = ("bitcoin", "ethereum", "solana")
+    fred_api_key: str | None = None
+    fred_series_ids: tuple[str, ...] = ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS")
     hyperliquid_dex: str = ""
     rss_feed_urls: tuple[str, ...] = ()
     reddit_client_id: str | None = None
@@ -97,6 +101,9 @@ class Settings:
     notification_retry_limit: int = 25
     notification_max_attempts: int = 4
     notification_retry_base_seconds: int = 300
+    paper_starting_balance: float = 10000.0
+    paper_trade_fee_bps: float = 10.0
+    paper_trade_slippage_bps: float = 15.0
 
 
 def _split_csv_env(value: str) -> tuple[str, ...]:
@@ -120,6 +127,10 @@ def get_settings() -> Settings:
     if signal_provider_mode not in {"demo", "rss", "reddit"}:
         signal_provider_mode = "demo"
 
+    macro_provider_mode = os.getenv("BSM_MACRO_PROVIDER", "demo").lower()
+    if macro_provider_mode not in {"demo", "fred"}:
+        macro_provider_mode = "demo"
+
     venue_signal_providers = tuple(
         provider
         for provider in _split_csv_env(os.getenv("BSM_VENUE_SIGNAL_PROVIDERS", ""))
@@ -131,6 +142,7 @@ def get_settings() -> Settings:
         plan = "demo"
 
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
+    fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
     rss_feed_urls = _split_csv_env(os.getenv("BSM_RSS_FEED_URLS", ""))
     reddit_subreddits = _split_csv_env(os.getenv("BSM_REDDIT_SUBREDDITS", "CryptoCurrency,Bitcoin,ethtrader,solana"))
 
@@ -157,9 +169,12 @@ def get_settings() -> Settings:
         market_provider_mode=market_provider_mode,
         signal_provider_mode=signal_provider_mode,
         venue_signal_providers=venue_signal_providers,
+        macro_provider_mode=macro_provider_mode,
         coingecko_api_key=os.getenv("BSM_COINGECKO_API_KEY") or None,
         coingecko_plan=plan,
         tracked_coin_ids=coin_ids or ("bitcoin", "ethereum", "solana"),
+        fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,
+        fred_series_ids=fred_series_ids or ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS"),
         hyperliquid_dex=os.getenv("BSM_HYPERLIQUID_DEX", ""),
         rss_feed_urls=rss_feed_urls,
         reddit_client_id=os.getenv("BSM_REDDIT_CLIENT_ID") or None,
@@ -187,4 +202,7 @@ def get_settings() -> Settings:
         notification_retry_limit=notification_retry_limit,
         notification_max_attempts=notification_max_attempts,
         notification_retry_base_seconds=notification_retry_base_seconds,
+        paper_starting_balance=max(1000.0, float(os.getenv("BSM_PAPER_STARTING_BALANCE", "10000"))),
+        paper_trade_fee_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_FEE_BPS", "10"))),
+        paper_trade_slippage_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_SLIPPAGE_BPS", "15"))),
     )
