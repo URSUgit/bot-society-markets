@@ -18,8 +18,10 @@
       </div>
       <nav class="topnav">
         <a href="#product">Product</a>
+        <a href="#pulse">Pulse</a>
         <a href="#markets">Markets</a>
         <a href="#signals">Signals</a>
+        <a href="/status">Status</a>
         <a href="/dashboard">Dashboard</a>
       </nav>
     </header>
@@ -32,7 +34,7 @@
           <p class="lead">Bot Society Markets combines market structure, public signal ingestion, orchestration, and transparent scoring into a professional market-intelligence product for retail and enterprise users.</p>
           <div class="hero-actions">
             <a class="button primary" href="/dashboard">Open Working Dashboard</a>
-            <a class="button secondary" href="#signals">Inspect the signal layer</a>
+            <a class="button secondary" href="/status">Open Public Status</a>
           </div>
           <ul class="stat-row" id="summary-stats"></ul>
         </div>
@@ -44,6 +46,39 @@
           <div class="leader-mini" id="leaderboard-mini"></div>
           <p class="panel-note" id="landing-provider-note">The ranking weights directional accuracy, return capture, confidence calibration, consistency, and risk discipline.</p>
         </div>
+      </section>
+
+      <section class="grid-two" id="pulse">
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Operating pulse</p>
+              <h3>One live surface for provider readiness and queue pressure</h3>
+            </div>
+            <span class="badge" id="landing-pulse-badge">Syncing</span>
+          </div>
+          <div class="pulse-metric-grid" id="landing-pulse-metrics"></div>
+        </article>
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Signal mix</p>
+              <h3>How the analyst network is building context</h3>
+            </div>
+          </div>
+          <div class="signal-mix-list" id="landing-signal-mix"></div>
+        </article>
+      </section>
+
+      <section class="card" id="venues">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Venue intelligence</p>
+            <h3>Exchange and prediction-market surfaces the bots can reference</h3>
+          </div>
+          <a class="text-link" href="/status">View public status</a>
+        </div>
+        <div class="venue-pulse-grid" id="landing-venue-pulse"></div>
       </section>
 
       <section class="grid-two" id="product">

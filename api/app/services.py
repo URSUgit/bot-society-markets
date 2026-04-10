@@ -1,6 +1,6 @@
-
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -36,9 +36,12 @@ from .models import (
     ProviderComponentStatus,
     ProviderStatus,
     SignalView,
+    SignalMixItem,
     Summary,
+    SystemPulseSnapshot,
     UserIdentity,
     UserProfile,
+    VenuePulseItem,
     WatchlistItem,
 )
 from .notifications import NotificationDispatcher
@@ -543,12 +546,14 @@ class BotSocietyService:
 
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
+        system_pulse = self.get_system_pulse(repository)
         return DashboardSnapshot(
             summary=self.get_summary(user_slug),
             assets=self.get_assets(),
             leaderboard=self._build_bot_summaries(repository, user_slug),
             recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
+            system_pulse=system_pulse,
             latest_operation=self._latest_operation(repository),
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
             user_profile=self.get_user_profile(user_slug),
@@ -563,7 +568,32 @@ class BotSocietyService:
             assets=self.get_assets(),
             leaderboard=self._build_bot_summaries(repository, user_slug)[:4],
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=4)],
+            system_pulse=self.get_system_pulse(repository),
             provider_status=self.get_provider_status(),
+        )
+
+    def get_system_pulse(self, repository: BotSocietyRepository | None = None) -> SystemPulseSnapshot:
+        active_repository = repository or BotSocietyRepository(self.database)
+        recent_signals = active_repository.list_recent_signals(limit=96)
+        latest_assets = active_repository.list_latest_market_snapshots()
+        provider_status = self.get_provider_status()
+        notification_health = self.get_notification_health(self.settings.default_user_slug)
+        generated_at = self._now()
+        average_quality = mean(float(signal.get("source_quality_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
+        average_freshness = mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
+        live_provider_count = int(provider_status.market_provider_live_capable) + int(provider_status.signal_provider_live_capable)
+        live_provider_count += sum(1 for venue in provider_status.venue_signal_providers if venue.live_capable)
+        pending_predictions = len(active_repository.list_predictions(status="pending", limit=500))
+        return SystemPulseSnapshot(
+            generated_at=generated_at,
+            live_provider_count=live_provider_count,
+            total_recent_signals=len(recent_signals),
+            average_signal_quality=round(average_quality, 3),
+            average_signal_freshness=round(average_freshness, 3),
+            pending_predictions=pending_predictions,
+            retry_queue_depth=notification_health.retry_queue_depth,
+            signal_mix=self._build_signal_mix(recent_signals),
+            venue_pulse=self._build_venue_pulse(recent_signals, latest_assets, provider_status),
         )
 
     def get_latest_operation(self) -> OperationSnapshot | None:
@@ -810,12 +840,12 @@ class BotSocietyService:
             consistency = clamp(1 - (pstdev(score_series) / 0.25), 0.0, 1.0) if len(score_series) > 1 else (1.0 if score_series else 0.0)
             return_component = clamp((avg_strategy_return + 0.04) / 0.08, 0.0, 1.0)
             composite_score = 100 * (
-                0.28 * hit_rate
-                + 0.23 * return_component
+                0.26 * hit_rate
+                + 0.22 * return_component
                 + 0.18 * calibration
-                + 0.13 * consistency
+                + 0.14 * consistency
                 + 0.08 * risk_discipline
-                + 0.10 * provenance_score
+                + 0.12 * provenance_score
             )
             summaries.append(
                 BotSummary(
@@ -872,10 +902,106 @@ class BotSocietyService:
         return {row["id"]: row for row in repository.list_signals_by_ids(signal_ids)}
 
     def _prediction_provenance_score(self, prediction: dict, signal_lookup: dict[int, dict]) -> float | None:
-        linked_signals = [signal_lookup[signal_id] for signal_id in self._extract_source_signal_ids(prediction) if signal_id in signal_lookup]
+        linked_signals = self._linked_prediction_signals(prediction, signal_lookup)
         if not linked_signals:
             return None
-        return mean(float(signal.get("source_quality_score") or 0.0) for signal in linked_signals)
+        quality_score = mean(float(signal.get("source_quality_score") or 0.0) for signal in linked_signals)
+        freshness_score = mean(float(signal.get("freshness_score") or 0.0) for signal in linked_signals)
+        unique_providers = len({str(signal.get("provider_name") or signal.get("source") or "unknown") for signal in linked_signals})
+        unique_types = len({str(signal.get("source_type") or signal.get("channel") or "unknown") for signal in linked_signals})
+        venue_count = sum(
+            1 for signal in linked_signals if str(signal.get("source_type") or "") == "prediction-market" or str(signal.get("channel") or "") == "venue"
+        )
+        provider_diversity = clamp((unique_providers - 1) / 3, 0.0, 1.0)
+        source_diversity = clamp((unique_types - 1) / 2, 0.0, 1.0)
+        venue_lift = clamp(0.55 + (0.45 * (venue_count / len(linked_signals))), 0.55, 1.0)
+        return clamp(
+            (0.42 * quality_score)
+            + (0.18 * freshness_score)
+            + (0.16 * provider_diversity)
+            + (0.10 * source_diversity)
+            + (0.14 * venue_lift),
+            0.0,
+            1.0,
+        )
+
+    def _linked_prediction_signals(self, prediction: dict, signal_lookup: dict[int, dict]) -> list[dict]:
+        return [signal_lookup[signal_id] for signal_id in self._extract_source_signal_ids(prediction) if signal_id in signal_lookup]
+
+    def _build_signal_mix(self, recent_signals: list[dict]) -> list[SignalMixItem]:
+        if not recent_signals:
+            return []
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        total = len(recent_signals)
+        for signal in recent_signals:
+            signal_type = str(signal.get("source_type") or signal.get("channel") or "unknown")
+            grouped[signal_type].append(signal)
+        ordered_labels = {
+            "prediction-market": "Venue markets",
+            "news": "News",
+            "social": "Social",
+            "macro": "Macro",
+        }
+        items = []
+        for signal_type, rows in sorted(grouped.items(), key=lambda item: len(item[1]), reverse=True):
+            average_quality = mean(float(row.get("source_quality_score") or 0.0) for row in rows)
+            items.append(
+                SignalMixItem(
+                    label=ordered_labels.get(signal_type, signal_type.replace("-", " ").title()),
+                    count=len(rows),
+                    share=round(len(rows) / total, 3),
+                    average_quality=round(average_quality, 3),
+                )
+            )
+        return items
+
+    def _build_venue_pulse(self, recent_signals: list[dict], latest_assets: list[dict], provider_status: ProviderStatus) -> list[VenuePulseItem]:
+        items: list[VenuePulseItem] = []
+
+        if "hyperliquid" in provider_status.market_provider_source:
+            latest_asset_time = max((asset["as_of"] for asset in latest_assets), default=None)
+            items.append(
+                VenuePulseItem(
+                    source=provider_status.market_provider_source,
+                    label="Hyperliquid market feed",
+                    signal_count=len(latest_assets),
+                    assets=[asset["asset"] for asset in latest_assets],
+                    average_quality=0.84 if provider_status.market_provider_ready else 0.58,
+                    average_freshness=1.0,
+                    average_sentiment=round(mean(float(asset.get("signal_bias") or 0.0) for asset in latest_assets), 3) if latest_assets else 0.0,
+                    latest_title="Live perpetual mids and market posture",
+                    latest_at=latest_asset_time,
+                )
+            )
+
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for signal in recent_signals:
+            is_venue_signal = str(signal.get("source_type") or "") == "prediction-market" or str(signal.get("channel") or "") == "venue"
+            if not is_venue_signal:
+                continue
+            provider_name = str(signal.get("provider_name") or signal.get("source") or "venue")
+            grouped[provider_name].append(signal)
+
+        label_map = {
+            "polymarket-gamma-provider": "Polymarket event surface",
+            "kalshi-public-provider": "Kalshi contract surface",
+        }
+        for provider_name, rows in sorted(grouped.items(), key=lambda item: len(item[1]), reverse=True):
+            latest = rows[0]
+            items.append(
+                VenuePulseItem(
+                    source=provider_name,
+                    label=label_map.get(provider_name, provider_name.replace("-", " ").title()),
+                    signal_count=len(rows),
+                    assets=sorted({str(row.get("asset") or "n/a") for row in rows}),
+                    average_quality=round(mean(float(row.get("source_quality_score") or 0.0) for row in rows), 3),
+                    average_freshness=round(mean(float(row.get("freshness_score") or 0.0) for row in rows), 3),
+                    average_sentiment=round(mean(float(row.get("sentiment") or 0.0) for row in rows), 3),
+                    latest_title=str(latest.get("title") or ""),
+                    latest_at=str(latest.get("observed_at") or ""),
+                )
+            )
+        return items
 
     def _provider_configuration(self, provider_type: str) -> tuple[bool, bool]:
         if provider_type == "market":

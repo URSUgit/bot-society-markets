@@ -151,6 +151,37 @@ class ProviderStatus(BaseModel):
     signal_fallback_active: bool = False
 
 
+class SignalMixItem(BaseModel):
+    label: str
+    count: int = Field(ge=0)
+    share: float = Field(ge=0, le=1)
+    average_quality: float = Field(ge=0, le=1)
+
+
+class VenuePulseItem(BaseModel):
+    source: str
+    label: str
+    signal_count: int = Field(ge=0)
+    assets: list[str] = Field(default_factory=list)
+    average_quality: float = Field(ge=0, le=1)
+    average_freshness: float = Field(ge=0, le=1)
+    average_sentiment: float = Field(ge=-1, le=1)
+    latest_title: str | None = None
+    latest_at: str | None = None
+
+
+class SystemPulseSnapshot(BaseModel):
+    generated_at: str
+    live_provider_count: int = Field(ge=0)
+    total_recent_signals: int = Field(ge=0)
+    average_signal_quality: float = Field(ge=0, le=1)
+    average_signal_freshness: float = Field(ge=0, le=1)
+    pending_predictions: int = Field(ge=0)
+    retry_queue_depth: int = Field(ge=0)
+    signal_mix: list[SignalMixItem] = Field(default_factory=list)
+    venue_pulse: list[VenuePulseItem] = Field(default_factory=list)
+
+
 class NotificationChannel(BaseModel):
     id: int
     user_slug: str
@@ -225,6 +256,7 @@ class DashboardSnapshot(BaseModel):
     leaderboard: list[BotSummary]
     recent_predictions: list[PredictionView]
     recent_signals: list[SignalView]
+    system_pulse: SystemPulseSnapshot
     latest_operation: OperationSnapshot | None = None
     auth_session: AuthSessionSnapshot
     user_profile: "UserProfile"
@@ -237,6 +269,7 @@ class LandingSnapshot(BaseModel):
     assets: list[AssetSnapshot]
     leaderboard: list[BotSummary]
     recent_signals: list[SignalView]
+    system_pulse: SystemPulseSnapshot
     provider_status: ProviderStatus
 
 
@@ -349,3 +382,7 @@ class UserProfile(BaseModel):
 
 class ProviderStatusEnvelope(BaseModel):
     provider_status: ProviderStatus
+
+
+class SystemPulseEnvelope(BaseModel):
+    system_pulse: SystemPulseSnapshot

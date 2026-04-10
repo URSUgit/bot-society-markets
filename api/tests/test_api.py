@@ -51,6 +51,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["provider_status"]["deployment_target"] == "local"
         assert payload["provider_status"]["database_backend"] == "sqlite"
         assert payload["user_profile"]["is_demo_user"] is True
+        assert payload["system_pulse"]["live_provider_count"] >= 0
+        assert payload["system_pulse"]["total_recent_signals"] >= 1
+        assert payload["system_pulse"]["signal_mix"]
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
@@ -271,6 +274,36 @@ def test_hyperliquid_and_venue_provider_metadata() -> None:
         assert provider_payload["signal_provider_live_capable"] is True
         assert len(provider_payload["venue_signal_providers"]) == 2
         assert {provider["mode"] for provider in provider_payload["venue_signal_providers"]} == {"polymarket", "kalshi"}
+
+
+def test_landing_snapshot_and_system_pulse_endpoint() -> None:
+    settings = Settings(
+        market_provider_mode="hyperliquid",
+        signal_provider_mode="demo",
+        venue_signal_providers=("polymarket", "kalshi"),
+    )
+    with build_client(settings) as client:
+        landing_response = client.get("/api/landing")
+        assert landing_response.status_code == 200
+        landing_payload = landing_response.json()
+        assert landing_payload["system_pulse"]["total_recent_signals"] >= 1
+        assert landing_payload["system_pulse"]["signal_mix"]
+        assert landing_payload["system_pulse"]["venue_pulse"]
+
+        pulse_response = client.get("/api/system/pulse")
+        assert pulse_response.status_code == 200
+        pulse_payload = pulse_response.json()["system_pulse"]
+        assert pulse_payload["live_provider_count"] >= 1
+        assert pulse_payload["average_signal_quality"] >= 0
+        assert pulse_payload["venue_pulse"]
+
+
+def test_status_page_route_serves_html() -> None:
+    with build_client() as client:
+        response = client.get("/status")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Public status" in response.text
 
 
 def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:

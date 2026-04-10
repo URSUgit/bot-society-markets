@@ -32,6 +32,7 @@ from .models import (
     ProviderStatusEnvelope,
     SignalView,
     Summary,
+    SystemPulseEnvelope,
     UserProfile,
     WatchlistAssetRequest,
 )
@@ -238,6 +239,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def provider_status(request: Request) -> ProviderStatusEnvelope:
         return ProviderStatusEnvelope(provider_status=get_service(request).get_provider_status())
 
+    @app.get("/api/system/pulse", response_model=SystemPulseEnvelope)
+    def system_pulse(request: Request) -> SystemPulseEnvelope:
+        return SystemPulseEnvelope(system_pulse=get_service(request).get_system_pulse())
+
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:
         return get_service(request).run_pipeline_cycle()
@@ -254,12 +259,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
 
+    @app.get("/status")
+    def status_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "status.html")
+
     @app.get("/dashboard/")
     @app.get("/dachboard")
     @app.get("/dashbord")
     @app.get("/app")
     def dashboard_aliases() -> RedirectResponse:
         return RedirectResponse(url="/dashboard", status_code=307)
+
+    @app.get("/status/")
+    @app.get("/ops")
+    def status_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/status", status_code=307)
 
     return app
 

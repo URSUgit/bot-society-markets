@@ -14,6 +14,7 @@
         <h1 class="sidebar-title">Operations Dashboard</h1>
       </div>
       <nav class="sidebar-nav">
+        <a href="#pulse-section">Pulse</a>
         <a class="active" href="#leaderboard-section">Leaderboard</a>
         <a href="#account-section">Account</a>
         <a href="#workspace-section">Workspace</a>
@@ -22,6 +23,7 @@
         <a href="#predictions-section">Predictions</a>
         <a href="#signals-section">Signals</a>
         <a href="#detail-section">Bot Detail</a>
+        <a href="/status">Public Status</a>
         <a href="/">Back to Landing</a>
       </nav>
       <div class="sidebar-card">
@@ -39,6 +41,7 @@
         </div>
         <div class="hero-actions compact-actions">
           <button class="button primary" id="run-cycle-button" type="button">Run Pipeline Cycle</button>
+          <a class="button secondary" href="/status">Open Public Status</a>
           <a class="button secondary" href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Open Repository</a>
         </div>
       </section>
@@ -77,6 +80,35 @@
             <small id="provider-posture-subtitle">Checking readiness and fallback state</small>
           </article>
         </div>
+      </section>
+
+      <section class="content-grid" id="pulse-section">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">System pulse</p>
+              <h3>Provider capacity, freshness, and queue pressure</h3>
+            </div>
+            <span class="badge">Auto-updating</span>
+          </div>
+          <div class="pulse-metric-grid" id="dashboard-pulse-metrics"></div>
+        </article>
+
+        <article class="card side-card">
+          <p class="eyebrow">Signal mix</p>
+          <h3>Current input composition</h3>
+          <div class="signal-mix-list" id="dashboard-signal-mix"></div>
+        </article>
+      </section>
+
+      <section class="card dashboard-stack-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Venue pulse</p>
+            <h3>Live venue surfaces feeding the bot universe</h3>
+          </div>
+        </div>
+        <div class="venue-pulse-grid" id="dashboard-venue-pulse"></div>
       </section>
 
       <section class="content-grid live-grid">

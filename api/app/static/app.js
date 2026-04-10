@@ -54,6 +54,54 @@ function qualityLabel(score) {
   return "Low-conviction";
 }
 
+function qualityCardClass(score) {
+  const numeric = Number(score);
+  if (numeric >= 0.78) {
+    return "tone-high";
+  }
+  if (numeric >= 0.62) {
+    return "tone-mid";
+  }
+  return "tone-low";
+}
+
+function freshnessLabel(score) {
+  const numeric = Number(score);
+  if (numeric >= 0.82) {
+    return "Near real-time";
+  }
+  if (numeric >= 0.68) {
+    return "Current";
+  }
+  if (numeric >= 0.52) {
+    return "Aging";
+  }
+  return "Stale";
+}
+
+function sentimentLabel(value) {
+  const numeric = Number(value);
+  if (numeric >= 0.18) {
+    return "Bullish lean";
+  }
+  if (numeric <= -0.18) {
+    return "Bearish lean";
+  }
+  return "Balanced";
+}
+
+function providerState(providerStatus) {
+  const healthy = providerStatus?.market_provider_ready && providerStatus?.signal_provider_ready;
+  const fallback = providerStatus?.market_fallback_active || providerStatus?.signal_fallback_active;
+  if (fallback) {
+    return { label: "Fallback active", variant: "warning" };
+  }
+  if (healthy) {
+    return { label: "Nominal", variant: "positive" };
+  }
+  return { label: "Attention", variant: "warning" };
+}
+
 let selectedBotSlug = null;
 let latestSnapshot = null;
 let lastDashboardRefreshAt = null;
@@ -62,6 +110,8 @@ let autoRefreshEnabled = true;
 let autoRefreshTimer = null;
 let countdownTimer = null;
 let dashboardLoadInFlight = false;
+let statusPageLoadInFlight = false;
+let statusPageTimer = null;
 let previousLeaderboardScores = new Map();
 let runCycleStageTimer = null;
 
@@ -166,7 +216,8 @@ function renderHeroMeta(snapshot) {
   }
   const latestOperation = snapshot.latest_operation;
   const latestSignal = snapshot.recent_signals?.[0];
-  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${snapshot.summary.pending_predictions} pending predictions · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
+  const pulse = snapshot.system_pulse;
+  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${pulse?.live_provider_count ?? 0} live-capable providers · ${snapshot.summary.pending_predictions} pending predictions · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
 }
 
 function renderRibbon(snapshot) {
@@ -197,7 +248,7 @@ function renderRibbon(snapshot) {
     pressureValue.textContent = `${snapshot.summary.pending_predictions} pending`;
   }
   if (pressureSubtitle) {
-    pressureSubtitle.textContent = `${snapshot.summary.scored_predictions} scored · ${snapshot.notification_health.retry_queue_depth} notification retries waiting`;
+    pressureSubtitle.textContent = `${snapshot.system_pulse?.total_recent_signals ?? snapshot.summary.signals_last_24h} recent signals · ${snapshot.notification_health.retry_queue_depth} notification retries waiting`;
   }
 
   const providersHealthy = snapshot.provider_status.market_provider_ready && snapshot.provider_status.signal_provider_ready;
@@ -206,7 +257,7 @@ function renderRibbon(snapshot) {
     providerValue.textContent = fallbackActive ? "Fallback active" : (providersHealthy ? "Primary providers stable" : "Needs attention");
   }
   if (providerSubtitle) {
-    providerSubtitle.textContent = `${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source}`;
+    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source}`;
   }
   if (activityBadge) {
     activityBadge.textContent = autoRefreshEnabled ? `Auto-refresh ${AUTO_REFRESH_MS / 1000}s` : "Manual refresh";
@@ -234,6 +285,124 @@ function renderMarketTape(assets) {
     </article>
   `).join("");
   track.innerHTML = `${chips}${chips}`;
+}
+
+function renderPulseMetrics(systemPulse, targetId) {
+  const container = document.getElementById(targetId);
+  if (!container || !systemPulse) {
+    return;
+  }
+  container.innerHTML = `
+    <article class="pulse-metric-card">
+      <span>Live providers</span>
+      <strong>${systemPulse.live_provider_count}</strong>
+      <small>Market, signal, and venue feeds currently live-capable</small>
+    </article>
+    <article class="pulse-metric-card">
+      <span>Recent signals</span>
+      <strong>${systemPulse.total_recent_signals}</strong>
+      <small>Fresh signal records included in the current pulse window</small>
+    </article>
+    <article class="pulse-metric-card ${qualityCardClass(systemPulse.average_signal_quality)}">
+      <span>Average quality</span>
+      <strong>${fmtPercent(systemPulse.average_signal_quality)}</strong>
+      <div class="mini-meter"><i style="width:${(clamp(systemPulse.average_signal_quality, 0, 1) * 100).toFixed(2)}%"></i></div>
+      <small>${qualityLabel(systemPulse.average_signal_quality)}</small>
+    </article>
+    <article class="pulse-metric-card ${qualityCardClass(systemPulse.average_signal_freshness)}">
+      <span>Average freshness</span>
+      <strong>${fmtPercent(systemPulse.average_signal_freshness)}</strong>
+      <div class="mini-meter"><i style="width:${(clamp(systemPulse.average_signal_freshness, 0, 1) * 100).toFixed(2)}%"></i></div>
+      <small>${freshnessLabel(systemPulse.average_signal_freshness)}</small>
+    </article>
+    <article class="pulse-metric-card">
+      <span>Queue pressure</span>
+      <strong>${systemPulse.pending_predictions} / ${systemPulse.retry_queue_depth}</strong>
+      <small>Pending predictions / queued notification retries</small>
+    </article>
+  `;
+}
+
+function renderSignalMix(signalMix, targetId) {
+  const container = document.getElementById(targetId);
+  if (!container) {
+    return;
+  }
+  if (!signalMix?.length) {
+    container.innerHTML = '<p class="panel-note">No recent signal mix is available yet.</p>';
+    return;
+  }
+  container.innerHTML = signalMix.map((item) => `
+    <article class="signal-mix-card ${qualityCardClass(item.average_quality)}">
+      <div class="signal-mix-head">
+        <div>
+          <span>${item.label}</span>
+          <strong>${fmtPercent(item.share)}</strong>
+        </div>
+        <span class="badge">${item.count} signals</span>
+      </div>
+      <div class="mini-meter"><i style="width:${(clamp(item.average_quality, 0, 1) * 100).toFixed(2)}%"></i></div>
+      <p>Average quality ${fmtPercent(item.average_quality)} · ${qualityLabel(item.average_quality)}</p>
+    </article>
+  `).join("");
+}
+
+function renderVenuePulse(venuePulse, targetId) {
+  const container = document.getElementById(targetId);
+  if (!container) {
+    return;
+  }
+  if (!venuePulse?.length) {
+    container.innerHTML = '<p class="panel-note">No venue surfaces are active in the current pulse window.</p>';
+    return;
+  }
+  container.innerHTML = venuePulse.map((item) => `
+    <article class="venue-card ${qualityCardClass(item.average_quality)}">
+      <div class="venue-card-head">
+        <div>
+          <span class="venue-card-label">${item.source}</span>
+          <h4>${item.label}</h4>
+        </div>
+        <span class="badge">${item.signal_count} items</span>
+      </div>
+      <p>${item.latest_title || "Awaiting the next venue event."}</p>
+      <div class="venue-kpis">
+        <div>
+          <span>Quality</span>
+          <strong>${fmtPercent(item.average_quality)}</strong>
+        </div>
+        <div>
+          <span>Freshness</span>
+          <strong>${fmtPercent(item.average_freshness)}</strong>
+        </div>
+        <div>
+          <span>Bias</span>
+          <strong>${sentimentLabel(item.average_sentiment)}</strong>
+        </div>
+      </div>
+      <div class="mini-meter"><i style="width:${(clamp(item.average_quality, 0, 1) * 100).toFixed(2)}%"></i></div>
+      <div class="venue-assets">
+        ${item.assets.map((asset) => `<span class="venue-asset">${asset}</span>`).join("") || '<span class="venue-asset">n/a</span>'}
+      </div>
+      <small>${item.latest_at ? `Updated ${fmtRelativeTime(item.latest_at)}` : "Waiting for fresh venue updates"}</small>
+    </article>
+  `).join("");
+}
+
+function renderLandingPulse(snapshot) {
+  renderPulseMetrics(snapshot.system_pulse, "landing-pulse-metrics");
+  renderSignalMix(snapshot.system_pulse?.signal_mix, "landing-signal-mix");
+  renderVenuePulse(snapshot.system_pulse?.venue_pulse, "landing-venue-pulse");
+  const badge = document.getElementById("landing-pulse-badge");
+  if (badge) {
+    badge.textContent = providerState(snapshot.provider_status).label;
+  }
+}
+
+function renderDashboardPulse(snapshot) {
+  renderPulseMetrics(snapshot.system_pulse, "dashboard-pulse-metrics");
+  renderSignalMix(snapshot.system_pulse?.signal_mix, "dashboard-signal-mix");
+  renderVenuePulse(snapshot.system_pulse?.venue_pulse, "dashboard-venue-pulse");
 }
 
 function buildActivityItems(snapshot) {
@@ -341,6 +510,10 @@ function clearRefreshTimers() {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
   }
+  if (statusPageTimer) {
+    clearInterval(statusPageTimer);
+    statusPageTimer = null;
+  }
   if (countdownTimer) {
     clearInterval(countdownTimer);
     countdownTimer = null;
@@ -407,7 +580,7 @@ function renderLanding(snapshot) {
   }
 
   if (providerNote) {
-    providerNote.textContent = `${snapshot.provider_status.environment_name} environment · market provider ${snapshot.provider_status.market_provider_source} · signal provider ${snapshot.provider_status.signal_provider_source}.`;
+    providerNote.textContent = `${snapshot.provider_status.environment_name} environment · ${snapshot.system_pulse.live_provider_count} live-capable providers · market ${snapshot.provider_status.market_provider_source} · signal ${snapshot.provider_status.signal_provider_source} · average quality ${fmtPercent(snapshot.system_pulse.average_signal_quality)}.`;
   }
 
   if (botGrid) {
@@ -450,6 +623,8 @@ function renderLanding(snapshot) {
       </li>
     `).join("");
   }
+
+  renderLandingPulse(snapshot);
 }
 
 function renderMetrics(summary) {
@@ -481,8 +656,8 @@ function renderMetrics(summary) {
   `;
 }
 
-function renderAssets(assets) {
-  const container = document.getElementById("dashboard-assets");
+function renderAssets(assets, targetId = "dashboard-assets") {
+  const container = document.getElementById(targetId);
   if (!container) {
     return;
   }
@@ -512,8 +687,8 @@ function renderAssets(assets) {
   `).join("");
 }
 
-function renderOperation(operation) {
-  const card = document.getElementById("operation-card");
+function renderOperation(operation, targetId = "operation-card") {
+  const card = document.getElementById(targetId);
   if (!card) {
     return;
   }
@@ -537,8 +712,8 @@ function renderOperation(operation) {
   `;
 }
 
-function renderProviderStatus(providerStatus) {
-  const card = document.getElementById("provider-card");
+function renderProviderStatus(providerStatus, targetId = "provider-card") {
+  const card = document.getElementById(targetId);
   if (!card || !providerStatus) {
     return;
   }
@@ -589,6 +764,51 @@ function renderProviderStatus(providerStatus) {
       <ul>${venueProviders}</ul>
     </div>
   `;
+}
+
+function renderStatusPage(landing, systemPulse, providerStatus, operation) {
+  const badge = document.getElementById("status-badge");
+  const heroTitle = document.getElementById("status-hero-title");
+  const heroCopy = document.getElementById("status-hero-copy");
+  const heroMetrics = document.getElementById("status-hero-metrics");
+  const providerNote = document.getElementById("status-provider-note");
+  const state = providerState(providerStatus);
+
+  if (badge) {
+    badge.textContent = state.label;
+  }
+
+  if (heroTitle) {
+    heroTitle.textContent = state.label === "Nominal"
+      ? "Bot Society Markets is online and ingesting live market context."
+      : (state.label === "Fallback active"
+        ? "Bot Society Markets is online with managed fallback systems active."
+        : "Bot Society Markets is online, with one or more providers needing attention.");
+  }
+
+  if (heroCopy) {
+    heroCopy.textContent = `${systemPulse.total_recent_signals} recent signals across ${systemPulse.signal_mix.length} input types, ${systemPulse.pending_predictions} pending predictions waiting on score windows, and ${systemPulse.retry_queue_depth} queued notification retries.`;
+  }
+
+  if (heroMetrics) {
+    heroMetrics.innerHTML = `
+      <div><span>Live providers</span><strong>${systemPulse.live_provider_count}</strong></div>
+      <div><span>Signal quality</span><strong>${fmtPercent(systemPulse.average_signal_quality)}</strong></div>
+      <div><span>Freshness</span><strong>${fmtPercent(systemPulse.average_signal_freshness)}</strong></div>
+      <div><span>Last cycle</span><strong>${operation ? fmtRelativeTime(operation.completed_at || operation.started_at) : "n/a"}</strong></div>
+    `;
+  }
+
+  if (providerNote) {
+    providerNote.textContent = `${providerStatus.environment_name} environment · market ${providerStatus.market_provider_source} · signal ${providerStatus.signal_provider_source} · pulse updated ${fmtRelativeTime(systemPulse.generated_at)}.`;
+  }
+
+  renderPulseMetrics(systemPulse, "status-pulse-metrics");
+  renderSignalMix(systemPulse.signal_mix, "status-signal-mix");
+  renderVenuePulse(systemPulse.venue_pulse, "status-venue-pulse");
+  renderProviderStatus(providerStatus, "status-provider-card");
+  renderOperation(operation, "status-operation-card");
+  renderAssets(landing.assets, "status-assets");
 }
 
 function renderLeaderboard(leaderboard, profile) {
@@ -901,6 +1121,7 @@ async function loadDashboard(options = {}) {
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);
+    renderDashboardPulse(snapshot);
     renderActivityFeed(snapshot);
     renderOperation(snapshot.latest_operation);
     renderProviderStatus(snapshot.provider_status);
@@ -925,6 +1146,29 @@ async function loadDashboard(options = {}) {
     }
   } finally {
     dashboardLoadInFlight = false;
+  }
+}
+
+async function loadStatusPage() {
+  if (statusPageLoadInFlight) {
+    return;
+  }
+  statusPageLoadInFlight = true;
+  try {
+    const [landing, providerEnvelope, pulseEnvelope, latestOperation] = await Promise.all([
+      fetchJson("/api/landing"),
+      fetchJson("/api/system/providers"),
+      fetchJson("/api/system/pulse"),
+      fetchJson("/api/operations/latest"),
+    ]);
+    renderStatusPage(
+      landing,
+      pulseEnvelope.system_pulse || landing.system_pulse,
+      providerEnvelope.provider_status,
+      latestOperation,
+    );
+  } finally {
+    statusPageLoadInFlight = false;
   }
 }
 
@@ -1287,6 +1531,13 @@ async function boot() {
 
     if (document.getElementById("dashboard-metrics")) {
       await loadDashboard();
+    }
+
+    if (document.getElementById("status-page")) {
+      await loadStatusPage();
+      statusPageTimer = window.setInterval(() => {
+        loadStatusPage().catch((error) => console.error(error));
+      }, AUTO_REFRESH_MS);
     }
   } catch (error) {
     console.error(error);

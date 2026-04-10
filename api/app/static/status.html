@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Society Markets Status</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="status-body">
+  <div class="site-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark">BSM</span>
+        <div>
+          <p class="eyebrow">Bot Society Markets</p>
+          <h1>Public status and live systems posture.</h1>
+        </div>
+      </div>
+      <nav class="topnav">
+        <a href="/">Website</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="https://github.com/URSUgit/bot-society-markets" target="_blank" rel="noreferrer">Repository</a>
+      </nav>
+    </header>
+
+    <main id="status-page">
+      <section class="hero card status-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Public status</p>
+          <h2 id="status-hero-title">Loading platform posture...</h2>
+          <p class="lead" id="status-hero-copy">Checking providers, recent signals, venue activity, and the latest scoring cycle.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="/dashboard">Open Working Dashboard</a>
+            <a class="button secondary" href="/">Open Product Website</a>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-header">
+            <span>Operations pulse</span>
+            <span class="badge" id="status-badge">Checking</span>
+          </div>
+          <div class="leader-mini" id="status-hero-metrics"></div>
+          <p class="panel-note" id="status-provider-note">Preparing live provider summary...</p>
+        </div>
+      </section>
+
+      <section class="grid-two">
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">System pulse</p>
+              <h3>Current operating envelope</h3>
+            </div>
+          </div>
+          <div class="pulse-metric-grid" id="status-pulse-metrics"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Signal mix</p>
+              <h3>Where the latest context is coming from</h3>
+            </div>
+          </div>
+          <div class="signal-mix-list" id="status-signal-mix"></div>
+        </article>
+      </section>
+
+      <section class="card status-stack-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Venue pulse</p>
+            <h3>Prediction market and venue surfaces</h3>
+          </div>
+        </div>
+        <div class="venue-pulse-grid" id="status-venue-pulse"></div>
+      </section>
+
+      <section class="content-grid">
+        <article class="card side-card">
+          <p class="eyebrow">Provider status</p>
+          <h3>Configuration and readiness</h3>
+          <div class="operation-card" id="status-provider-card"></div>
+        </article>
+
+        <article class="card side-card">
+          <p class="eyebrow">Latest operation</p>
+          <h3>Most recent orchestration cycle</h3>
+          <div class="operation-card" id="status-operation-card"></div>
+        </article>
+      </section>
+
+      <section class="card status-stack-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tracked assets</p>
+            <h3>Market context snapshot</h3>
+          </div>
+        </div>
+        <div class="asset-grid compact-assets" id="status-assets"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

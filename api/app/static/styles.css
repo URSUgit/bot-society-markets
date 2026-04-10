@@ -284,6 +284,11 @@ img {
   margin-bottom: 24px;
 }
 
+.dashboard-stack-section,
+.status-stack-section {
+  margin-bottom: 24px;
+}
+
 .grid-two .card,
 #pricing.card,
 #bots.card,
@@ -316,6 +321,158 @@ img {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.pulse-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.pulse-metric-card,
+.signal-mix-card,
+.venue-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.pulse-metric-card {
+  display: grid;
+  gap: 8px;
+  min-height: 150px;
+}
+
+.pulse-metric-card span,
+.signal-mix-card span,
+.venue-card small,
+.venue-kpis span,
+.venue-card-label {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pulse-metric-card strong,
+.signal-mix-card strong,
+.venue-kpis strong {
+  font-size: 1.45rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+.signal-mix-list {
+  display: grid;
+  gap: 14px;
+}
+
+.signal-mix-card {
+  display: grid;
+  gap: 12px;
+}
+
+.signal-mix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signal-mix-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.signal-mix-head strong {
+  font-size: 1.15rem;
+}
+
+.mini-meter {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(16, 38, 54, 0.09);
+}
+
+.mini-meter i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--copper), var(--teal));
+}
+
+.venue-pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.venue-card {
+  display: grid;
+  gap: 12px;
+}
+
+.venue-card h4 {
+  font-size: 1.25rem;
+}
+
+.venue-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.venue-card-head > div {
+  display: grid;
+  gap: 5px;
+}
+
+.venue-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.venue-kpis div {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+
+.venue-assets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.venue-asset {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(16, 38, 54, 0.08);
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tone-high {
+  box-shadow: inset 0 4px 0 rgba(31, 122, 120, 0.85);
+}
+
+.tone-mid {
+  box-shadow: inset 0 4px 0 rgba(178, 139, 44, 0.9);
+}
+
+.tone-low {
+  box-shadow: inset 0 4px 0 rgba(196, 106, 55, 0.85);
 }
 
 .bot-card {
@@ -449,6 +606,14 @@ img {
 
 .dashboard-main {
   padding: 28px;
+}
+
+.status-body .hero-panel .leader-mini {
+  margin-bottom: 0;
+}
+
+.status-body .leader-mini div {
+  align-items: baseline;
 }
 
 .dashboard-hero h2,
@@ -1284,6 +1449,10 @@ form:has(:disabled) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .venue-kpis {
+    grid-template-columns: 1fr;
+  }
+
   .activity-item {
     grid-template-columns: auto 1fr;
   }
@@ -1296,6 +1465,11 @@ form:has(:disabled) {
 
 @media (max-width: 720px) {
   .dashboard-ribbon-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-metric-grid,
+  .venue-pulse-grid {
     grid-template-columns: 1fr;
   }
 
