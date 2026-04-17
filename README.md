@@ -23,6 +23,7 @@ This repository contains both the founder documentation package and a profession
 - [Polymarket Open-Source Integration Memo](docs/14-polymarket-open-source-integration-memo.md)
 - [Prediction Market Adapter Guide](docs/15-prediction-market-backtesting-adapter.md)
 - [Paper Trading Venue Activation Plan](docs/16-paper-trading-venue-plan.md)
+- [Custom Domain Dashboard Launch Plan](docs/17-custom-domain-dashboard-launch.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -201,6 +202,19 @@ The hosted blueprint is now structured around:
 - a `staging` environment with its own managed Postgres, web service, and worker
 - secret prompts for CoinGecko, Reddit, RSS, and SMTP credentials where appropriate
 - environment-level isolation and protection controls
+
+### Custom Domain Dashboard Mode
+
+Hosted environments set `BSM_SITE_HOME_PAGE=dashboard`, so a custom domain can open the dashboard directly at `/`.
+
+Useful routes:
+
+- `/` opens the configured home page
+- `/dashboard` always opens the dashboard
+- `/landing` always opens the landing page
+- `/simulation` always opens Strategy Lab
+
+See [Custom Domain Dashboard Launch Plan](docs/17-custom-domain-dashboard-launch.md) for the DNS checklist.
 
 ## Environment Configuration
 

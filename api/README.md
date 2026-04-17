@@ -110,6 +110,7 @@ It now prefers Docker + Postgres on port `8010`, falls back to the local Python 
 ```powershell
 $env:BSM_ENVIRONMENT_NAME = "development"
 $env:BSM_DEPLOYMENT_TARGET = "local"
+$env:BSM_SITE_HOME_PAGE = "landing"
 $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
 $env:BSM_VENUE_SIGNAL_PROVIDERS = ""

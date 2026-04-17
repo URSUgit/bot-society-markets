@@ -16,6 +16,8 @@ projects:
                 value: production
               - key: BSM_DEPLOYMENT_TARGET
                 value: render
+              - key: BSM_SITE_HOME_PAGE
+                value: dashboard
               - key: BSM_SEED_DEMO_DATA
                 value: "true"
               - key: BSM_MARKET_PROVIDER
@@ -162,6 +164,8 @@ projects:
                 value: staging
               - key: BSM_DEPLOYMENT_TARGET
                 value: render
+              - key: BSM_SITE_HOME_PAGE
+                value: dashboard
               - key: BSM_SEED_DEMO_DATA
                 value: "true"
               - key: BSM_MARKET_PROVIDER

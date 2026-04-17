@@ -322,6 +322,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return get_service(request).retry_failed_notifications()
 
     @app.get("/")
+    def home() -> FileResponse:
+        if active_settings.site_home_page == "dashboard":
+            return FileResponse(STATIC_DIR / "dashboard.html")
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/landing")
     def landing() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
@@ -343,6 +349,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/app")
     def dashboard_aliases() -> RedirectResponse:
         return RedirectResponse(url="/dashboard", status_code=307)
+
+    @app.get("/landing/")
+    @app.get("/home")
+    def landing_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/landing", status_code=307)
 
     @app.get("/simulation/")
     @app.get("/lab")

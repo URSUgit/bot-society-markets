@@ -17,6 +17,7 @@ VenueSignalProviderMode = Literal["polymarket", "kalshi"]
 MacroProviderMode = Literal["demo", "fred"]
 WalletProviderMode = Literal["demo", "polymarket"]
 PaperExecutionProviderMode = Literal["internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"]
+SiteHomePage = Literal["landing", "dashboard"]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -66,6 +67,7 @@ class Settings:
     version: str = "0.6.0"
     environment_name: str = "development"
     deployment_target: str = "local"
+    site_home_page: SiteHomePage = "landing"
     database_path: Path = field(default_factory=_default_database_path)
     export_artifacts_dir: Path = field(default_factory=_default_export_artifacts_dir)
     database_url: str | None = None
@@ -179,6 +181,10 @@ def get_settings() -> Settings:
     if plan not in {"demo", "pro"}:
         plan = "demo"
 
+    site_home_page = os.getenv("BSM_SITE_HOME_PAGE", "landing").lower()
+    if site_home_page not in {"landing", "dashboard"}:
+        site_home_page = "landing"
+
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
     tracked_wallets = _split_csv_env(os.getenv("BSM_TRACKED_WALLETS", ""))
@@ -205,6 +211,7 @@ def get_settings() -> Settings:
     return Settings(
         environment_name=os.getenv("BSM_ENVIRONMENT_NAME", "development"),
         deployment_target=os.getenv("BSM_DEPLOYMENT_TARGET", "local"),
+        site_home_page=site_home_page,
         database_path=database_path,
         export_artifacts_dir=export_artifacts_dir,
         database_url=database_url,

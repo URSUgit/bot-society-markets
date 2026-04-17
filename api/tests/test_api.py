@@ -600,6 +600,18 @@ def test_status_page_route_serves_html() -> None:
         assert "Public status" in response.text
 
 
+def test_home_route_can_open_dashboard_for_custom_domain() -> None:
+    with build_client(Settings(site_home_page="dashboard")) as client:
+        home_response = client.get("/")
+        assert home_response.status_code == 200
+        assert "text/html" in home_response.headers["content-type"]
+        assert "Command Center" in home_response.text
+
+        landing_response = client.get("/landing")
+        assert landing_response.status_code == 200
+        assert "Enter a bot society" in landing_response.text
+
+
 def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
     with build_client() as client:
         response = client.get("/api/signals", params={"limit": 12})
