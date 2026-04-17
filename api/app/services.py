@@ -47,6 +47,9 @@ from .models import (
     PaperPositionView,
     PaperSimulationResult,
     PaperTradingSnapshot,
+    PaperVenueCapability,
+    PaperVenuesSnapshot,
+    PaperVenueView,
     PredictionView,
     ProviderComponentStatus,
     ProviderStatus,
@@ -479,6 +482,300 @@ class BotSocietyService:
             created_positions=created_positions,
             closed_positions=closed_positions,
             snapshot=self.get_paper_trading_snapshot(user_slug),
+        )
+
+    def get_paper_venues(self) -> PaperVenuesSnapshot:
+        polysandbox_configured = bool(self.settings.polysandbox_api_key and self.settings.polysandbox_sandbox_id)
+        kalshi_demo_configured = bool(self.settings.kalshi_demo_key_id and self.settings.kalshi_demo_private_key_path)
+        hyperliquid_testnet_configured = bool(
+            self.settings.hyperliquid_testnet_wallet_address and self.settings.hyperliquid_testnet_private_key
+        )
+        lorem_ipsum_enabled = bool(self.settings.lorem_ipsum_trade_enabled)
+
+        venues = [
+            PaperVenueView(
+                id="internal",
+                name="Bot Society Internal Paper Ledger",
+                category="Internal simulator",
+                priority=1,
+                status="ready",
+                configured=True,
+                live_capable=False,
+                api_capable=True,
+                manual_capable=False,
+                historical_replay_capable=True,
+                supported_markets=["BTC", "ETH", "SOL"],
+                api_base_url="/api/paper-trading",
+                app_url="/dashboard#paper-section",
+                docs_url=None,
+                capability_summary="Local paper positions tied directly to Bot Society prediction objects.",
+                capabilities=[
+                    PaperVenueCapability(label="Portfolio accounting", detail="Tracks cash, exposure, PnL, win rate, and open/closed positions."),
+                    PaperVenueCapability(label="Bot attribution", detail="Every simulated position keeps the source bot and prediction id."),
+                    PaperVenueCapability(label="Safe by default", detail="No external order endpoint or wallet is used."),
+                ],
+                setup_steps=[
+                    "Open the dashboard paper trading card.",
+                    "Run a pipeline cycle to create pending predictions.",
+                    "Press Simulate Positions to allocate demo capital to the highest-confidence calls.",
+                ],
+                limitations=[
+                    "Uses asset-level market prices, not full venue order-book microstructure.",
+                    "No external fills, cancellations, or websocket execution loop yet.",
+                ],
+                env_keys=["BSM_PAPER_STARTING_BALANCE", "BSM_PAPER_TRADE_FEE_BPS", "BSM_PAPER_TRADE_SLIPPAGE_BPS"],
+                next_action="Keep this as the baseline ledger while external paper venues are activated.",
+                safety_note="This ledger cannot send real orders.",
+                readiness_score=1.0,
+            ),
+            PaperVenueView(
+                id="polysandbox",
+                name="Polysandbox",
+                category="Polymarket paper venue",
+                priority=2,
+                status="ready" if polysandbox_configured else "needs_credentials",
+                configured=polysandbox_configured,
+                live_capable=True,
+                api_capable=True,
+                manual_capable=True,
+                historical_replay_capable=True,
+                supported_markets=["Polymarket CLOB", "prediction markets", "crypto directionals", "weather markets"],
+                api_base_url=self.settings.polysandbox_api_url,
+                app_url=self.settings.polysandbox_app_url,
+                docs_url=self.settings.polysandbox_docs_url,
+                capability_summary="Best first external adapter for automated Polymarket-style paper orders.",
+                capabilities=[
+                    PaperVenueCapability(label="Live CLOB quotes", detail="Designed to price paper fills from live Polymarket order books."),
+                    PaperVenueCapability(label="API parity", detail="REST API flow can be kept close to a later live CLOB integration."),
+                    PaperVenueCapability(label="Agent-friendly", detail="Includes API and MCP-oriented workflows for bot testing."),
+                ],
+                setup_steps=[
+                    "Create a Polysandbox account and sandbox.",
+                    "Create a paper API key in the Polysandbox app.",
+                    "Set BSM_PAPER_EXECUTION_PROVIDER=polysandbox, BSM_POLYSANDBOX_API_KEY, and BSM_POLYSANDBOX_SANDBOX_ID.",
+                    "Run the adapter in paper-only mode before any live Polymarket work.",
+                ],
+                limitations=[
+                    "Independent product, not affiliated with Polymarket.",
+                    "Pricing, replay depth, and rate limits depend on the selected Polysandbox plan.",
+                ],
+                env_keys=[
+                    "BSM_PAPER_EXECUTION_PROVIDER",
+                    "BSM_POLYSANDBOX_API_URL",
+                    "BSM_POLYSANDBOX_API_KEY",
+                    "BSM_POLYSANDBOX_SANDBOX_ID",
+                ],
+                next_action=(
+                    "Credentials are present. Build the order adapter next."
+                    if polysandbox_configured
+                    else "Create a free trial sandbox, then add API key and sandbox id to .env.local."
+                ),
+                safety_note="Use only paper API keys here. Never paste a funded wallet seed phrase into the platform.",
+                readiness_score=0.92 if polysandbox_configured else 0.68,
+            ),
+            PaperVenueView(
+                id="lorem_ipsum_trade",
+                name="Lorem Ipsum Trade",
+                category="Polymarket-compatible sandbox",
+                priority=3,
+                status="ready" if lorem_ipsum_enabled else "watchlist",
+                configured=lorem_ipsum_enabled,
+                live_capable=True,
+                api_capable=True,
+                manual_capable=True,
+                historical_replay_capable=False,
+                supported_markets=["Polymarket-style CLOB", "15-minute crypto up/down markets"],
+                api_base_url=self.settings.lorem_ipsum_trade_clob_url,
+                app_url=self.settings.lorem_ipsum_trade_app_url,
+                docs_url="https://www.loremipsumtrade.com/",
+                capability_summary="Drop-in CLOB-style sandbox for fast bot loops on short-horizon prediction markets.",
+                capabilities=[
+                    PaperVenueCapability(label="SDK-compatible endpoint", detail="Can be pointed at by Polymarket CLOB clients after changing the base URL."),
+                    PaperVenueCapability(label="Order-book realism", detail="Focuses on spreads, partial fills, slippage, and thin liquidity."),
+                    PaperVenueCapability(label="Agent testing", detail="Useful for rapid AI-agent policy comparison."),
+                ],
+                setup_steps=[
+                    "Open the sandbox and connect a separate development wallet if required.",
+                    "Set BSM_LOREM_IPSUM_TRADE_ENABLED=true after manual account verification.",
+                    "Route only paper-sized synthetic orders through the CLOB URL.",
+                ],
+                limitations=[
+                    "Focused on fast crypto binary markets, not broad prediction-market coverage.",
+                    "Treat as a sandbox until API stability, auth, and limits are verified.",
+                ],
+                env_keys=[
+                    "BSM_LOREM_IPSUM_TRADE_ENABLED",
+                    "BSM_LOREM_IPSUM_TRADE_CLOB_URL",
+                    "BSM_LOREM_IPSUM_TRADE_APP_URL",
+                ],
+                next_action=(
+                    "Enabled for adapter experiments."
+                    if lorem_ipsum_enabled
+                    else "Keep on watchlist until account/API behavior is verified in a throwaway sandbox."
+                ),
+                safety_note="Connect only an empty development wallet if the sandbox requires wallet login.",
+                readiness_score=0.82 if lorem_ipsum_enabled else 0.55,
+            ),
+            PaperVenueView(
+                id="kalshi_demo",
+                name="Kalshi Demo",
+                category="Regulated prediction market demo",
+                priority=4,
+                status="ready" if kalshi_demo_configured else "needs_credentials",
+                configured=kalshi_demo_configured,
+                live_capable=True,
+                api_capable=True,
+                manual_capable=True,
+                historical_replay_capable=False,
+                supported_markets=["Kalshi demo markets", "events", "crypto category"],
+                api_base_url=self.settings.kalshi_demo_api_url,
+                app_url=self.settings.kalshi_demo_app_url,
+                docs_url="https://docs.kalshi.com/getting_started/demo_env",
+                capability_summary="Best non-Polymarket demo venue for event-contract order flow and enterprise credibility.",
+                capabilities=[
+                    PaperVenueCapability(label="Official demo environment", detail="Separate demo credentials and mock funds for API testing."),
+                    PaperVenueCapability(label="API root available", detail="Uses the documented demo trading API root."),
+                    PaperVenueCapability(label="Enterprise fit", detail="Useful for compliance-aware demo execution workflows."),
+                ],
+                setup_steps=[
+                    "Create a Kalshi Demo account.",
+                    "Create demo API credentials inside the demo environment.",
+                    "Set BSM_PAPER_EXECUTION_PROVIDER=kalshi_demo plus demo key id and private key path.",
+                    "Map Bot Society signals to Kalshi event tickers before enabling orders.",
+                ],
+                limitations=[
+                    "Demo and production credentials are separate.",
+                    "Market mapping is event-specific and cannot be inferred from BTC/ETH/SOL alone.",
+                ],
+                env_keys=[
+                    "BSM_PAPER_EXECUTION_PROVIDER",
+                    "BSM_KALSHI_DEMO_API_URL",
+                    "BSM_KALSHI_DEMO_KEY_ID",
+                    "BSM_KALSHI_DEMO_PRIVATE_KEY_PATH",
+                ],
+                next_action=(
+                    "Credentials are present. Build Kalshi demo ticket mapping next."
+                    if kalshi_demo_configured
+                    else "Create demo credentials and store only the private key file path in .env.local."
+                ),
+                safety_note="Do not mix demo credentials with production Kalshi credentials.",
+                readiness_score=0.88 if kalshi_demo_configured else 0.62,
+            ),
+            PaperVenueView(
+                id="hyperliquid_testnet",
+                name="Hyperliquid Testnet",
+                category="Crypto execution testnet",
+                priority=5,
+                status="ready" if hyperliquid_testnet_configured else "needs_credentials",
+                configured=hyperliquid_testnet_configured,
+                live_capable=True,
+                api_capable=True,
+                manual_capable=True,
+                historical_replay_capable=False,
+                supported_markets=["perpetuals", "spot", "crypto hedging", "execution plumbing"],
+                api_base_url=self.settings.hyperliquid_testnet_api_url,
+                app_url=self.settings.hyperliquid_testnet_app_url,
+                docs_url="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api",
+                capability_summary="Useful for order-management, hedging, latency, and websocket execution tests.",
+                capabilities=[
+                    PaperVenueCapability(label="Official testnet endpoint", detail="Uses the public testnet API and websocket URLs."),
+                    PaperVenueCapability(label="Execution infrastructure", detail="Good venue for validating order routers and risk checks."),
+                    PaperVenueCapability(label="Hedge research", detail="Can help test hedges around prediction-market crypto exposures."),
+                ],
+                setup_steps=[
+                    "Open Hyperliquid testnet and fund the testnet wallet from the faucet.",
+                    "Set BSM_PAPER_EXECUTION_PROVIDER=hyperliquid_testnet.",
+                    "Set a testnet-only wallet address and private key in local secrets if automated orders are needed.",
+                    "Keep this isolated from any real mainnet wallet.",
+                ],
+                limitations=[
+                    "Not a prediction-market venue.",
+                    "Testnet fills validate mechanics, not real trading edge.",
+                ],
+                env_keys=[
+                    "BSM_PAPER_EXECUTION_PROVIDER",
+                    "BSM_HYPERLIQUID_TESTNET_API_URL",
+                    "BSM_HYPERLIQUID_TESTNET_WS_URL",
+                    "BSM_HYPERLIQUID_TESTNET_WALLET_ADDRESS",
+                    "BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY",
+                ],
+                next_action=(
+                    "Credentials are present. Build testnet order-router smoke tests next."
+                    if hyperliquid_testnet_configured
+                    else "Create a testnet-only wallet and never reuse a mainnet private key."
+                ),
+                safety_note="Use a dedicated testnet wallet only. Never reuse a wallet with real funds.",
+                readiness_score=0.84 if hyperliquid_testnet_configured else 0.58,
+            ),
+            PaperVenueView(
+                id="papermarket",
+                name="PaperMarket",
+                category="Manual Polymarket paper terminal",
+                priority=6,
+                status="manual_only",
+                configured=True,
+                live_capable=True,
+                api_capable=False,
+                manual_capable=True,
+                historical_replay_capable=False,
+                supported_markets=["Polymarket markets", "YES/NO order books", "manual virtual positions"],
+                api_base_url=None,
+                app_url="https://papermarket.gitbook.io/papermarket/get-start/overview",
+                docs_url="https://papermarket.gitbook.io/papermarket/get-start/overview",
+                capability_summary="Good manual validation cockpit before automating a strategy.",
+                capabilities=[
+                    PaperVenueCapability(label="Live Polymarket book view", detail="Lets a trader load a supported Polymarket market and inspect the live book."),
+                    PaperVenueCapability(label="Virtual orders", detail="Stores virtual cash, orders, positions, and trades off-chain."),
+                    PaperVenueCapability(label="Visual debugging", detail="Helpful for comparing Bot Society signals with a human paper trade."),
+                ],
+                setup_steps=[
+                    "Use it manually to replay the exact market a bot wants to trade.",
+                    "Compare fill assumptions with Bot Society edge and wallet context.",
+                    "Promote the strategy to an API venue after the manual loop looks sane.",
+                ],
+                limitations=[
+                    "Manual-first workflow, not the first choice for automated SaaS execution.",
+                    "Order availability depends on the supported market loaded by the user.",
+                ],
+                env_keys=[],
+                next_action="Use as the human validation cockpit while API adapters are built.",
+                safety_note="Virtual trades remain separate from real Polymarket funds.",
+                readiness_score=0.74,
+            ),
+        ]
+
+        ready_venues = [venue for venue in venues if venue.status in {"ready", "manual_only"}]
+        api_ready_venues = [venue for venue in venues if venue.status == "ready" and venue.api_capable]
+        selected_mode = self.settings.paper_execution_provider
+        recommended_venue_id = selected_mode if selected_mode != "internal" else "polysandbox"
+        if recommended_venue_id not in {venue.id for venue in venues}:
+            recommended_venue_id = "polysandbox"
+        summary = (
+            f"{len(ready_venues)} paper venues are immediately usable. "
+            f"{len(api_ready_venues)} have API-ready execution paths. "
+            f"Recommended next activation: {recommended_venue_id.replace('_', ' ')}."
+        )
+        return PaperVenuesSnapshot(
+            generated_at=self._now(),
+            execution_provider_mode=selected_mode,
+            recommended_venue_id=recommended_venue_id,
+            summary=summary,
+            ready_venues=len(ready_venues),
+            api_ready_venues=len(api_ready_venues),
+            venues=sorted(venues, key=lambda venue: venue.priority),
+            activation_sequence=[
+                "Keep Bot Society Internal Paper Ledger as the source-of-truth baseline.",
+                "Activate Polysandbox first for Polymarket-style API paper orders.",
+                "Add Kalshi Demo once event ticker mapping is explicit.",
+                "Use Hyperliquid Testnet for execution plumbing and crypto hedge tests, not for prediction-market PnL claims.",
+                "Promote any adapter to live trading only after kill switches, position limits, and audit logs exist.",
+            ],
+            safety_rules=[
+                "Paper mode only until an explicit human approval gate is implemented.",
+                "Never store seed phrases. Use API keys or testnet-only private keys in .env.local.",
+                "Use separate wallets and credentials for demo, testnet, sandbox, and production.",
+                "Treat paper PnL as research telemetry, not proof of live profitability.",
+            ],
         )
 
     def get_simulation_config(self) -> SimulationConfig:
@@ -1200,6 +1497,7 @@ class BotSocietyService:
             wallet_intelligence=wallet_snapshot,
             edge_snapshot=edge_snapshot,
             paper_trading=self.get_paper_trading_snapshot(user_slug),
+            paper_venues=self.get_paper_venues(),
             latest_operation=self._latest_operation(repository),
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
             user_profile=self.get_user_profile(user_slug),

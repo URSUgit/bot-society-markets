@@ -34,6 +34,7 @@ from .models import (
     OperationSnapshot,
     PaperSimulationResult,
     PaperTradingSnapshot,
+    PaperVenuesSnapshot,
     PredictionView,
     ProviderStatusEnvelope,
     SignalView,
@@ -257,6 +258,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/paper-trading", response_model=PaperTradingSnapshot)
     def paper_trading_snapshot(request: Request) -> PaperTradingSnapshot:
         return get_service(request).get_paper_trading_snapshot(current_user_slug(request) or active_settings.default_user_slug)
+
+    @app.get("/api/paper-venues", response_model=PaperVenuesSnapshot)
+    def paper_venues(request: Request) -> PaperVenuesSnapshot:
+        return get_service(request).get_paper_venues()
 
     @app.get("/api/simulation/config", response_model=SimulationConfig)
     def simulation_config(request: Request) -> SimulationConfig:

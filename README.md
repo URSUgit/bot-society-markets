@@ -22,6 +22,7 @@ This repository contains both the founder documentation package and a profession
 - [Open-Source Stack Watchlist](docs/13-open-source-stack-watchlist.md)
 - [Polymarket Open-Source Integration Memo](docs/14-polymarket-open-source-integration-memo.md)
 - [Prediction Market Adapter Guide](docs/15-prediction-market-backtesting-adapter.md)
+- [Paper Trading Venue Activation Plan](docs/16-paper-trading-venue-plan.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -67,6 +68,7 @@ Included today:
 - macro regime tracking with demo data or optional FRED ingestion across configurable economic series
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
+- a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
 - smart-wallet intelligence with demo mode or optional public Polymarket wallet tracking for selected addresses
 - fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
@@ -109,6 +111,7 @@ Key endpoints include:
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
+- `GET /api/paper-venues`
 - `POST /api/simulation/run`
 - `POST /api/simulation/advanced-export`
 - `POST /api/me/alerts/{alert_id}/read`
@@ -220,6 +223,7 @@ $env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
 $env:BSM_PAPER_STARTING_BALANCE = "10000"
 $env:BSM_PAPER_TRADE_FEE_BPS = "10"
 $env:BSM_PAPER_TRADE_SLIPPAGE_BPS = "15"
+$env:BSM_PAPER_EXECUTION_PROVIDER = "internal"
 $env:BSM_SIMULATION_LIVE_HISTORY = "true"
 $env:BSM_SIMULATION_CACHE_HOURS = "12"
 $env:BSM_EXPORT_ARTIFACTS_DIR = "artifacts/strategy-exports"
@@ -260,6 +264,29 @@ $env:BSM_POLYMARKET_EVENT_LIMIT = "30"
 $env:BSM_KALSHI_CATEGORY = "Crypto"
 $env:BSM_KALSHI_SERIES_LIMIT = "12"
 $env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
+```
+
+Optional paper execution venue setup:
+
+```powershell
+$env:BSM_PAPER_EXECUTION_PROVIDER = "polysandbox"
+$env:BSM_POLYSANDBOX_API_URL = "https://api.polysandbox.trade/v1"
+$env:BSM_POLYSANDBOX_API_KEY = "your-paper-key"
+$env:BSM_POLYSANDBOX_SANDBOX_ID = "your-sandbox-id"
+
+$env:BSM_PAPER_EXECUTION_PROVIDER = "kalshi_demo"
+$env:BSM_KALSHI_DEMO_API_URL = "https://demo-api.kalshi.co/trade-api/v2"
+$env:BSM_KALSHI_DEMO_KEY_ID = "your-demo-key-id"
+$env:BSM_KALSHI_DEMO_PRIVATE_KEY_PATH = "C:\secrets\kalshi-demo.pem"
+
+$env:BSM_PAPER_EXECUTION_PROVIDER = "hyperliquid_testnet"
+$env:BSM_HYPERLIQUID_TESTNET_API_URL = "https://api.hyperliquid-testnet.xyz"
+$env:BSM_HYPERLIQUID_TESTNET_WS_URL = "wss://api.hyperliquid-testnet.xyz/ws"
+$env:BSM_HYPERLIQUID_TESTNET_WALLET_ADDRESS = "0x..."
+$env:BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY = "testnet-only-private-key"
+
+$env:BSM_LOREM_IPSUM_TRADE_ENABLED = "true"
+$env:BSM_LOREM_IPSUM_TRADE_CLOB_URL = "https://clob.loremipsumtrade.com"
 ```
 
 For local secret handling, create `.env` or `.env.local` in the repo root. `.env.local` overrides `.env`.

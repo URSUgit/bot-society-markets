@@ -66,6 +66,8 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["edge_snapshot"]["opportunities"]
         assert "paper_trading" in payload
         assert payload["paper_trading"]["summary"]["starting_balance"] == 10000
+        assert payload["paper_venues"]["venues"]
+        assert payload["paper_venues"]["recommended_venue_id"] == "polysandbox"
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
@@ -437,6 +439,45 @@ def test_paper_trading_endpoints_support_simulation_flow() -> None:
         assert simulation_payload["created_positions"] >= 1
         assert simulation_payload["snapshot"]["summary"]["open_positions"] >= 1
         assert simulation_payload["snapshot"]["positions"]
+
+
+def test_paper_venue_endpoint_exposes_activation_map() -> None:
+    with build_client() as client:
+        response = client.get("/api/paper-venues")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["execution_provider_mode"] == "internal"
+        assert payload["recommended_venue_id"] == "polysandbox"
+        assert payload["ready_venues"] >= 2
+        venues = {venue["id"]: venue for venue in payload["venues"]}
+        assert venues["internal"]["status"] == "ready"
+        assert venues["polysandbox"]["status"] == "needs_credentials"
+        assert venues["polysandbox"]["api_base_url"] == "https://api.polysandbox.trade/v1"
+        assert venues["kalshi_demo"]["api_base_url"] == "https://demo-api.kalshi.co/trade-api/v2"
+        assert venues["hyperliquid_testnet"]["api_base_url"] == "https://api.hyperliquid-testnet.xyz"
+        assert payload["activation_sequence"]
+        assert payload["safety_rules"]
+
+
+def test_configured_paper_venues_become_api_ready() -> None:
+    settings = Settings(
+        paper_execution_provider="polysandbox",
+        polysandbox_api_key="paper-key",
+        polysandbox_sandbox_id="sandbox-id",
+        kalshi_demo_key_id="demo-key-id",
+        kalshi_demo_private_key_path="C:/secrets/kalshi-demo.pem",
+    )
+    with build_client(settings) as client:
+        response = client.get("/api/paper-venues")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["execution_provider_mode"] == "polysandbox"
+        assert payload["recommended_venue_id"] == "polysandbox"
+        venues = {venue["id"]: venue for venue in payload["venues"]}
+        assert venues["polysandbox"]["status"] == "ready"
+        assert venues["polysandbox"]["configured"] is True
+        assert venues["kalshi_demo"]["status"] == "ready"
+        assert payload["api_ready_venues"] >= 3
 
 
 def test_strategy_lab_config_and_run_support_local_backtests() -> None:

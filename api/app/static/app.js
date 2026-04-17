@@ -248,7 +248,7 @@ function renderHeroMeta(snapshot) {
   const latestOperation = snapshot.latest_operation;
   const latestSignal = snapshot.recent_signals?.[0];
   const pulse = snapshot.system_pulse;
-  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${pulse?.live_provider_count ?? 0} live-capable providers · ${snapshot.wallet_intelligence?.wallets?.length || 0} smart wallets · ${snapshot.edge_snapshot?.opportunities?.length || 0} active edge surfaces · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
+  heroSubmeta.textContent = `${snapshot.provider_status.environment_name} environment · ${pulse?.live_provider_count ?? 0} live-capable providers · ${snapshot.paper_venues?.ready_venues ?? 0} paper venues ready · ${snapshot.wallet_intelligence?.wallets?.length || 0} smart wallets · ${snapshot.edge_snapshot?.opportunities?.length || 0} active edge surfaces · latest signal ${latestSignal?.asset || "n/a"} ${latestSignal ? fmtRelativeTime(latestSignal.observed_at) : ""} · last cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "not run yet"}.`;
 }
 
 function renderRibbon(snapshot) {
@@ -586,6 +586,54 @@ function renderPaperTrading(paperTrading) {
       </div>
     </li>
   `).join("") || "<li><p>No paper positions have been simulated yet.</p></li>";
+}
+
+function renderPaperVenues(paperVenues) {
+  const summary = document.getElementById("paper-venue-summary");
+  const list = document.getElementById("paper-venue-list");
+  const sequence = document.getElementById("paper-venue-sequence");
+  if (!summary || !list || !paperVenues) {
+    return;
+  }
+
+  summary.textContent = paperVenues.summary;
+  const venues = paperVenues.venues || [];
+  list.innerHTML = venues.map((venue) => {
+    const statusClass = venue.status === "ready" || venue.status === "manual_only" ? "tone-high" : (venue.status === "needs_credentials" ? "tone-mid" : "tone-low");
+    const statusLabel = venue.status.replaceAll("_", " ");
+    return `
+      <article class="paper-venue-card ${statusClass}">
+        <div class="paper-venue-head">
+          <div>
+            <span>${venue.category}</span>
+            <h4>${venue.name}</h4>
+          </div>
+          <span class="badge">${statusLabel}</span>
+        </div>
+        <p>${venue.capability_summary}</p>
+        <div class="paper-venue-kpis">
+          <div><span>Readiness</span><strong>${fmtPercent(venue.readiness_score)}</strong></div>
+          <div><span>API</span><strong>${venue.api_capable ? "Yes" : "No"}</strong></div>
+          <div><span>Replay</span><strong>${venue.historical_replay_capable ? "Yes" : "No"}</strong></div>
+        </div>
+        <ul class="edge-signal-list">
+          ${(venue.capabilities || []).slice(0, 2).map((capability) => `<li><strong>${capability.label}</strong> - ${capability.detail}</li>`).join("")}
+        </ul>
+        <div class="paper-venue-actions">
+          <a class="text-link" href="${venue.app_url}" target="${venue.app_url.startsWith("/") ? "_self" : "_blank"}" rel="noreferrer">Open venue</a>
+          ${venue.docs_url ? `<a class="text-link" href="${venue.docs_url}" target="_blank" rel="noreferrer">Docs</a>` : ""}
+        </div>
+        <small>${venue.next_action}</small>
+      </article>
+    `;
+  }).join("");
+
+  if (sequence) {
+    sequence.innerHTML = (paperVenues.activation_sequence || [])
+      .slice(0, 5)
+      .map((step, index) => `<li><span>${index + 1}</span><p>${step}</p></li>`)
+      .join("");
+  }
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {
@@ -2041,6 +2089,7 @@ async function loadDashboard(options = {}) {
     renderWalletIntelligence(snapshot.wallet_intelligence);
     renderEdgeSnapshot(snapshot.edge_snapshot);
     renderPaperTrading(snapshot.paper_trading);
+    renderPaperVenues(snapshot.paper_venues);
     await renderDashboardMarketChart(snapshot.assets);
     renderActivityFeed(snapshot);
     renderOperation(snapshot.latest_operation);

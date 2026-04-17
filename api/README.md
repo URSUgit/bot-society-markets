@@ -37,6 +37,8 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `GET /api/me`
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`
+- `GET /api/paper-trading`
+- `GET /api/paper-venues`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`
@@ -60,6 +62,7 @@ The current build includes:
 - optional RSS-backed news ingestion with demo fallback behavior
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
 - optional venue-backed prediction-market ingestion from Polymarket and Kalshi
+- paper venue readiness mapping for internal, Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, and PaperMarket workflows
 - signal-level provenance scoring for provider trust, freshness, and composite source quality
 - leaderboard provenance weighting so bot rankings reflect linked source quality, not just output performance
 - a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
@@ -116,6 +119,7 @@ $env:BSM_ALERT_INBOX_LIMIT = "10"
 $env:BSM_NOTIFICATION_RETRY_LIMIT = "25"
 $env:BSM_NOTIFICATION_MAX_ATTEMPTS = "4"
 $env:BSM_NOTIFICATION_RETRY_BASE_SECONDS = "300"
+$env:BSM_PAPER_EXECUTION_PROVIDER = "internal"
 ```
 
 Optional live provider setup:
@@ -145,6 +149,22 @@ $env:BSM_POLYMARKET_EVENT_LIMIT = "30"
 $env:BSM_KALSHI_CATEGORY = "Crypto"
 $env:BSM_KALSHI_SERIES_LIMIT = "12"
 $env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
+```
+
+Optional paper venue setup:
+
+```powershell
+$env:BSM_PAPER_EXECUTION_PROVIDER = "polysandbox"
+$env:BSM_POLYSANDBOX_API_KEY = "your-paper-key"
+$env:BSM_POLYSANDBOX_SANDBOX_ID = "your-sandbox-id"
+
+$env:BSM_PAPER_EXECUTION_PROVIDER = "kalshi_demo"
+$env:BSM_KALSHI_DEMO_KEY_ID = "your-demo-key-id"
+$env:BSM_KALSHI_DEMO_PRIVATE_KEY_PATH = "C:\secrets\kalshi-demo.pem"
+
+$env:BSM_PAPER_EXECUTION_PROVIDER = "hyperliquid_testnet"
+$env:BSM_HYPERLIQUID_TESTNET_WALLET_ADDRESS = "0x..."
+$env:BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY = "testnet-only-private-key"
 ```
 
 You can also place runtime values in a repo-root `.env` or `.env.local` file. `.env.local` overrides `.env`.

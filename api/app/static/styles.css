@@ -1605,6 +1605,103 @@ form:has(:disabled) {
   min-width: 160px;
 }
 
+.paper-venue-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.paper-venue-card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.56)),
+    radial-gradient(circle at top left, rgba(31, 122, 120, 0.1), transparent 34%);
+  display: grid;
+  gap: 12px;
+  animation: section-rise 0.65s ease both;
+}
+
+.paper-venue-head,
+.paper-venue-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paper-venue-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.paper-venue-head span,
+.paper-venue-card small {
+  color: var(--text-soft);
+}
+
+.paper-venue-head h4 {
+  font-size: 1.18rem;
+}
+
+.paper-venue-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paper-venue-kpis div {
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 4px;
+}
+
+.paper-venue-kpis span {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.paper-venue-kpis strong {
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+.paper-venue-sequence {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  list-style: none;
+  counter-reset: none;
+}
+
+.paper-venue-sequence li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(16, 38, 54, 0.05);
+}
+
+.paper-venue-sequence span {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
 .strategy-control-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1831,7 +1928,8 @@ form:has(:disabled) {
   }
 
   .wallet-stat-row,
-  .edge-kpis {
+  .edge-kpis,
+  .paper-venue-kpis {
     grid-template-columns: 1fr;
   }
 

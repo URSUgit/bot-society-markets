@@ -16,6 +16,7 @@ SignalProviderMode = Literal["demo", "rss", "reddit"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
 MacroProviderMode = Literal["demo", "fred"]
 WalletProviderMode = Literal["demo", "polymarket"]
+PaperExecutionProviderMode = Literal["internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -113,6 +114,24 @@ class Settings:
     paper_starting_balance: float = 10000.0
     paper_trade_fee_bps: float = 10.0
     paper_trade_slippage_bps: float = 15.0
+    paper_execution_provider: PaperExecutionProviderMode = "internal"
+    polysandbox_api_url: str = "https://api.polysandbox.trade/v1"
+    polysandbox_app_url: str = "https://app.polysandbox.trade"
+    polysandbox_docs_url: str = "https://docs.polysandbox.trade"
+    polysandbox_api_key: str | None = None
+    polysandbox_sandbox_id: str | None = None
+    kalshi_demo_api_url: str = "https://demo-api.kalshi.co/trade-api/v2"
+    kalshi_demo_app_url: str = "https://demo.kalshi.co/"
+    kalshi_demo_key_id: str | None = None
+    kalshi_demo_private_key_path: str | None = None
+    hyperliquid_testnet_api_url: str = "https://api.hyperliquid-testnet.xyz"
+    hyperliquid_testnet_ws_url: str = "wss://api.hyperliquid-testnet.xyz/ws"
+    hyperliquid_testnet_app_url: str = "https://app.hyperliquid-testnet.xyz"
+    hyperliquid_testnet_wallet_address: str | None = None
+    hyperliquid_testnet_private_key: str | None = None
+    lorem_ipsum_trade_clob_url: str = "https://clob.loremipsumtrade.com"
+    lorem_ipsum_trade_app_url: str = "https://sandbox.loremipsumtrade.com"
+    lorem_ipsum_trade_enabled: bool = False
     simulation_live_history: bool = True
     simulation_cache_hours: int = 12
 
@@ -145,6 +164,10 @@ def get_settings() -> Settings:
     wallet_provider_mode = os.getenv("BSM_WALLET_PROVIDER", "demo").lower()
     if wallet_provider_mode not in {"demo", "polymarket"}:
         wallet_provider_mode = "demo"
+
+    paper_execution_provider = os.getenv("BSM_PAPER_EXECUTION_PROVIDER", "internal").lower()
+    if paper_execution_provider not in {"internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"}:
+        paper_execution_provider = "internal"
 
     venue_signal_providers = tuple(
         provider
@@ -228,6 +251,24 @@ def get_settings() -> Settings:
         paper_starting_balance=max(1000.0, float(os.getenv("BSM_PAPER_STARTING_BALANCE", "10000"))),
         paper_trade_fee_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_FEE_BPS", "10"))),
         paper_trade_slippage_bps=max(0.0, float(os.getenv("BSM_PAPER_TRADE_SLIPPAGE_BPS", "15"))),
+        paper_execution_provider=paper_execution_provider,
+        polysandbox_api_url=os.getenv("BSM_POLYSANDBOX_API_URL", "https://api.polysandbox.trade/v1"),
+        polysandbox_app_url=os.getenv("BSM_POLYSANDBOX_APP_URL", "https://app.polysandbox.trade"),
+        polysandbox_docs_url=os.getenv("BSM_POLYSANDBOX_DOCS_URL", "https://docs.polysandbox.trade"),
+        polysandbox_api_key=os.getenv("BSM_POLYSANDBOX_API_KEY") or None,
+        polysandbox_sandbox_id=os.getenv("BSM_POLYSANDBOX_SANDBOX_ID") or None,
+        kalshi_demo_api_url=os.getenv("BSM_KALSHI_DEMO_API_URL", "https://demo-api.kalshi.co/trade-api/v2"),
+        kalshi_demo_app_url=os.getenv("BSM_KALSHI_DEMO_APP_URL", "https://demo.kalshi.co/"),
+        kalshi_demo_key_id=os.getenv("BSM_KALSHI_DEMO_KEY_ID") or None,
+        kalshi_demo_private_key_path=os.getenv("BSM_KALSHI_DEMO_PRIVATE_KEY_PATH") or None,
+        hyperliquid_testnet_api_url=os.getenv("BSM_HYPERLIQUID_TESTNET_API_URL", "https://api.hyperliquid-testnet.xyz"),
+        hyperliquid_testnet_ws_url=os.getenv("BSM_HYPERLIQUID_TESTNET_WS_URL", "wss://api.hyperliquid-testnet.xyz/ws"),
+        hyperliquid_testnet_app_url=os.getenv("BSM_HYPERLIQUID_TESTNET_APP_URL", "https://app.hyperliquid-testnet.xyz"),
+        hyperliquid_testnet_wallet_address=os.getenv("BSM_HYPERLIQUID_TESTNET_WALLET_ADDRESS") or None,
+        hyperliquid_testnet_private_key=os.getenv("BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY") or None,
+        lorem_ipsum_trade_clob_url=os.getenv("BSM_LOREM_IPSUM_TRADE_CLOB_URL", "https://clob.loremipsumtrade.com"),
+        lorem_ipsum_trade_app_url=os.getenv("BSM_LOREM_IPSUM_TRADE_APP_URL", "https://sandbox.loremipsumtrade.com"),
+        lorem_ipsum_trade_enabled=_env_bool("BSM_LOREM_IPSUM_TRADE_ENABLED", False),
         simulation_live_history=_env_bool("BSM_SIMULATION_LIVE_HISTORY", True),
         simulation_cache_hours=simulation_cache_hours,
     )

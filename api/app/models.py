@@ -10,6 +10,7 @@ NotificationChannelType = Literal["email", "webhook"]
 NotificationDeliveryStatus = Literal["delivered", "retry_scheduled", "failed", "exhausted"]
 PaperPositionStatus = Literal["open", "closed"]
 SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout"]
+PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
 
 
 class Summary(BaseModel):
@@ -281,6 +282,48 @@ class PaperSimulationResult(BaseModel):
     snapshot: PaperTradingSnapshot
 
 
+class PaperVenueCapability(BaseModel):
+    label: str
+    detail: str
+
+
+class PaperVenueView(BaseModel):
+    id: str
+    name: str
+    category: str
+    priority: int = Field(ge=1)
+    status: PaperVenueStatus
+    configured: bool = False
+    live_capable: bool = False
+    api_capable: bool = False
+    manual_capable: bool = False
+    historical_replay_capable: bool = False
+    supported_markets: list[str] = Field(default_factory=list)
+    api_base_url: str | None = None
+    app_url: str
+    docs_url: str | None = None
+    capability_summary: str
+    capabilities: list[PaperVenueCapability] = Field(default_factory=list)
+    setup_steps: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    env_keys: list[str] = Field(default_factory=list)
+    next_action: str
+    safety_note: str
+    readiness_score: float = Field(ge=0, le=1)
+
+
+class PaperVenuesSnapshot(BaseModel):
+    generated_at: str
+    execution_provider_mode: str
+    recommended_venue_id: str
+    summary: str
+    ready_venues: int = Field(ge=0)
+    api_ready_venues: int = Field(ge=0)
+    venues: list[PaperVenueView] = Field(default_factory=list)
+    activation_sequence: list[str] = Field(default_factory=list)
+    safety_rules: list[str] = Field(default_factory=list)
+
+
 class WalletProfileView(BaseModel):
     address: str
     display_name: str
@@ -524,6 +567,7 @@ class DashboardSnapshot(BaseModel):
     wallet_intelligence: WalletIntelligenceSnapshot
     edge_snapshot: EdgeSnapshot
     paper_trading: PaperTradingSnapshot
+    paper_venues: PaperVenuesSnapshot
     latest_operation: OperationSnapshot | None = None
     auth_session: AuthSessionSnapshot
     user_profile: "UserProfile"
