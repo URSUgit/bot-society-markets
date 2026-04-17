@@ -982,6 +982,7 @@ function renderSimulationExportHistory(artifacts) {
 function populateSimulationForm(config) {
   const assetSelect = document.getElementById("simulation-asset-input");
   const yearsSelect = document.getElementById("simulation-years-input");
+  const sourceSelect = document.getElementById("simulation-source-input");
   const strategySelect = document.getElementById("simulation-strategy-input");
   const capitalInput = document.getElementById("simulation-capital-input");
   const feeInput = document.getElementById("simulation-fee-input");
@@ -993,6 +994,12 @@ function populateSimulationForm(config) {
   if (yearsSelect) {
     yearsSelect.innerHTML = (config.lookback_year_options || []).map((years) => `<option value="${years}">${years} year${years === 1 ? "" : "s"}</option>`).join("");
     yearsSelect.value = String(config.default_lookback_years);
+  }
+  if (sourceSelect) {
+    sourceSelect.innerHTML = (config.data_source_options || []).map((source) => `
+      <option value="${source.mode}">${source.label}</option>
+    `).join("");
+    sourceSelect.value = config.default_history_source_mode || "auto";
   }
   if (strategySelect) {
     strategySelect.innerHTML = (config.strategy_presets || []).map((preset) => `
@@ -1009,20 +1016,46 @@ function populateSimulationForm(config) {
   if (note) {
     note.textContent = config.note;
   }
+  syncStrategyCreatorPanel();
 }
 
 function currentSimulationPayload() {
   return {
     asset: document.getElementById("simulation-asset-input")?.value || "BTC",
     lookback_years: Number(document.getElementById("simulation-years-input")?.value || 5),
-    strategy_id: document.getElementById("simulation-strategy-input")?.value || "trend_follow",
+    history_source_mode: document.getElementById("simulation-source-input")?.value || "auto",
+    strategy_id: document.getElementById("simulation-strategy-input")?.value || "custom_creator",
     starting_capital: Number(document.getElementById("simulation-capital-input")?.value || 10000),
     fee_bps: Number(document.getElementById("simulation-fee-input")?.value || 10),
     fast_window: Number(document.getElementById("simulation-fast-input")?.value || 20),
     slow_window: Number(document.getElementById("simulation-slow-input")?.value || 50),
     mean_window: Number(document.getElementById("simulation-mean-input")?.value || 20),
     breakout_window: Number(document.getElementById("simulation-breakout-input")?.value || 55),
+    custom_strategy_name: document.getElementById("simulation-custom-name-input")?.value || "Creator Blend",
+    creator_trend_weight: Number(document.getElementById("simulation-trend-weight-input")?.value || 1),
+    creator_mean_reversion_weight: Number(document.getElementById("simulation-mean-weight-input")?.value || 0.7),
+    creator_breakout_weight: Number(document.getElementById("simulation-breakout-weight-input")?.value || 0.8),
+    creator_entry_score: Number(document.getElementById("simulation-entry-score-input")?.value || 0.58),
+    creator_exit_score: Number(document.getElementById("simulation-exit-score-input")?.value || 0.34),
+    creator_max_exposure: Number(document.getElementById("simulation-max-exposure-input")?.value || 1),
+    creator_pullback_entry_pct: Number(document.getElementById("simulation-pullback-input")?.value || 0.035),
+    creator_stop_loss_pct: Number(document.getElementById("simulation-stop-loss-input")?.value || 0.12),
+    creator_take_profit_pct: Number(document.getElementById("simulation-take-profit-input")?.value || 0.35),
   };
+}
+
+function syncStrategyCreatorPanel() {
+  const strategySelect = document.getElementById("simulation-strategy-input");
+  const panel = document.getElementById("strategy-creator-panel");
+  const badge = document.getElementById("strategy-creator-badge");
+  if (!strategySelect || !panel) {
+    return;
+  }
+  const active = strategySelect.value === "custom_creator";
+  panel.dataset.active = active ? "true" : "false";
+  if (badge) {
+    badge.textContent = active ? "Creator active" : "Preview only";
+  }
 }
 
 function renderSimulationResult(result) {
@@ -1039,12 +1072,15 @@ function renderSimulationResult(result) {
     headline.textContent = `${result.selected_result.label} on ${result.asset} over ${result.actual_years_covered.toFixed(2)} years`;
   }
   if (submeta) {
-    submeta.textContent = `Data source: ${result.data_source} · ${result.history_points} daily points · benchmark ${fmtSignedPercent(result.benchmark_total_return)}`;
+    const best = result.leaderboard?.[0];
+    submeta.textContent = `Data source: ${result.data_source} · ${result.history_points} daily points · best in window ${best?.label || "n/a"} · benchmark ${fmtSignedPercent(result.benchmark_total_return)}`;
   }
   if (note) {
     note.textContent = result.history_note || "Historical coverage matches the requested backtest window.";
   }
   if (summary) {
+    const selectedRank = (result.leaderboard || []).findIndex((entry) => entry.strategy_id === result.selected_result.strategy_id) + 1;
+    const bestEntry = result.leaderboard?.[0];
     summary.innerHTML = `
       <article class="pulse-metric-card metric-live">
         <span>Final equity</span>
@@ -1075,6 +1111,16 @@ function renderSimulationResult(result) {
         <span>Trades</span>
         <strong>${result.selected_result.trade_count}</strong>
         <small>${fmtPercent(result.selected_result.win_rate)} win rate · ${fmtPercent(result.selected_result.exposure_ratio)} exposure</small>
+      </article>
+      <article class="pulse-metric-card ${selectedRank === 1 ? "tone-high" : "tone-mid"}">
+        <span>Rank</span>
+        <strong>${selectedRank || "n/a"} / ${(result.leaderboard || []).length}</strong>
+        <small>${selectedRank === 1 ? "Current setup is best in this window" : `Best: ${bestEntry?.label || "n/a"}`}</small>
+      </article>
+      <article class="pulse-metric-card">
+        <span>Algorithm recipe</span>
+        <strong>${result.selected_result.strategy_id === "custom_creator" ? "Editable" : "Preset"}</strong>
+        <small>${result.selected_result.summary}</small>
       </article>
     `;
   }
@@ -2303,6 +2349,10 @@ function bindForms() {
       event.preventDefault();
       await runSimulation();
     });
+  }
+  const simulationStrategyInput = document.getElementById("simulation-strategy-input");
+  if (simulationStrategyInput) {
+    simulationStrategyInput.addEventListener("change", syncStrategyCreatorPanel);
   }
 
   if (watchlistForm) {

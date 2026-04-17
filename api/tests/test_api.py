@@ -488,30 +488,48 @@ def test_strategy_lab_config_and_run_support_local_backtests() -> None:
         config_payload = config_response.json()
         assert "BTC" in config_payload["available_assets"]
         assert config_payload["strategy_presets"]
+        assert config_payload["default_strategy_id"] == "custom_creator"
+        assert any(preset["strategy_id"] == "custom_creator" for preset in config_payload["strategy_presets"])
+        assert any(source["mode"] == "auto" for source in config_payload["data_source_options"])
+        assert any(source["mode"] == "local" for source in config_payload["data_source_options"])
         assert config_payload["live_history_capable"] is False
 
         run_response = client.post(
             "/api/simulation/run",
             json={
                 "asset": "BTC",
+                "history_source_mode": "local",
                 "lookback_years": 1,
-                "strategy_id": "trend_follow",
+                "strategy_id": "custom_creator",
+                "custom_strategy_name": "Night Builder",
                 "starting_capital": 10000,
                 "fee_bps": 10,
                 "fast_window": 2,
                 "slow_window": 4,
                 "mean_window": 3,
-                "breakout_window": 3,
+                "breakout_window": 4,
+                "creator_trend_weight": 1.2,
+                "creator_mean_reversion_weight": 0.8,
+                "creator_breakout_weight": 1.0,
+                "creator_entry_score": 0.45,
+                "creator_exit_score": 0.25,
+                "creator_max_exposure": 0.75,
+                "creator_pullback_entry_pct": 0.02,
+                "creator_stop_loss_pct": 0.08,
+                "creator_take_profit_pct": 0.2,
             },
         )
         assert run_response.status_code == 200
         run_payload = run_response.json()
         assert run_payload["asset"] == "BTC"
         assert run_payload["data_source"] == "local-archive"
-        assert run_payload["selected_result"]["strategy_id"] == "trend_follow"
+        assert run_payload["selected_result"]["strategy_id"] == "custom_creator"
+        assert run_payload["selected_result"]["label"] == "Night Builder"
+        assert "Night Builder" in run_payload["selected_result"]["summary"]
         assert run_payload["selected_result"]["equity_curve"]
         assert run_payload["benchmark_curve"]
         assert run_payload["leaderboard"]
+        assert any(entry["strategy_id"] == "custom_creator" for entry in run_payload["leaderboard"])
 
 
 def test_hyperliquid_and_venue_provider_metadata() -> None:

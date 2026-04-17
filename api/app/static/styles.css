@@ -568,12 +568,30 @@ img {
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   padding: 28px;
   background: linear-gradient(180deg, rgba(18, 48, 71, 0.98), rgba(15, 34, 48, 0.96));
   color: #efe6db;
   display: flex;
   flex-direction: column;
   gap: 22px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 248, 239, 0.28) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 248, 239, 0.24);
 }
 
 .sidebar-title {
@@ -702,6 +720,13 @@ th {
 
   .dashboard-shell {
     min-height: auto;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -1708,6 +1733,42 @@ form:has(:disabled) {
   gap: 14px;
 }
 
+.strategy-creator-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(31, 122, 120, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(31, 122, 120, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(246, 237, 227, 0.58));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 14px 36px rgba(18, 48, 71, 0.08);
+  transition: opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease;
+}
+
+.strategy-creator-panel[data-active="false"] {
+  opacity: 0.72;
+  filter: saturate(0.82);
+  border-color: rgba(16, 38, 54, 0.1);
+}
+
+.strategy-creator-panel[data-active="false"] input {
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.compact-section-head {
+  margin-bottom: 0;
+}
+
+.creator-control-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.creator-control-grid label:first-child {
+  grid-column: span 2;
+}
+
 .strategy-chart-grid {
   align-items: stretch;
 }
@@ -1927,6 +1988,10 @@ form:has(:disabled) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .creator-control-grid label:first-child {
+    grid-column: span 2;
+  }
+
   .wallet-stat-row,
   .edge-kpis,
   .paper-venue-kpis {
@@ -1950,6 +2015,10 @@ form:has(:disabled) {
 
   .strategy-control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .creator-control-grid label:first-child {
+    grid-column: auto;
   }
 
   .simulation-context-grid {

@@ -70,6 +70,7 @@ Included today:
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
+- an Algorithm Creator inside Strategy Lab with editable signal weights, entry/exit thresholds, exposure limits, stop loss, take profit, and data-source selection
 - smart-wallet intelligence with demo mode or optional public Polymarket wallet tracking for selected addresses
 - fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
 - advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines

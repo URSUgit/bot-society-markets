@@ -56,6 +56,7 @@ from .models import (
     SignalView,
     SignalMixItem,
     SimulationConfig,
+    SimulationDataSourceOption,
     SimulationExportArtifact,
     SimulationLeaderboardEntry,
     SimulationRequest,
@@ -120,6 +121,11 @@ class BotSocietyService:
             strategy_id="breakout",
             label="Breakout",
             description="Enter when price breaks the recent high and step aside when momentum fails.",
+        ),
+        SimulationStrategyPreset(
+            strategy_id="custom_creator",
+            label="Creator Blend",
+            description="Blend trend, pullback, and breakout signals with editable thresholds and risk exits.",
         ),
     ]
 
@@ -791,7 +797,25 @@ class BotSocietyService:
             available_assets=assets,
             lookback_year_options=[1, 3, 5, 10],
             strategy_presets=self.SIMULATION_PRESETS,
-            default_strategy_id="trend_follow",
+            data_source_options=[
+                SimulationDataSourceOption(
+                    mode="auto",
+                    label="Auto real data",
+                    description="Use cached/live CoinGecko daily history when available, then fall back to the local archive.",
+                ),
+                SimulationDataSourceOption(
+                    mode="real",
+                    label="Require real provider",
+                    description="Prefer live or cached provider history and clearly flag any fallback.",
+                ),
+                SimulationDataSourceOption(
+                    mode="local",
+                    label="Local archive",
+                    description="Use the seeded local archive for deterministic fast runs.",
+                ),
+            ],
+            default_strategy_id="custom_creator",
+            default_history_source_mode="auto",
             default_lookback_years=5,
             default_starting_capital=10000,
             default_fee_bps=10,
@@ -803,7 +827,11 @@ class BotSocietyService:
         if payload.asset not in BotSocietyRepository(self.database).list_assets():
             raise ValueError(f"Unknown asset: {payload.asset}")
 
-        history_points, data_source, history_note = self._load_simulation_history(payload.asset, payload.lookback_years)
+        history_points, data_source, history_note = self._load_simulation_history(
+            payload.asset,
+            payload.lookback_years,
+            payload.history_source_mode,
+        )
         if len(history_points) < 3:
             raise ValueError(f"Not enough historical data to simulate {payload.asset}")
 
@@ -2012,7 +2040,12 @@ class BotSocietyService:
             return -abs(quantity * (mark_price - entry_price)) * 0.25
         return quantity * (mark_price - entry_price)
 
-    def _load_simulation_history(self, asset: str, lookback_years: int) -> tuple[list[SimulationSeriesPoint], str, str | None]:
+    def _load_simulation_history(
+        self,
+        asset: str,
+        lookback_years: int,
+        source_mode: str = "auto",
+    ) -> tuple[list[SimulationSeriesPoint], str, str | None]:
         repository = BotSocietyRepository(self.database)
         local_rows = repository.list_market_history(asset)
         local_points = [
@@ -2025,7 +2058,8 @@ class BotSocietyService:
         data_source = "local-archive"
         history_note: str | None = None
 
-        if self.settings.simulation_live_history:
+        use_live_history = self.settings.simulation_live_history and source_mode != "local"
+        if use_live_history:
             coin_id = self._asset_coin_id(asset)
             if coin_id:
                 cached_payload = self._read_simulation_history_cache(asset)
@@ -2072,11 +2106,16 @@ class BotSocietyService:
             points = filtered_points
 
         if data_source == "local-archive":
-            history_note = (
-                "Live history is disabled, so the simulation is running on the local archive."
-                if not self.settings.simulation_live_history
-                else "Live history was unavailable, so the simulation fell back to the local archive."
-            )
+            if source_mode == "local":
+                history_note = "Using the deterministic local archive by request."
+            elif source_mode == "real":
+                history_note = "Real provider history was requested but unavailable, so the run fell back to the local archive."
+            else:
+                history_note = (
+                    "Live history is disabled, so the simulation is running on the local archive."
+                    if not self.settings.simulation_live_history
+                    else "Live history was unavailable, so the simulation fell back to the local archive."
+                )
 
         if len(points) >= 2:
             actual_years = (parse_timestamp(points[-1].time) - parse_timestamp(points[0].time)).days / 365.25
@@ -2151,7 +2190,14 @@ class BotSocietyService:
 
         for index in range(1, len(prices)):
             previous_equity = equity
-            desired_position = self._simulation_target_position(strategy_id, prices, index, position, payload)
+            desired_position = self._simulation_target_position(
+                strategy_id,
+                prices,
+                index,
+                position,
+                payload,
+                entry_price=entry_price,
+            )
             execution_time = times[index - 1]
             execution_price = prices[index - 1]
 
@@ -2208,10 +2254,12 @@ class BotSocietyService:
         win_rate = (positive_trades / len(trades)) if trades else 0.0
         max_drawdown = min((point.value for point in drawdown_curve), default=0.0)
         preset = self._simulation_preset(strategy_id)
+        label = payload.custom_strategy_name if strategy_id == "custom_creator" else preset.label
+        summary = self._custom_creator_summary(payload) if strategy_id == "custom_creator" else preset.description
         return SimulationStrategyResult(
             strategy_id=preset.strategy_id,
-            label=preset.label,
-            summary=preset.description,
+            label=label,
+            summary=summary,
             total_return=round(total_return, 6),
             cagr=round(cagr, 6),
             max_drawdown=round(max_drawdown, 6),
@@ -2232,6 +2280,8 @@ class BotSocietyService:
         index: int,
         current_position: float,
         payload: SimulationRequest,
+        *,
+        entry_price: float | None = None,
     ) -> float:
         previous_price = prices[index - 1]
         if strategy_id == "buy_hold":
@@ -2260,7 +2310,80 @@ class BotSocietyService:
             if current_position > 0:
                 return 0.0 if previous_price < trailing_low else 1.0
             return 1.0 if previous_price >= recent_high else 0.0
+        if strategy_id == "custom_creator":
+            return self._custom_creator_target_position(
+                prices=prices,
+                index=index,
+                current_position=current_position,
+                payload=payload,
+                entry_price=entry_price,
+            )
         return 0.0
+
+    def _custom_creator_target_position(
+        self,
+        *,
+        prices: list[float],
+        index: int,
+        current_position: float,
+        payload: SimulationRequest,
+        entry_price: float | None,
+    ) -> float:
+        previous_price = prices[index - 1]
+        if entry_price:
+            open_return = (previous_price / entry_price) - 1
+            if open_return <= -payload.creator_stop_loss_pct:
+                return 0.0
+            if open_return >= payload.creator_take_profit_pct:
+                return 0.0
+
+        total_weight = (
+            payload.creator_trend_weight
+            + payload.creator_mean_reversion_weight
+            + payload.creator_breakout_weight
+        )
+        if total_weight <= 0:
+            return 0.0
+
+        score = 0.0
+        if payload.creator_trend_weight and index >= payload.slow_window:
+            fast_average = mean(prices[index - payload.fast_window:index])
+            slow_average = mean(prices[index - payload.slow_window:index])
+            trend_signal = 1.0 if previous_price >= fast_average and fast_average > slow_average else 0.0
+            score += trend_signal * payload.creator_trend_weight
+
+        if payload.creator_mean_reversion_weight and index >= payload.mean_window:
+            baseline = mean(prices[index - payload.mean_window:index])
+            deviation = ((previous_price / baseline) - 1) if baseline else 0.0
+            mean_signal = 1.0 if deviation <= -payload.creator_pullback_entry_pct else 0.0
+            if current_position > 0 and deviation < 0:
+                mean_signal = max(mean_signal, 0.45)
+            score += mean_signal * payload.creator_mean_reversion_weight
+
+        if payload.creator_breakout_weight and index >= payload.breakout_window:
+            recent_window = prices[index - payload.breakout_window:index]
+            recent_high = max(recent_window)
+            trailing_window = prices[max(0, index - max(3, payload.breakout_window // 2)):index]
+            trailing_low = min(trailing_window)
+            breakout_signal = 1.0 if previous_price >= recent_high else 0.0
+            if current_position > 0 and previous_price >= trailing_low:
+                breakout_signal = max(breakout_signal, 0.35)
+            score += breakout_signal * payload.creator_breakout_weight
+
+        normalized_score = score / total_weight
+        if current_position > 0:
+            return payload.creator_max_exposure if normalized_score >= payload.creator_exit_score else 0.0
+        return payload.creator_max_exposure if normalized_score >= payload.creator_entry_score else 0.0
+
+    @staticmethod
+    def _custom_creator_summary(payload: SimulationRequest) -> str:
+        return (
+            f"{payload.custom_strategy_name}: trend {payload.creator_trend_weight:.2f}, "
+            f"pullback {payload.creator_mean_reversion_weight:.2f}, breakout {payload.creator_breakout_weight:.2f}; "
+            f"enter >= {payload.creator_entry_score:.2f}, exit < {payload.creator_exit_score:.2f}, "
+            f"max exposure {payload.creator_max_exposure:.0%}, stop {payload.creator_stop_loss_pct:.1%}, "
+            f"take profit {payload.creator_take_profit_pct:.1%}."
+        )
 
     def _build_simulation_trade(
         self,
@@ -2575,6 +2698,29 @@ class BotSocietyService:
                     "stop_loss": 0.02,
                 },
                 "mapping_note": "Direct fit for Bot Society breakout.",
+            }
+        if payload.strategy_id == "custom_creator":
+            return {
+                "runner_label": "QuoteTick creator blend",
+                "strategy_path": "strategies:QuoteTickCreatorBlendStrategy",
+                "config_path": "strategies:QuoteTickCreatorBlendConfig",
+                "config": {
+                    "trade_size": trade_size,
+                    "fast_window": payload.fast_window,
+                    "slow_window": payload.slow_window,
+                    "mean_window": payload.mean_window,
+                    "breakout_window": payload.breakout_window,
+                    "trend_weight": payload.creator_trend_weight,
+                    "mean_reversion_weight": payload.creator_mean_reversion_weight,
+                    "breakout_weight": payload.creator_breakout_weight,
+                    "entry_score": payload.creator_entry_score,
+                    "exit_score": payload.creator_exit_score,
+                    "max_exposure": payload.creator_max_exposure,
+                    "pullback_entry_pct": payload.creator_pullback_entry_pct,
+                    "stop_loss_pct": payload.creator_stop_loss_pct,
+                    "take_profit_pct": payload.creator_take_profit_pct,
+                },
+                "mapping_note": "Custom Bot Society creator blend; implement this strategy contract in the external engine.",
             }
         return {
             "runner_label": "QuoteTick deep value hold benchmark proxy",

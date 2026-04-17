@@ -70,6 +70,10 @@
                 <select id="simulation-years-input" name="lookback_years"></select>
               </label>
               <label>
+                <span>Data source</span>
+                <select id="simulation-source-input" name="history_source_mode"></select>
+              </label>
+              <label>
                 <span>Strategy</span>
                 <select id="simulation-strategy-input" name="strategy_id"></select>
               </label>
@@ -97,6 +101,58 @@
                 <span>Breakout window</span>
                 <input id="simulation-breakout-input" name="breakout_window" type="number" min="3" max="400" value="55">
               </label>
+            </div>
+            <div class="strategy-creator-panel" id="strategy-creator-panel">
+              <div class="section-head compact-section-head">
+                <div>
+                  <p class="eyebrow">Algorithm creator</p>
+                  <h4>Blend signals and risk controls for the best-case candidate</h4>
+                </div>
+                <span class="badge" id="strategy-creator-badge">Creator active</span>
+              </div>
+              <p class="panel-note">These settings power the Creator Blend strategy. Run it against auto real data first, then repeat on local archive to sanity-check robustness.</p>
+              <div class="strategy-control-grid creator-control-grid">
+                <label>
+                  <span>Strategy name</span>
+                  <input id="simulation-custom-name-input" name="custom_strategy_name" type="text" maxlength="80" value="Creator Blend">
+                </label>
+                <label>
+                  <span>Trend weight</span>
+                  <input id="simulation-trend-weight-input" name="creator_trend_weight" type="number" min="0" max="3" step="0.1" value="1">
+                </label>
+                <label>
+                  <span>Pullback weight</span>
+                  <input id="simulation-mean-weight-input" name="creator_mean_reversion_weight" type="number" min="0" max="3" step="0.1" value="0.7">
+                </label>
+                <label>
+                  <span>Breakout weight</span>
+                  <input id="simulation-breakout-weight-input" name="creator_breakout_weight" type="number" min="0" max="3" step="0.1" value="0.8">
+                </label>
+                <label>
+                  <span>Entry score</span>
+                  <input id="simulation-entry-score-input" name="creator_entry_score" type="number" min="0.05" max="1" step="0.01" value="0.58">
+                </label>
+                <label>
+                  <span>Exit score</span>
+                  <input id="simulation-exit-score-input" name="creator_exit_score" type="number" min="0" max="0.95" step="0.01" value="0.34">
+                </label>
+                <label>
+                  <span>Max exposure</span>
+                  <input id="simulation-max-exposure-input" name="creator_max_exposure" type="number" min="0.1" max="1" step="0.05" value="1">
+                </label>
+                <label>
+                  <span>Pullback trigger</span>
+                  <input id="simulation-pullback-input" name="creator_pullback_entry_pct" type="number" min="0.001" max="0.5" step="0.005" value="0.035">
+                </label>
+                <label>
+                  <span>Stop loss</span>
+                  <input id="simulation-stop-loss-input" name="creator_stop_loss_pct" type="number" min="0.005" max="0.8" step="0.005" value="0.12">
+                </label>
+                <label>
+                  <span>Take profit</span>
+                  <input id="simulation-take-profit-input" name="creator_take_profit_pct" type="number" min="0.01" max="3" step="0.01" value="0.35">
+                </label>
+              </div>
             </div>
             <div class="hero-actions compact-actions">
               <button class="button primary" id="run-simulation-button" type="submit">Run Simulation</button>

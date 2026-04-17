@@ -9,7 +9,8 @@ PredictionStatus = Literal["pending", "scored"]
 NotificationChannelType = Literal["email", "webhook"]
 NotificationDeliveryStatus = Literal["delivered", "retry_scheduled", "failed", "exhausted"]
 PaperPositionStatus = Literal["open", "closed"]
-SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout"]
+SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout", "custom_creator"]
+SimulationHistorySourceMode = Literal["auto", "real", "local"]
 PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
 
 
@@ -406,11 +407,19 @@ class SimulationStrategyPreset(BaseModel):
     description: str
 
 
+class SimulationDataSourceOption(BaseModel):
+    mode: SimulationHistorySourceMode
+    label: str
+    description: str
+
+
 class SimulationConfig(BaseModel):
     available_assets: list[str] = Field(default_factory=list)
     lookback_year_options: list[int] = Field(default_factory=list)
     strategy_presets: list[SimulationStrategyPreset] = Field(default_factory=list)
+    data_source_options: list[SimulationDataSourceOption] = Field(default_factory=list)
     default_strategy_id: SimulationStrategyId
+    default_history_source_mode: SimulationHistorySourceMode = "auto"
     default_lookback_years: int = Field(ge=1, le=10)
     default_starting_capital: float = Field(ge=1000)
     default_fee_bps: float = Field(ge=0)
@@ -421,19 +430,35 @@ class SimulationConfig(BaseModel):
 class SimulationRequest(BaseModel):
     asset: str = Field(min_length=2, max_length=10)
     lookback_years: int = Field(default=5, ge=1, le=10)
-    strategy_id: SimulationStrategyId = "trend_follow"
+    history_source_mode: SimulationHistorySourceMode = "auto"
+    strategy_id: SimulationStrategyId = "custom_creator"
     starting_capital: float = Field(default=10000, ge=1000, le=100000000)
     fee_bps: float = Field(default=10, ge=0, le=500)
     fast_window: int = Field(default=20, ge=2, le=240)
     slow_window: int = Field(default=50, ge=3, le=400)
     mean_window: int = Field(default=20, ge=3, le=240)
     breakout_window: int = Field(default=55, ge=3, le=400)
+    custom_strategy_name: str = Field(default="Creator Blend", min_length=1, max_length=80)
+    creator_trend_weight: float = Field(default=1.0, ge=0, le=3)
+    creator_mean_reversion_weight: float = Field(default=0.7, ge=0, le=3)
+    creator_breakout_weight: float = Field(default=0.8, ge=0, le=3)
+    creator_entry_score: float = Field(default=0.58, ge=0.05, le=1)
+    creator_exit_score: float = Field(default=0.34, ge=0, le=0.95)
+    creator_max_exposure: float = Field(default=1.0, ge=0.1, le=1)
+    creator_pullback_entry_pct: float = Field(default=0.035, ge=0.001, le=0.5)
+    creator_stop_loss_pct: float = Field(default=0.12, ge=0.005, le=0.8)
+    creator_take_profit_pct: float = Field(default=0.35, ge=0.01, le=3)
 
     @model_validator(mode="after")
     def validate_windows(self) -> "SimulationRequest":
         self.asset = self.asset.strip().upper()
+        self.custom_strategy_name = self.custom_strategy_name.strip() or "Creator Blend"
         if self.fast_window >= self.slow_window:
             raise ValueError("fast_window must be smaller than slow_window")
+        if self.creator_exit_score >= self.creator_entry_score:
+            raise ValueError("creator_exit_score must be smaller than creator_entry_score")
+        if self.creator_trend_weight + self.creator_mean_reversion_weight + self.creator_breakout_weight <= 0:
+            raise ValueError("At least one creator signal weight must be greater than zero")
         return self
 
 

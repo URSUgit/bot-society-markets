@@ -63,6 +63,7 @@ The current build includes:
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
 - optional venue-backed prediction-market ingestion from Polymarket and Kalshi
 - paper venue readiness mapping for internal, Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, and PaperMarket workflows
+- Strategy Lab backtesting with a custom Algorithm Creator, selectable historical data source mode, and adapter exports for external prediction-market engines
 - signal-level provenance scoring for provider trust, freshness, and composite source quality
 - leaderboard provenance weighting so bot rankings reflect linked source quality, not just output performance
 - a shared read-only demo workspace plus authenticated personal workspaces for saved user actions
