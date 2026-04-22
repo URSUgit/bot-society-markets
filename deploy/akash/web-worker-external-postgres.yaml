@@ -16,7 +16,8 @@ services:
       - BSM_ENVIRONMENT_NAME=production
       - BSM_DEPLOYMENT_TARGET=akash
       - BSM_SITE_HOME_PAGE=dashboard
-      - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
+      # Recommended: use a Neon pooled connection string with sslmode=require
+      - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
       - BSM_SEED_DEMO_DATA=true
       - BSM_MARKET_PROVIDER=demo
       - BSM_SIGNAL_PROVIDER=demo
@@ -49,7 +50,8 @@ services:
     env:
       - BSM_ENVIRONMENT_NAME=production
       - BSM_DEPLOYMENT_TARGET=akash
-      - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME
+      # Recommended: use a Neon pooled connection string with sslmode=require
+      - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
       - BSM_SEED_DEMO_DATA=true
       - BSM_MARKET_PROVIDER=demo
       - BSM_SIGNAL_PROVIDER=demo

@@ -27,3 +27,4 @@ api/data/*.txt
 dist/
 build/
 *.egg-info/
+deploy/akash/*.generated.yaml

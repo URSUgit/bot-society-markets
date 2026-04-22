@@ -19,6 +19,7 @@ Why this is the recommended path:
 - [web-worker-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml): adds the background worker on Akash while still using external Postgres
 - [full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml): experimental all-in-Akash stack with Postgres persistent volume
 - [run-worker-with-health.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\run-worker-with-health.sh): helper used by the worker manifest
+- [prepare-bitprivat-neon.ps1](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\prepare-bitprivat-neon.ps1): generates a final Akash manifest for `app.bitprivat.com` from your Neon connection string
 
 ## Container Image
 
@@ -52,6 +53,12 @@ Use the provider connection string for:
 BSM_DATABASE_URL
 ```
 
+For Neon specifically:
+
+- use the connection string from the Neon `Connect` modal
+- keep `sslmode=require`
+- prefer the pooled host if you want lower connection pressure from web + worker services
+
 The app already supports this runtime path and runs Alembic upgrades on startup.
 
 ## Akash Console Steps
@@ -84,6 +91,23 @@ For Yandex DNS:
 - point it to the hostname Akash assigns or requests for the deployment
 - wait for propagation
 - let Akash issue HTTPS for the custom domain
+
+## Fastest Path For bitprivat.com
+
+1. create a Neon project
+2. copy the Neon pooled connection string
+3. run:
+
+```powershell
+.\deploy\akash\prepare-bitprivat-neon.ps1 -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+```
+
+4. paste the generated manifest into Akash Console
+5. deploy it
+6. add `app.bitprivat.com` as the Akash custom domain
+7. create the matching `CNAME` in Yandex DNS
+
+Generated manifests are intentionally ignored by Git because they can contain real database connection strings.
 
 ## Important Risk Note
 

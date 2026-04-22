@@ -7,6 +7,7 @@ Recommended for production:
 - Akash hosts the Bot Society Markets web app
 - optionally Akash hosts the worker
 - managed Postgres lives outside Akash
+- Neon is the recommended database choice for the first launch
 
 Why this is the preferred path:
 
@@ -84,6 +85,32 @@ Good external database options:
 - Render Postgres
 
 Use a dedicated production database, not the local development SQLite path.
+
+## Neon Setup For This Repo
+
+Recommended Neon flow:
+
+1. create a Neon project
+2. open the `Connect` dialog in the Neon dashboard
+3. copy the connection string
+4. keep `sslmode=require`
+5. prefer the pooled hostname if you plan to run both web and worker
+
+Akash-ready manifest generation:
+
+```powershell
+.\deploy\akash\prepare-bitprivat-neon.ps1 -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+```
+
+Or, if you want web + worker on Akash:
+
+```powershell
+.\deploy\akash\prepare-bitprivat-neon.ps1 -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require" -WithWorker
+```
+
+This writes a generated manifest into `deploy/akash/` that is ready to paste into Akash Console.
+
+Generated manifest files are ignored by Git on purpose because they may contain production database credentials.
 
 ## Why Full Akash Postgres Is Not The Default
 
