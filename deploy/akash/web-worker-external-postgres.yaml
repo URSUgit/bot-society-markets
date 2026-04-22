@@ -72,7 +72,7 @@ profiles:
         memory:
           size: 1Gi
         storage:
-          - size: 2Gi
+          size: 2Gi
     worker:
       resources:
         cpu:
@@ -80,15 +80,15 @@ profiles:
         memory:
           size: 768Mi
         storage:
-          - size: 2Gi
+          size: 2Gi
   placement:
     akash:
       pricing:
         web:
-          denom: uact
+          denom: uakt
           amount: 250
         worker:
-          denom: uact
+          denom: uakt
           amount: 180
 
 deployment:

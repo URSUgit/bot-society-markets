@@ -113,13 +113,13 @@ profiles:
     akash:
       pricing:
         web:
-          denom: uact
+          denom: uakt
           amount: 250
         worker:
-          denom: uact
+          denom: uakt
           amount: 180
         postgres:
-          denom: uact
+          denom: uakt
           amount: 320
 
 deployment:

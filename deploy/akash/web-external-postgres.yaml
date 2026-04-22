@@ -47,12 +47,12 @@ profiles:
         memory:
           size: 1Gi
         storage:
-          - size: 2Gi
+          size: 2Gi
   placement:
     akash:
       pricing:
         web:
-          denom: uact
+          denom: uakt
           amount: 250
 
 deployment:
