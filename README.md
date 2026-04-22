@@ -24,6 +24,7 @@ This repository contains both the founder documentation package and a profession
 - [Prediction Market Adapter Guide](docs/15-prediction-market-backtesting-adapter.md)
 - [Paper Trading Venue Activation Plan](docs/16-paper-trading-venue-plan.md)
 - [Custom Domain Dashboard Launch Plan](docs/17-custom-domain-dashboard-launch.md)
+- [Akash Hosting Guide](docs/18-akash-hosting-guide.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -46,6 +47,11 @@ This repository contains both the founder documentation package and a profession
 - [Cycle Script](run-cycle.ps1)
 - [Worker Script](run-worker.ps1)
 - [Render Blueprint](render.yaml)
+- [Akash Bundle README](deploy/akash/README.md)
+- [Akash Recommended Manifest](deploy/akash/web-external-postgres.yaml)
+- [Akash Web + Worker Manifest](deploy/akash/web-worker-external-postgres.yaml)
+- [Akash Full Stack Manifest](deploy/akash/full-stack-postgres.yaml)
+- [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
 
 ## Current Implementation
 

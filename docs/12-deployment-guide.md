@@ -159,6 +159,26 @@ docker run --rm -p 8000:8000 bot-society-markets
 
 This uses the same FastAPI entrypoint as the Render blueprint.
 
+## Akash Path
+
+The repository now also includes Akash deployment assets for teams that want decentralized hosting:
+
+- [Akash Bundle README](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\README.md)
+- [Recommended Akash Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml)
+- [Web + Worker Akash Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml)
+- [Experimental Full Stack Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml)
+- [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
+
+Recommended Akash flow:
+
+1. publish the Docker image to GHCR via GitHub Actions
+2. use Akash Console SDL deployment
+3. start with the external-Postgres manifest
+4. point `BSM_DATABASE_URL` at Neon, Supabase, Railway, or Render Postgres
+5. attach `app.bitprivat.com` as the custom domain
+
+This is the safer production option because Akash persistent storage remains tied to lease lifetime.
+
 ## Official References
 
 The current Render configuration in this repo aligns with the official support for:

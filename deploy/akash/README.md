@@ -1,0 +1,92 @@
+# Akash Deployment Bundle
+
+This folder contains Akash-ready deployment assets for Bot Society Markets.
+
+## Recommended Path
+
+Use [web-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml) first.
+
+Why this is the recommended path:
+
+- Akash is a good fit for the web app container.
+- The project already supports external Postgres through `BSM_DATABASE_URL`.
+- Managed Postgres is safer than provider-bound persistent volumes for production data.
+- This gives you the fastest route to a public dashboard on `app.bitprivat.com`.
+
+## Files
+
+- [web-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml): recommended single-service Akash deployment with external Postgres
+- [web-worker-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml): adds the background worker on Akash while still using external Postgres
+- [full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml): experimental all-in-Akash stack with Postgres persistent volume
+- [run-worker-with-health.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\run-worker-with-health.sh): helper used by the worker manifest
+
+## Container Image
+
+Akash deploys containers, so the app image needs to exist in a registry.
+
+This repo now includes [container-image.yml](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml), which publishes the Docker image to GHCR on pushes to `main`.
+
+Expected image path:
+
+```text
+ghcr.io/ursugit/bot-society-markets:latest
+```
+
+If the GHCR package remains private:
+
+- either make the package public in GitHub package settings
+- or add registry credentials in the Akash service definition before deploying
+
+## External Postgres Recommendation
+
+Good managed Postgres choices:
+
+- Neon
+- Supabase
+- Railway
+- Render Postgres
+
+Use the provider connection string for:
+
+```text
+BSM_DATABASE_URL
+```
+
+The app already supports this runtime path and runs Alembic upgrades on startup.
+
+## Akash Console Steps
+
+1. Open [Akash Console](https://console.akash.network/).
+2. Create a new deployment.
+3. Use the SDL option rather than simple framework auto-detect.
+4. Paste the contents of the selected manifest.
+5. Replace placeholder values:
+   - domain
+   - database URL
+   - optional provider credentials
+6. Deploy.
+7. After the deployment is live, note the Akash hostname or endpoint.
+8. Add the custom domain in Akash Console.
+9. Point Yandex DNS to the Akash deployment target.
+
+## bitprivat.com DNS Shape
+
+Recommended:
+
+```text
+app.bitprivat.com -> Akash dashboard
+bitprivat.com -> keep free for a landing page later
+```
+
+For Yandex DNS:
+
+- create a `CNAME` for `app`
+- point it to the hostname Akash assigns or requests for the deployment
+- wait for propagation
+- let Akash issue HTTPS for the custom domain
+
+## Important Risk Note
+
+[full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml) is included for completeness, but it is not the safest production choice.
+
+Akash's own docs note that persistent storage only survives during the lease lifetime and may be lost on migration or lease closure. Use the full-stack version only if you accept that operational risk.
