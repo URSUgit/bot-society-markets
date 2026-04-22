@@ -35,6 +35,7 @@ Sources:
 
 - [Akash Bundle README](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\README.md)
 - [Recommended Akash Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml)
+- [Fast Preview Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-demo-sqlite.yaml)
 - [Web + Worker Akash Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml)
 - [Experimental Full Stack Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml)
 - [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
@@ -49,6 +50,17 @@ Sources:
 6. Deploy the manifest.
 7. Add the custom domain in Akash Console.
 8. Create the corresponding DNS record in Yandex.
+
+## Fast Preview Flow
+
+If you want a public preview before setting up Neon:
+
+1. Open Akash Console and use SDL deployment.
+2. Start with [web-demo-sqlite.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-demo-sqlite.yaml).
+3. Deploy it as a single web service.
+4. Add `app.bitprivat.com` in Akash Console.
+5. Create the matching `CNAME` in Yandex DNS.
+6. Upgrade to the Neon-backed manifest once you are ready for durable production data.
 
 ## Yandex DNS Plan For bitprivat.com
 
@@ -85,6 +97,13 @@ Good external database options:
 - Render Postgres
 
 Use a dedicated production database, not the local development SQLite path.
+
+## Windows Deployment Note
+
+Akash's official CLI docs currently mention a native Windows download from GitHub Releases, but the current `provider-services` release does not include a Windows binary. That makes the best path on this machine:
+
+- Akash Console for deployment now
+- WSL2 plus the Linux CLI install later if you want command-line deployment automation
 
 ## Neon Setup For This Repo
 

@@ -4,7 +4,7 @@ This folder contains Akash-ready deployment assets for Bot Society Markets.
 
 ## Recommended Path
 
-Use [web-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml) first.
+Use [web-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml) first for production.
 
 Why this is the recommended path:
 
@@ -16,6 +16,7 @@ Why this is the recommended path:
 ## Files
 
 - [web-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-external-postgres.yaml): recommended single-service Akash deployment with external Postgres
+- [web-demo-sqlite.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-demo-sqlite.yaml): fastest path to a public preview when you do not want to provision Postgres yet
 - [web-worker-external-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml): adds the background worker on Akash while still using external Postgres
 - [full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml): experimental all-in-Akash stack with Postgres persistent volume
 - [run-worker-with-health.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\run-worker-with-health.sh): helper used by the worker manifest
@@ -60,6 +61,23 @@ For Neon specifically:
 - prefer the pooled host if you want lower connection pressure from web + worker services
 
 The app already supports this runtime path and runs Alembic upgrades on startup.
+
+## Fast Preview Path
+
+If you want the dashboard public before setting up Neon, deploy [web-demo-sqlite.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-demo-sqlite.yaml).
+
+Why it helps:
+
+- no external database is required
+- the app boots with local SQLite inside the container
+- demo data is seeded automatically
+- the dashboard can go live faster on `app.bitprivat.com`
+
+Tradeoffs:
+
+- this is a preview environment, not durable production storage
+- if the deployment is recreated, local SQLite data can be lost
+- use external Postgres before you rely on it for real operations
 
 ## Akash Console Steps
 
@@ -108,6 +126,13 @@ For Yandex DNS:
 7. create the matching `CNAME` in Yandex DNS
 
 Generated manifests are intentionally ignored by Git because they can contain real database connection strings.
+
+## Windows Note
+
+Akash's current docs still describe a native Windows CLI download path from GitHub Releases, but the current `provider-services` release does not include a Windows binary. On this machine, the professional path is:
+
+- Akash Console first
+- or WSL2 with a Linux install later if you want full CLI automation
 
 ## Important Risk Note
 
