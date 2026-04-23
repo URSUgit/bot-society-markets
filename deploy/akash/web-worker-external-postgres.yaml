@@ -90,10 +90,10 @@ profiles:
     akash:
       pricing:
         web:
-          denom: uakt
+          denom: uact
           amount: 250
         worker:
-          denom: uakt
+          denom: uact
           amount: 180
 
 deployment:
@@ -105,3 +105,4 @@ deployment:
     akash:
       profile: worker
       count: 1
+

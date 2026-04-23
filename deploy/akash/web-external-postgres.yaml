@@ -57,7 +57,7 @@ profiles:
     akash:
       pricing:
         web:
-          denom: uakt
+          denom: uact
           amount: 250
 
 deployment:
@@ -65,3 +65,4 @@ deployment:
     akash:
       profile: web
       count: 1
+
