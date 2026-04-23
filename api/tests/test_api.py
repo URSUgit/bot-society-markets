@@ -82,6 +82,8 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["paper_venues"]["recommended_venue_id"] == "polysandbox"
         assert payload["launch_readiness"]["tracks"]
         assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
+        assert payload["connector_control"]["connectors"]
+        assert payload["infrastructure_readiness"]["tasks"]
         assert "billing" in payload["user_profile"]
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
@@ -108,6 +110,37 @@ def test_bot_detail_and_cycle_flow() -> None:
         assert pending_response.status_code == 200
         pending_payload = pending_response.json()
         assert len(pending_payload) >= 6
+
+
+def test_connector_and_infrastructure_system_endpoints() -> None:
+    with build_client() as client:
+        connectors_response = client.get("/api/system/connectors")
+        assert connectors_response.status_code == 200
+        connectors_payload = connectors_response.json()["connector_control"]
+        connector_ids = {item["id"] for item in connectors_payload["connectors"]}
+        assert "coingecko-market-data" in connector_ids
+        assert "polymarket-intel" in connector_ids
+
+        infrastructure_response = client.get("/api/system/infrastructure")
+        assert infrastructure_response.status_code == 200
+        infrastructure_payload = infrastructure_response.json()["infrastructure_readiness"]
+        assert infrastructure_payload["production_posture"] == "attention"
+        assert any(task["key"] == "managed_database" for task in infrastructure_payload["tasks"])
+
+
+def test_public_legal_pages_are_served() -> None:
+    with build_client() as client:
+        terms_response = client.get("/terms")
+        assert terms_response.status_code == 200
+        assert "research, analytics, simulations, and monitoring only" in terms_response.text.lower()
+
+        privacy_response = client.get("/privacy")
+        assert privacy_response.status_code == 200
+        assert "collect the minimum data needed" in privacy_response.text.lower()
+
+        risk_response = client.get("/risk")
+        assert risk_response.status_code == 200
+        assert "market, model, and platform risk all remain real" in risk_response.text.lower()
 
 
 def test_user_workspace_mutations() -> None:

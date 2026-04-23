@@ -27,10 +27,12 @@ from .models import (
     BillingWebhookAck,
     BotDetail,
     BotSummary,
+    ConnectorControlEnvelope,
     CycleResult,
     DashboardSnapshot,
     EdgeSnapshot,
     FollowBotRequest,
+    InfrastructureReadinessEnvelope,
     LandingSnapshot,
     LaunchReadinessEnvelope,
     MacroSnapshot,
@@ -415,6 +417,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def launch_readiness(request: Request) -> LaunchReadinessEnvelope:
         return LaunchReadinessEnvelope(launch_readiness=get_service(request).get_launch_readiness())
 
+    @app.get("/api/system/connectors", response_model=ConnectorControlEnvelope)
+    def connector_control(request: Request) -> ConnectorControlEnvelope:
+        return ConnectorControlEnvelope(connector_control=get_service(request).get_connector_control())
+
+    @app.get("/api/system/infrastructure", response_model=InfrastructureReadinessEnvelope)
+    def infrastructure_readiness(request: Request) -> InfrastructureReadinessEnvelope:
+        return InfrastructureReadinessEnvelope(
+            infrastructure_readiness=get_service(request).get_infrastructure_readiness()
+        )
+
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:
         return get_service(request).run_pipeline_cycle()
@@ -463,6 +475,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def status_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "status.html")
 
+    @app.get("/terms")
+    def terms_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "terms.html")
+
+    @app.get("/privacy")
+    def privacy_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "privacy.html")
+
+    @app.get("/risk")
+    def risk_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "risk.html")
+
     @app.get("/dashboard/")
     @app.get("/dachboard")
     @app.get("/dashbord")
@@ -484,6 +508,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/ops")
     def status_aliases() -> RedirectResponse:
         return RedirectResponse(url="/status", status_code=307)
+
+    @app.get("/terms-of-service")
+    @app.get("/legal/terms")
+    def terms_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/terms", status_code=307)
+
+    @app.get("/privacy-policy")
+    @app.get("/legal/privacy")
+    def privacy_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/privacy", status_code=307)
+
+    @app.get("/risk-disclosure")
+    @app.get("/legal/risk")
+    def risk_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/risk", status_code=307)
 
     return app
 

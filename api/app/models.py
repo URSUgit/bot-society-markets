@@ -14,6 +14,8 @@ SimulationHistorySourceMode = Literal["auto", "real", "local"]
 PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
 LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 BillingPlanKey = Literal["basic", "pro", "enterprise"]
+ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
+InfrastructureTaskState = Literal["ready", "attention", "planned"]
 
 
 class Summary(BaseModel):
@@ -658,6 +660,46 @@ class BillingWebhookAck(BaseModel):
     status: str = "processed"
 
 
+class ConnectorStatusItem(BaseModel):
+    id: str
+    label: str
+    category: str
+    state: ConnectorState
+    mode: str
+    source: str
+    configured: bool = False
+    live_capable: bool = False
+    summary: str
+    target_surface: str
+    env_keys: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    app_url: str | None = None
+
+
+class ConnectorControlSnapshot(BaseModel):
+    generated_at: str
+    summary: str
+    live_or_ready_count: int = Field(ge=0)
+    connectors: list[ConnectorStatusItem] = Field(default_factory=list)
+
+
+class InfrastructureTask(BaseModel):
+    key: str
+    label: str
+    state: InfrastructureTaskState
+    detail: str
+    next_step: str
+
+
+class InfrastructureReadinessSnapshot(BaseModel):
+    generated_at: str
+    production_posture: InfrastructureTaskState
+    summary: str
+    database_backend: str
+    database_target: str
+    tasks: list[InfrastructureTask] = Field(default_factory=list)
+
+
 class LaunchReadinessTrack(BaseModel):
     key: str
     label: str
@@ -695,6 +737,8 @@ class DashboardSnapshot(BaseModel):
     notification_health: NotificationHealthSnapshot
     provider_status: ProviderStatus
     launch_readiness: LaunchReadinessSnapshot
+    connector_control: ConnectorControlSnapshot
+    infrastructure_readiness: InfrastructureReadinessSnapshot
 
 
 class LandingSnapshot(BaseModel):
@@ -825,3 +869,11 @@ class SystemPulseEnvelope(BaseModel):
 
 class LaunchReadinessEnvelope(BaseModel):
     launch_readiness: LaunchReadinessSnapshot
+
+
+class ConnectorControlEnvelope(BaseModel):
+    connector_control: ConnectorControlSnapshot
+
+
+class InfrastructureReadinessEnvelope(BaseModel):
+    infrastructure_readiness: InfrastructureReadinessSnapshot

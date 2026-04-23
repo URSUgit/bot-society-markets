@@ -96,6 +96,8 @@ Included today:
 - `.env` and `.env.local` loading for secret-aware local live-provider activation
 - commercialization readiness tracking for fiat billing, crypto onboarding, API connectors, dashboard redesign, desktop packaging, and legal workstreams
 - hosted Stripe billing foundations with subscription state, checkout session launch, customer portal launch, and signed webhook processing
+- connector command and infrastructure-readiness surfaces inside the dashboard for production cutover planning
+- public legal pages for Terms of Service, Privacy Policy, and Risk Disclosure inside the hosted product
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 
 ## Product Surface
@@ -129,6 +131,8 @@ Key endpoints include:
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
 - `GET /api/system/launch-readiness`
+- `GET /api/system/connectors`
+- `GET /api/system/infrastructure`
 - `POST /api/me/billing/checkout-session`
 - `POST /api/me/billing/portal-session`
 - `POST /api/webhooks/stripe`
@@ -141,6 +145,9 @@ Key endpoints include:
 - `POST /api/me/alert-rules`
 - `POST /api/me/paper-trading/simulate`
 - `GET /api/system/providers`
+- `GET /terms`
+- `GET /privacy`
+- `GET /risk`
 - `POST /api/admin/run-cycle`
 - `POST /api/admin/simulate-paper-trading`
 - `POST /api/admin/retry-notifications`

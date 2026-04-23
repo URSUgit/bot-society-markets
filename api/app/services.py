@@ -40,6 +40,10 @@ from .models import (
     EdgeOpportunityView,
     EdgeSnapshot,
     FollowedBot,
+    ConnectorControlSnapshot,
+    ConnectorStatusItem,
+    InfrastructureReadinessSnapshot,
+    InfrastructureTask,
     LandingSnapshot,
     LaunchReadinessSnapshot,
     LaunchReadinessTrack,
@@ -1746,6 +1750,275 @@ class BotSocietyService:
             wallet_fallback_active=self.wallet_provider_fallback,
         )
 
+    def get_connector_control(self) -> ConnectorControlSnapshot:
+        provider_status = self.get_provider_status()
+        paper_venues = self.get_paper_venues()
+        venue_lookup = {venue.id: venue for venue in paper_venues.venues}
+
+        signal_source = provider_status.signal_provider_source
+        if provider_status.venue_signal_providers:
+            signal_source = f"{signal_source} + venue adapters"
+
+        connectors = [
+            self._connector_item(
+                connector_id="coingecko-market-data",
+                label="CoinGecko Market Data",
+                category="Market Data",
+                mode=provider_status.market_provider_mode,
+                source=provider_status.market_provider_source,
+                configured=provider_status.market_provider_configured,
+                live_capable=provider_status.market_provider_live_capable,
+                ready=provider_status.market_provider_ready,
+                fallback_active=provider_status.market_fallback_active,
+                target_surface="Spot market tracking and historical archive hydration",
+                env_keys=["BSM_COINGECKO_API_KEY"],
+                next_actions=[
+                    "Move market mode to coingecko on production deployments.",
+                    "Attach a live API key before increasing tracked assets.",
+                ],
+            ),
+            self._connector_item(
+                connector_id="hyperliquid-market-feed",
+                label="Hyperliquid Market Feed",
+                category="Derivatives",
+                mode="hyperliquid" if self.settings.market_provider_mode == "hyperliquid" else "planned",
+                source="Hyperliquid perpetual futures surfaces",
+                configured=bool(self.settings.hyperliquid_dex),
+                live_capable=True,
+                ready=self.settings.market_provider_mode == "hyperliquid" and bool(self.settings.hyperliquid_dex),
+                fallback_active=self.settings.market_provider_mode != "hyperliquid",
+                target_surface="Perpetuals monitoring, momentum context, and future execution adapters",
+                env_keys=["BSM_HYPERLIQUID_DEX"],
+                next_actions=[
+                    "Set BSM_MARKET_PROVIDER=hyperliquid only after production data storage is durable.",
+                    "Pair the live feed with testnet credentials before any execution-adjacent work.",
+                ],
+                app_url=self.settings.hyperliquid_testnet_app_url,
+            ),
+            self._connector_item(
+                connector_id="signal-ingestion",
+                label="Signal Ingestion",
+                category="Signals",
+                mode=provider_status.signal_provider_mode,
+                source=signal_source,
+                configured=provider_status.signal_provider_configured,
+                live_capable=provider_status.signal_provider_live_capable,
+                ready=provider_status.signal_provider_ready,
+                fallback_active=provider_status.signal_fallback_active,
+                target_surface="News, social, and venue context feeding the bot network",
+                env_keys=["BSM_RSS_FEED_URLS", "BSM_REDDIT_CLIENT_ID", "BSM_REDDIT_CLIENT_SECRET"],
+                next_actions=[
+                    "Keep RSS active for broad intake and enable Reddit only with production credentials.",
+                    "Tune source-quality weighting before relying on venue-linked signals at scale.",
+                ],
+            ),
+            self._connector_item(
+                connector_id="fred-macro",
+                label="FRED Macro Series",
+                category="Macro",
+                mode=provider_status.macro_provider_mode,
+                source=provider_status.macro_provider_source,
+                configured=provider_status.macro_provider_configured,
+                live_capable=provider_status.macro_provider_live_capable,
+                ready=provider_status.macro_provider_ready,
+                fallback_active=provider_status.macro_fallback_active,
+                target_surface="Regime detection and macro overlays inside the dashboard and Strategy Lab",
+                env_keys=["BSM_FRED_API_KEY", "BSM_FRED_SERIES_IDS"],
+                next_actions=[
+                    "Move macro mode to fred on the production deployment.",
+                    "Lock the final series list before publishing enterprise-ready reporting.",
+                ],
+            ),
+            self._connector_item(
+                connector_id="polymarket-intel",
+                label="Polymarket Intelligence",
+                category="Prediction Markets",
+                mode="live" if any(component.source == "polymarket" and component.ready for component in provider_status.venue_signal_providers) else "planned",
+                source="Polymarket venue signals, wallet footprints, and edge surfaces",
+                configured="polymarket" in {component.source for component in provider_status.venue_signal_providers} or self.settings.wallet_provider_mode == "polymarket",
+                live_capable=True,
+                ready=any(component.source == "polymarket" and component.ready for component in provider_status.venue_signal_providers) or self.settings.wallet_provider_mode == "polymarket",
+                fallback_active=False,
+                target_surface="Venue pulse, smart-money tracking, and probability edge analysis",
+                env_keys=["BSM_VENUE_SIGNAL_PROVIDERS", "BSM_WALLET_PROVIDER", "BSM_TRACKED_WALLETS"],
+                next_actions=[
+                    "Keep paper trading separate from live research ingestion.",
+                    "Curate tracked public wallets before ranking smart-money profiles in production.",
+                ],
+                app_url=venue_lookup["polysandbox"].app_url if "polysandbox" in venue_lookup else None,
+            ),
+            self._connector_item(
+                connector_id="kalshi-surfaces",
+                label="Kalshi Surfaces",
+                category="Prediction Markets",
+                mode="live" if any(component.source == "kalshi" and component.ready for component in provider_status.venue_signal_providers) else (venue_lookup["kalshi_demo"].status if "kalshi_demo" in venue_lookup else "planned"),
+                source="Kalshi public markets plus demo trading venue",
+                configured=any(component.source == "kalshi" for component in provider_status.venue_signal_providers) or ("kalshi_demo" in venue_lookup and venue_lookup["kalshi_demo"].configured),
+                live_capable=("kalshi_demo" in venue_lookup and venue_lookup["kalshi_demo"].live_capable),
+                ready=("kalshi_demo" in venue_lookup and venue_lookup["kalshi_demo"].status == "ready"),
+                fallback_active=False,
+                target_surface="Event market monitoring and future paper-execution routing",
+                env_keys=["BSM_VENUE_SIGNAL_PROVIDERS", "BSM_KALSHI_DEMO_KEY_ID", "BSM_KALSHI_DEMO_PRIVATE_KEY_PATH"],
+                next_actions=[
+                    "Keep Kalshi on demo or research-only surfaces until legal review clears anything broader.",
+                    "Use the venue to validate monitoring and paper workflows, not live execution.",
+                ],
+                app_url=venue_lookup["kalshi_demo"].app_url if "kalshi_demo" in venue_lookup else None,
+            ),
+            self._connector_item(
+                connector_id="wallet-intel",
+                label="Wallet Intelligence",
+                category="Smart Money",
+                mode=provider_status.wallet_provider_mode,
+                source=provider_status.wallet_provider_source,
+                configured=provider_status.wallet_provider_configured,
+                live_capable=provider_status.wallet_provider_live_capable,
+                ready=provider_status.wallet_provider_ready,
+                fallback_active=provider_status.wallet_fallback_active,
+                target_surface="Tracked public trader personas and conviction ranking",
+                env_keys=["BSM_WALLET_PROVIDER", "BSM_TRACKED_WALLETS"],
+                next_actions=[
+                    "Curate a first production wallet list instead of relying on generic demo traffic.",
+                    "Keep provenance weighting visible as smart-money surfaces expand.",
+                ],
+            ),
+        ]
+
+        live_or_ready_count = sum(item.state in {"live", "ready"} for item in connectors)
+        return ConnectorControlSnapshot(
+            generated_at=self._now(),
+            summary=(
+                "The connector command layer shows which market, macro, venue, and wallet integrations are production-ready, "
+                "which ones are still demo-safe, and which ones still need credentials or cutover work."
+            ),
+            live_or_ready_count=live_or_ready_count,
+            connectors=connectors,
+        )
+
+    def get_infrastructure_readiness(self) -> InfrastructureReadinessSnapshot:
+        provider_status = self.get_provider_status()
+        database_ready = provider_status.database_backend == "postgresql"
+        hosted_target = self.settings.deployment_target in {"render", "akash"}
+        https_ready = bool(self.settings.canonical_host and self.settings.force_https)
+
+        tasks = [
+            InfrastructureTask(
+                key="managed_database",
+                label="Managed Database",
+                state="ready" if database_ready else "attention",
+                detail=(
+                    f"Current backend is {provider_status.database_backend} targeting {provider_status.database_target}. "
+                    + ("Durable managed storage is active." if database_ready else "Preview SQLite should be promoted to managed Postgres before monetization or heavier live integrations.")
+                ),
+                next_step=(
+                    "Keep schema evolution flowing through the managed production database."
+                    if database_ready
+                    else "Create a Neon database, set BSM_DATABASE_URL, and redeploy Akash with the generated production manifest."
+                ),
+            ),
+            InfrastructureTask(
+                key="canonical_host",
+                label="Canonical HTTPS Host",
+                state="ready" if https_ready else "attention",
+                detail=(
+                    "Canonical host redirects and HTTPS headers are active."
+                    if https_ready
+                    else "The hosted experience should keep a canonical HTTPS app domain before broader launch."
+                ),
+                next_step=(
+                    "Maintain the Cloudflare proxy and update the Akash ingress target after each redeploy."
+                    if https_ready
+                    else "Set BSM_CANONICAL_HOST and BSM_FORCE_HTTPS on the hosted environment."
+                ),
+            ),
+            InfrastructureTask(
+                key="separate_worker",
+                label="Background Worker Path",
+                state="ready" if hosted_target else "planned",
+                detail=(
+                    "The deployment target supports a separate worker process for scheduled refreshes."
+                    if hosted_target
+                    else "The local environment is fine for development, but production refreshes should run on a dedicated worker."
+                ),
+                next_step=(
+                    "Enable the worker deployment after the database cutover is complete."
+                    if hosted_target
+                    else "Move the production app to a hosted target with separate web and worker surfaces."
+                ),
+            ),
+            InfrastructureTask(
+                key="legal_surface",
+                label="Published Legal Surface",
+                state="ready",
+                detail="Terms, Privacy, and Risk Disclosure pages are now published inside the product shell.",
+                next_step="Replace any placeholder company details with counsel-reviewed language before paid launch.",
+            ),
+        ]
+
+        ready_count = sum(task.state == "ready" for task in tasks)
+        return InfrastructureReadinessSnapshot(
+            generated_at=self._now(),
+            production_posture="ready" if ready_count == len(tasks) else "attention",
+            summary=(
+                "Public hosting is live. The biggest remaining production gate is durable Postgres storage; "
+                "everything else should now be managed as controlled hardening instead of basic setup."
+            ),
+            database_backend=provider_status.database_backend,
+            database_target=provider_status.database_target,
+            tasks=tasks,
+        )
+
+    def _connector_item(
+        self,
+        *,
+        connector_id: str,
+        label: str,
+        category: str,
+        mode: str,
+        source: str,
+        configured: bool,
+        live_capable: bool,
+        ready: bool,
+        fallback_active: bool,
+        target_surface: str,
+        env_keys: list[str],
+        next_actions: list[str],
+        app_url: str | None = None,
+    ) -> ConnectorStatusItem:
+        normalized_mode = str(mode or "planned").lower()
+        normalized_source = str(source or "internal")
+
+        if ready and live_capable and not fallback_active:
+            state: str = "live"
+        elif ready:
+            state = "ready"
+        elif fallback_active or (configured and not ready):
+            state = "attention"
+        elif normalized_mode in {"demo", "planned", "internal"} or normalized_source.lower().startswith("demo"):
+            state = "demo" if normalized_mode != "planned" else "planned"
+        else:
+            state = "attention"
+
+        posture = "Fallback guardrails are active." if fallback_active else ("Credentials are configured." if configured else "Credentials are still missing.")
+        readiness_note = "Live-capable connector." if live_capable else "Demo-safe or manually promoted connector."
+        summary = f"{normalized_source} feeds {target_surface}. {posture} {readiness_note}"
+
+        return ConnectorStatusItem(
+            id=connector_id,
+            label=label,
+            category=category,
+            state=state,
+            mode=mode,
+            source=source,
+            configured=configured,
+            live_capable=live_capable,
+            summary=summary,
+            target_surface=target_surface,
+            env_keys=env_keys,
+            next_actions=next_actions,
+            app_url=app_url,
+        )
+
     @staticmethod
     def _readiness_level_from_counts(completed: int, total: int, *, live: bool = False) -> str:
         if live:
@@ -1758,6 +2031,9 @@ class BotSocietyService:
 
     def get_launch_readiness(self) -> LaunchReadinessSnapshot:
         provider_status = self.get_provider_status()
+        terms_url = self.settings.terms_url or "/terms"
+        privacy_url = self.settings.privacy_url or "/privacy"
+        risk_disclosure_url = self.settings.risk_disclosure_url or "/risk"
 
         stripe_completed = sum(
             bool(value)
@@ -1927,9 +2203,9 @@ class BotSocietyService:
                 self.settings.legal_entity_name,
                 self.settings.legal_primary_jurisdiction,
                 self.settings.privacy_contact_email,
-                self.settings.terms_url,
-                self.settings.privacy_url,
-                self.settings.risk_disclosure_url,
+                terms_url,
+                privacy_url,
+                risk_disclosure_url,
                 self.settings.aml_program_owner,
             )
         )
@@ -1954,9 +2230,11 @@ class BotSocietyService:
                 message
                 for condition, message in (
                     (not self.settings.legal_entity_name, "Operating legal entity is not recorded in configuration."),
-                    (not self.settings.terms_url, "Terms of Service URL is missing."),
-                    (not self.settings.privacy_url, "Privacy Policy URL is missing."),
-                    (not self.settings.risk_disclosure_url, "Risk disclosure URL is missing."),
+                    (not self.settings.legal_primary_jurisdiction, "Primary operating jurisdiction is not recorded."),
+                    (not self.settings.privacy_contact_email, "Privacy contact email is not configured."),
+                    (not terms_url, "Terms of Service URL is missing."),
+                    (not privacy_url, "Privacy Policy URL is missing."),
+                    (not risk_disclosure_url, "Risk disclosure URL is missing."),
                     (not self.settings.aml_program_owner, "AML or sanctions ownership is not assigned."),
                 )
                 if condition
@@ -2014,6 +2292,8 @@ class BotSocietyService:
             notification_health=self.get_notification_health(user_slug),
             provider_status=self.get_provider_status(),
             launch_readiness=self.get_launch_readiness(),
+            connector_control=self.get_connector_control(),
+            infrastructure_readiness=self.get_infrastructure_readiness(),
         )
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:

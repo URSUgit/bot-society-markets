@@ -389,6 +389,110 @@ function renderLaunchReadiness(launchReadiness) {
   }).join("");
 }
 
+function connectorStateLabel(state) {
+  switch (state) {
+    case "live":
+      return "Live";
+    case "ready":
+      return "Ready";
+    case "attention":
+      return "Attention";
+    case "planned":
+      return "Planned";
+    default:
+      return "Demo";
+  }
+}
+
+function connectorStateVariant(state) {
+  switch (state) {
+    case "live":
+    case "ready":
+      return "positive";
+    case "attention":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function renderConnectorControl(connectorControl) {
+  const summary = document.getElementById("connector-summary");
+  const badge = document.getElementById("connector-live-count");
+  const grid = document.getElementById("connector-grid");
+  if (!summary || !badge || !grid || !connectorControl) {
+    return;
+  }
+
+  summary.textContent = connectorControl.summary;
+  badge.textContent = `${connectorControl.live_or_ready_count} ready`;
+  badge.dataset.variant = connectorControl.live_or_ready_count >= 4 ? "positive" : "warning";
+
+  grid.innerHTML = (connectorControl.connectors || []).map((connector) => {
+    const envKeys = (connector.env_keys || []).length
+      ? connector.env_keys.map((envKey) => `<span>${envKey}</span>`).join("")
+      : "<span>No extra secrets listed</span>";
+    const nextActions = (connector.next_actions || [])
+      .slice(0, 2)
+      .map((item) => `<li>${item}</li>`)
+      .join("");
+    const actionLink = connector.app_url
+      ? `<a class="text-link" href="${connector.app_url}" target="${connector.app_url.startsWith("/") ? "_self" : "_blank"}" rel="noreferrer">Open surface</a>`
+      : "";
+    return `
+      <article class="connector-card connector-${connector.state}">
+        <div class="connector-head">
+          <div>
+            <p class="eyebrow">${connector.category}</p>
+            <h4>${connector.label}</h4>
+          </div>
+          <span class="status-pill" data-variant="${connectorStateVariant(connector.state)}">${connectorStateLabel(connector.state)}</span>
+        </div>
+        <p class="connector-summary">${connector.summary}</p>
+        <div class="connector-meta">
+          <span><strong>Mode:</strong> ${connector.mode}</span>
+          <span><strong>Source:</strong> ${connector.source}</span>
+          <span><strong>Target:</strong> ${connector.target_surface}</span>
+        </div>
+        <div class="connector-key-row">${envKeys}</div>
+        <div class="connector-actions">
+          ${actionLink}
+          <span>${connector.live_capable ? "Live-capable" : "Demo-safe"}</span>
+          <span>${connector.configured ? "Configured" : "Needs config"}</span>
+        </div>
+        <ul class="launch-track-list">${nextActions || "<li>No follow-up steps recorded.</li>"}</ul>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderInfrastructureReadiness(infrastructureReadiness) {
+  const summary = document.getElementById("infrastructure-summary");
+  const badge = document.getElementById("infrastructure-badge");
+  const grid = document.getElementById("infrastructure-task-grid");
+  if (!summary || !badge || !grid || !infrastructureReadiness) {
+    return;
+  }
+
+  summary.textContent = infrastructureReadiness.summary;
+  badge.textContent = infrastructureReadiness.production_posture === "ready" ? "Production ready" : "Needs hardening";
+  badge.dataset.variant = infrastructureReadiness.production_posture === "ready" ? "positive" : "warning";
+
+  grid.innerHTML = (infrastructureReadiness.tasks || []).map((task) => `
+    <article class="infrastructure-task-card infrastructure-${task.state}">
+      <div class="connector-head">
+        <div>
+          <p class="eyebrow">Infrastructure</p>
+          <h4>${task.label}</h4>
+        </div>
+        <span class="status-pill" data-variant="${task.state === "ready" ? "positive" : (task.state === "planned" ? "neutral" : "warning")}">${task.state === "ready" ? "Ready" : (task.state === "planned" ? "Planned" : "Attention")}</span>
+      </div>
+      <p>${task.detail}</p>
+      <small>${task.next_step}</small>
+    </article>
+  `).join("");
+}
+
 function renderMarketTape(assets) {
   const track = document.getElementById("market-tape-track");
   if (!track) {
@@ -2282,6 +2386,8 @@ async function loadDashboard(options = {}) {
     renderHeroMeta(snapshot);
     renderRibbon(snapshot);
     renderLaunchReadiness(snapshot.launch_readiness);
+    renderConnectorControl(snapshot.connector_control);
+    renderInfrastructureReadiness(snapshot.infrastructure_readiness);
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);
