@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DatabaseUrl,
 
-    [string]$Domain = "app.bitprivat.com",
+    [string]$CanonicalHost = "app.bitprivat.com",
+
+    [string]$RootDomain = "bitprivat.com",
 
     [switch]$WithWorker,
 
@@ -11,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $templatePath = if ($WithWorker) {
     Join-Path $PSScriptRoot "web-worker-external-postgres.yaml"
 } else {
@@ -32,7 +34,7 @@ $resolvedOutputPath = if ($OutputPath) {
     if ([System.IO.Path]::IsPathRooted($OutputPath)) {
         $OutputPath
     } else {
-        Join-Path $projectRoot $OutputPath
+        Join-Path $repoRoot $OutputPath
     }
 } else {
     Join-Path $PSScriptRoot $defaultOutputName
@@ -40,12 +42,21 @@ $resolvedOutputPath = if ($OutputPath) {
 
 $template = Get-Content -LiteralPath $templatePath -Raw
 $databaseUrlEscaped = $DatabaseUrl.Replace("`r", "").Replace("`n", "")
+$canonicalHostEscaped = $CanonicalHost.Trim()
+$rootDomainEscaped = $RootDomain.Trim()
+$wwwHostEscaped = "www.$rootDomainEscaped"
 $rendered = $template.Replace(
     "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
     $databaseUrlEscaped
 ).Replace(
     "app.bitprivat.com",
-    $Domain
+    $canonicalHostEscaped
+).Replace(
+    "www.bitprivat.com",
+    $wwwHostEscaped
+).Replace(
+    "bitprivat.com",
+    $rootDomainEscaped
 )
 
 $outputDirectory = Split-Path -Parent $resolvedOutputPath

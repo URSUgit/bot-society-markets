@@ -39,6 +39,7 @@ Sources:
 - [Web + Worker Akash Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-worker-external-postgres.yaml)
 - [Experimental Full Stack Manifest](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml)
 - [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
+- [Production Cutover Playbook](C:\Users\ionut\OneDrive\Documents\New project\docs\19-production-cutover-playbook.md)
 
 ## Recommended Launch Flow
 
@@ -130,6 +131,25 @@ Or, if you want web + worker on Akash:
 This writes a generated manifest into `deploy/akash/` that is ready to paste into Akash Console.
 
 Generated manifest files are ignored by Git on purpose because they may contain production database credentials.
+
+Current helper usage with explicit host settings:
+
+```powershell
+.\deploy\akash\prepare-bitprivat-neon.ps1 `
+  -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require" `
+  -CanonicalHost "app.bitprivat.com" `
+  -RootDomain "bitprivat.com"
+```
+
+## Cloudflare After Akash Redeploys
+
+Each fresh Akash deployment may receive a new ingress hostname. If Cloudflare continues pointing to an older Akash hostname, the app domain may return a default ingress `404`.
+
+When that happens:
+
+1. copy the current Akash ingress hostname from the live deployment
+2. update the Cloudflare `app` CNAME target
+3. keep the record proxied if you want Cloudflare-managed HTTPS
 
 ## Why Full Akash Postgres Is Not The Default
 

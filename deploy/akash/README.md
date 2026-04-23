@@ -21,6 +21,7 @@ Why this is the recommended path:
 - [full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml): experimental all-in-Akash stack with Postgres persistent volume
 - [run-worker-with-health.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\run-worker-with-health.sh): helper used by the worker manifest
 - [prepare-bitprivat-neon.ps1](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\prepare-bitprivat-neon.ps1): generates a final Akash manifest for `app.bitprivat.com` from your Neon connection string
+- [Production Cutover Playbook](C:\Users\ionut\OneDrive\Documents\New project\docs\19-production-cutover-playbook.md): step-by-step move from preview SQLite hosting to managed Postgres on Akash
 
 ## Container Image
 
@@ -126,6 +127,10 @@ For Yandex DNS:
 7. create the matching `CNAME` in Yandex DNS
 
 Generated manifests are intentionally ignored by Git because they can contain real database connection strings.
+
+## Redeploy Reminder
+
+Akash redeploys may create a new ingress hostname. When that happens, update the Cloudflare `app` CNAME target to the current deployment hostname so `app.bitprivat.com` continues routing to the live deployment.
 
 ## Windows Note
 
