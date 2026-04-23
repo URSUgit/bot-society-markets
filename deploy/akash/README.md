@@ -35,6 +35,14 @@ Expected image path:
 ghcr.io/ursugit/bot-society-markets:latest
 ```
 
+For Akash redeploys, prefer the immutable commit tag form:
+
+```text
+ghcr.io/ursugit/bot-society-markets:sha-<commit>
+```
+
+This avoids stale-node behavior where `latest` can resolve to an older cached image during a redeploy.
+
 If the GHCR package remains private:
 
 - either make the package public in GitHub package settings
@@ -119,6 +127,14 @@ For Yandex DNS:
 
 ```powershell
 .\deploy\akash\prepare-bitprivat-neon.ps1 -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+```
+
+By default the script now pins the manifest to the current Git commit image tag when it can read the local repository SHA. You can also override it manually:
+
+```powershell
+.\deploy\akash\prepare-bitprivat-neon.ps1 `
+  -DatabaseUrl "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require" `
+  -ImageRef "ghcr.io/ursugit/bot-society-markets:sha-abcdef1"
 ```
 
 4. paste the generated manifest into Akash Console

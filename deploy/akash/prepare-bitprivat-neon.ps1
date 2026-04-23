@@ -6,6 +6,8 @@ param(
 
     [string]$RootDomain = "bitprivat.com",
 
+    [string]$ImageRef,
+
     [switch]$WithWorker,
 
     [string]$OutputPath
@@ -40,12 +42,32 @@ $resolvedOutputPath = if ($OutputPath) {
     Join-Path $PSScriptRoot $defaultOutputName
 }
 
+$resolvedImageRef = if ($ImageRef) {
+    $ImageRef.Trim()
+} else {
+    $gitShortSha = ""
+    try {
+        $gitShortSha = (git -C $repoRoot rev-parse --short=7 HEAD 2>$null | Out-String).Trim()
+    } catch {
+        $gitShortSha = ""
+    }
+
+    if ($gitShortSha) {
+        "ghcr.io/ursugit/bot-society-markets:sha-$gitShortSha"
+    } else {
+        "ghcr.io/ursugit/bot-society-markets:latest"
+    }
+}
+
 $template = Get-Content -LiteralPath $templatePath -Raw
 $databaseUrlEscaped = $DatabaseUrl.Replace("`r", "").Replace("`n", "")
 $canonicalHostEscaped = $CanonicalHost.Trim()
 $rootDomainEscaped = $RootDomain.Trim()
 $wwwHostEscaped = "www.$rootDomainEscaped"
 $rendered = $template.Replace(
+    "ghcr.io/ursugit/bot-society-markets:latest",
+    $resolvedImageRef
+).Replace(
     "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
     $databaseUrlEscaped
 ).Replace(
@@ -66,3 +88,4 @@ if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
 
 Set-Content -LiteralPath $resolvedOutputPath -Value $rendered -Encoding UTF8
 Write-Output "Generated Akash manifest: $resolvedOutputPath"
+Write-Output "Pinned image: $resolvedImageRef"

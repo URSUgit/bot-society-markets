@@ -61,6 +61,8 @@ For web + worker:
 
 This writes a generated YAML manifest into `deploy/akash/`.
 
+The generated manifest now pins the deployment to the current Git commit image tag by default, which is safer on Akash than relying on `latest`.
+
 ## Phase 3 - Redeploy Akash
 
 1. Wait for the latest GitHub Actions container image workflow to complete successfully.
@@ -77,6 +79,7 @@ Important:
 
 - each fresh Akash deployment may produce a different ingress hostname
 - the custom app domain must point at the current hostname
+- if a redeploy looks healthy but serves older routes, redeploy again with an immutable `ghcr.io/ursugit/bot-society-markets:sha-<commit>` image tag rather than `latest`
 
 ## Phase 4 - Update Cloudflare
 
