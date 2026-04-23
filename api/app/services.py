@@ -12,6 +12,7 @@ import zipfile
 from sqlalchemy.exc import IntegrityError
 
 from .auth import AuthManager
+from .billing import StripeClient, StripeClientError, StripeSignatureError
 from .config import Settings
 from .database import Database
 from .models import (
@@ -23,6 +24,12 @@ from .models import (
     AssetHistoryEnvelope,
     AssetHistoryPoint,
     AssetSnapshot,
+    BillingCheckoutSessionRequest,
+    BillingPlanView,
+    BillingPortalSessionRequest,
+    BillingSessionLaunch,
+    BillingSnapshot,
+    BillingWebhookAck,
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthSessionSnapshot,
@@ -262,6 +269,234 @@ class BotSocietyService:
             return
         repository = BotSocietyRepository(self.database)
         repository.delete_session(self.auth.hash_session_token(session_token))
+
+    def get_billing_snapshot(self, user_slug: str, *, can_manage: bool | None = None) -> BillingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError(f"User {user_slug} is not available")
+
+        plans = self._billing_plan_catalog()
+        configured_plan_count = sum(plan.configured for plan in plans)
+        customer = repository.get_billing_customer(user_slug)
+        subscription = repository.get_billing_subscription(user_slug)
+        provider = self.settings.fiat_billing_provider
+        can_manage_workspace = (not bool(user.get("is_demo_user"))) if can_manage is None else can_manage
+
+        warnings: list[str] = []
+        if provider != "stripe":
+            warnings.append("Fiat billing provider is not configured yet.")
+        else:
+            if not self.settings.stripe_publishable_key:
+                warnings.append("Stripe publishable key is missing.")
+            if not self.settings.stripe_secret_key:
+                warnings.append("Stripe secret key is missing.")
+            if not configured_plan_count:
+                warnings.append("No Stripe price IDs are configured yet.")
+            if self.settings.stripe_customer_portal_enabled and not customer:
+                warnings.append("Customer portal will activate after the first paid checkout creates a Stripe customer.")
+
+        subscription_status = str(subscription["status"]) if subscription else None
+        active_subscription = subscription_status in {"trialing", "active", "past_due", "unpaid"}
+        plan_key = subscription.get("plan_key") if subscription else None
+        if not plan_key and subscription and subscription.get("price_id"):
+            plan_key = self._plan_key_for_price_id(str(subscription["price_id"]))
+
+        summary = (
+            "Sign in with a personal workspace to launch Stripe Checkout and manage a paid plan."
+            if not can_manage_workspace
+            else self._billing_summary_text(
+                configured=provider == "stripe" and bool(self.settings.stripe_secret_key) and bool(self.settings.stripe_publishable_key),
+                configured_plan_count=configured_plan_count,
+                active_subscription=active_subscription,
+                plan_key=plan_key,
+                subscription_status=subscription_status,
+            )
+        )
+
+        return BillingSnapshot(
+            provider=provider,
+            configured=provider == "stripe" and bool(self.settings.stripe_secret_key) and bool(self.settings.stripe_publishable_key),
+            checkout_ready=can_manage_workspace and provider == "stripe" and bool(self.settings.stripe_secret_key) and configured_plan_count > 0,
+            portal_ready=can_manage_workspace and provider == "stripe" and bool(self.settings.stripe_secret_key) and bool(customer) and self.settings.stripe_customer_portal_enabled,
+            can_manage=can_manage_workspace,
+            tier=str(user["tier"]),
+            summary=summary,
+            warnings=warnings,
+            available_plans=plans,
+            publishable_key=self.settings.stripe_publishable_key,
+            contact_email=str(user["email"]),
+            customer_state="linked" if customer else "new",
+            subscription_status=subscription_status,
+            plan_key=plan_key,
+            plan_label=self._plan_label(plan_key),
+            current_period_end=str(subscription["current_period_end"]) if subscription and subscription.get("current_period_end") else None,
+            cancel_at_period_end=bool(subscription["cancel_at_period_end"]) if subscription else False,
+            has_active_subscription=active_subscription,
+            last_event_type=str(subscription["last_event_type"]) if subscription and subscription.get("last_event_type") else None,
+            provider_customer_id=self._mask_identifier(str(customer["provider_customer_id"])) if customer and customer.get("provider_customer_id") else None,
+            provider_subscription_id=self._mask_identifier(str(subscription["provider_subscription_id"])) if subscription and subscription.get("provider_subscription_id") else None,
+        )
+
+    def create_billing_checkout_session(
+        self,
+        user_slug: str,
+        payload: BillingCheckoutSessionRequest,
+        *,
+        base_url: str,
+    ) -> BillingSessionLaunch:
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError(f"User {user_slug} is not available")
+        if bool(user.get("is_demo_user")):
+            raise ValueError("Sign in with a personal workspace before starting checkout")
+        if self.settings.fiat_billing_provider != "stripe":
+            raise ValueError("Stripe billing is not configured for this deployment")
+
+        plan = next((item for item in self._billing_plan_catalog() if item.key == payload.plan_key), None)
+        if not plan or not plan.configured or not plan.price_id:
+            raise ValueError(f"The {payload.plan_key} plan is not configured yet")
+
+        customer = repository.get_billing_customer(user_slug)
+        client = self._stripe_client()
+        try:
+            session = client.create_checkout_session(
+                price_id=plan.price_id,
+                success_url=f"{base_url}{payload.success_path}",
+                cancel_url=f"{base_url}{payload.cancel_path}",
+                customer_id=str(customer["provider_customer_id"]) if customer and customer.get("provider_customer_id") else None,
+                customer_email=str(user["email"]),
+                user_slug=user_slug,
+                plan_key=payload.plan_key,
+            )
+        except StripeClientError as exc:
+            raise ValueError(str(exc)) from exc
+        now = self._now()
+        customer_id = str(session.get("customer") or "") or None
+        if customer_id:
+            repository.upsert_billing_customer(
+                {
+                    "user_slug": user_slug,
+                    "provider": "stripe",
+                    "provider_customer_id": customer_id,
+                    "email": user["email"],
+                    "created_at": customer["created_at"] if customer else now,
+                    "updated_at": now,
+                }
+            )
+
+        existing = repository.get_billing_subscription(user_slug)
+        repository.upsert_billing_subscription(
+            {
+                "user_slug": user_slug,
+                "provider": "stripe",
+                "provider_customer_id": customer_id or (existing.get("provider_customer_id") if existing else None),
+                "provider_subscription_id": str(session.get("subscription") or "") or (existing.get("provider_subscription_id") if existing else None),
+                "provider_checkout_session_id": str(session.get("id") or ""),
+                "status": "checkout_created",
+                "plan_key": payload.plan_key,
+                "price_id": plan.price_id,
+                "current_period_end": existing.get("current_period_end") if existing else None,
+                "cancel_at_period_end": bool(existing.get("cancel_at_period_end")) if existing else False,
+                "last_event_id": existing.get("last_event_id") if existing else None,
+                "last_event_type": "checkout.session.created",
+                "created_at": existing.get("created_at") if existing else now,
+                "updated_at": now,
+            }
+        )
+
+        return BillingSessionLaunch(
+            provider="stripe",
+            url=str(session["url"]),
+            session_id=str(session["id"]),
+            plan_key=payload.plan_key,
+        )
+
+    def create_billing_portal_session(
+        self,
+        user_slug: str,
+        payload: BillingPortalSessionRequest,
+        *,
+        base_url: str,
+    ) -> BillingSessionLaunch:
+        if self.settings.fiat_billing_provider != "stripe":
+            raise ValueError("Stripe billing is not configured for this deployment")
+        if not self.settings.stripe_customer_portal_enabled:
+            raise ValueError("Stripe customer portal is not enabled yet")
+
+        repository = BotSocietyRepository(self.database)
+        customer = repository.get_billing_customer(user_slug)
+        if not customer or not customer.get("provider_customer_id"):
+            raise ValueError("No Stripe customer is linked to this workspace yet")
+
+        try:
+            session = self._stripe_client().create_customer_portal_session(
+                customer_id=str(customer["provider_customer_id"]),
+                return_url=f"{base_url}{payload.return_path}",
+            )
+        except StripeClientError as exc:
+            raise ValueError(str(exc)) from exc
+        return BillingSessionLaunch(
+            provider="stripe",
+            url=str(session["url"]),
+            session_id=str(session.get("id") or ""),
+            plan_key=None,
+        )
+
+    def handle_stripe_webhook(self, payload: bytes, signature_header: str | None) -> BillingWebhookAck:
+        if self.settings.fiat_billing_provider != "stripe":
+            raise ValueError("Stripe billing is not configured for this deployment")
+
+        try:
+            event = self._stripe_client().verify_webhook(payload, signature_header or "")
+        except StripeSignatureError as exc:
+            raise ValueError(str(exc)) from exc
+        event_id = str(event.get("id") or "").strip()
+        event_type = str(event.get("type") or "").strip()
+        if not event_id or not event_type:
+            raise ValueError("Stripe webhook payload is missing event metadata")
+
+        repository = BotSocietyRepository(self.database)
+        now = self._now()
+        inserted = repository.create_billing_event(
+            {
+                "provider": "stripe",
+                "provider_event_id": event_id,
+                "event_type": event_type,
+                "user_slug": None,
+                "provider_customer_id": None,
+                "provider_subscription_id": None,
+                "status": "received",
+                "payload_json": json.dumps(event, separators=(",", ":"), sort_keys=True),
+                "received_at": now,
+                "processed_at": None,
+            }
+        )
+        if not inserted:
+            return BillingWebhookAck(duplicate=True, event_type=event_type, status="duplicate")
+
+        try:
+            event_context = self._apply_stripe_event(repository, event, event_id=event_id, event_type=event_type)
+        except Exception:
+            repository.update_billing_event(
+                event_id,
+                {
+                    "status": "failed",
+                    "processed_at": self._now(),
+                },
+            )
+            raise
+
+        repository.update_billing_event(
+            event_id,
+            {
+                "status": "processed",
+                "processed_at": self._now(),
+                **event_context,
+            },
+        )
+        return BillingWebhookAck(event_type=event_type, status="processed")
 
     def get_summary(self, user_slug: str | None = None) -> Summary:
         repository = BotSocietyRepository(self.database)
@@ -1230,6 +1465,7 @@ class BotSocietyService:
             email=user["email"],
             tier=user["tier"],
             is_demo_user=bool(user.get("is_demo_user")),
+            billing=self.get_billing_snapshot(user_slug, can_manage=not bool(user.get("is_demo_user"))),
             follows=follows,
             watchlist=watchlist,
             alert_rules=alert_rules,
@@ -3417,6 +3653,428 @@ class BotSocietyService:
         retry_delay = self.settings.notification_retry_base_seconds * max(1, 2 ** (attempt_count - 1))
         next_attempt = datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
         return "retry_scheduled", to_timestamp(next_attempt)
+
+    def _billing_plan_catalog(self) -> list[BillingPlanView]:
+        return [
+            BillingPlanView(
+                key="basic",
+                label="Starter",
+                headline="Retail subscription for personal research workspaces.",
+                price_id=self.settings.stripe_basic_price_id,
+                configured=bool(self.settings.stripe_basic_price_id),
+                recommended=not bool(self.settings.stripe_pro_price_id),
+                features=[
+                    "Private workspace with watchlists, alerts, and signal inbox",
+                    "Hosted Stripe checkout with no raw card handling on your servers",
+                    "Ready for SaaS activation on the live dashboard",
+                ],
+            ),
+            BillingPlanView(
+                key="pro",
+                label="Pro",
+                headline="Deeper analytics, priority support, and heavier research usage.",
+                price_id=self.settings.stripe_pro_price_id,
+                configured=bool(self.settings.stripe_pro_price_id),
+                recommended=True,
+                features=[
+                    "Designed for advanced retail traders and small teams",
+                    "Best fit for premium Strategy Lab and connector entitlements",
+                    "Clean upgrade path from Starter without rebuilding billing",
+                ],
+            ),
+            BillingPlanView(
+                key="enterprise",
+                label="Enterprise",
+                headline="Custom invoicing and managed deployment paths for teams.",
+                price_id=self.settings.stripe_enterprise_price_id,
+                configured=bool(self.settings.stripe_enterprise_price_id),
+                recommended=False,
+                features=[
+                    "Supports enterprise onboarding and procurement workflows",
+                    "Fits managed environments, SSO, and custom integrations later",
+                    "Keeps the product ready for higher-trust commercial sales",
+                ],
+            ),
+        ]
+
+    def _billing_summary_text(
+        self,
+        *,
+        configured: bool,
+        configured_plan_count: int,
+        active_subscription: bool,
+        plan_key: str | None,
+        subscription_status: str | None,
+    ) -> str:
+        if not configured:
+            return "Stripe billing is not configured on this deployment yet."
+        if not configured_plan_count:
+            return "Stripe keys are present, but no live price IDs are wired into the app yet."
+        if active_subscription:
+            label = self._plan_label(plan_key) or "paid"
+            return f"Workspace billing is active on the {label} plan. Subscription status: {subscription_status or 'active'}."
+        if subscription_status:
+            return f"Billing is linked but the latest subscription state is {subscription_status}."
+        return "Hosted billing is ready. Launch checkout to start a paid workspace subscription."
+
+    def _stripe_client(self) -> StripeClient:
+        if not self.settings.stripe_secret_key:
+            raise ValueError("Stripe secret key is not configured")
+        return StripeClient(
+            secret_key=self.settings.stripe_secret_key,
+            webhook_secret=self.settings.stripe_webhook_secret,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
+
+    def _plan_key_for_price_id(self, price_id: str | None) -> str | None:
+        if not price_id:
+            return None
+        for plan in self._billing_plan_catalog():
+            if plan.price_id == price_id:
+                return plan.key
+        return None
+
+    @staticmethod
+    def _plan_label(plan_key: str | None) -> str | None:
+        mapping = {
+            "basic": "Starter",
+            "pro": "Pro",
+            "enterprise": "Enterprise",
+        }
+        return mapping.get(plan_key) if plan_key else None
+
+    @staticmethod
+    def _tier_for_plan(plan_key: str | None) -> str:
+        mapping = {
+            "basic": "starter",
+            "pro": "pro",
+            "enterprise": "enterprise",
+        }
+        return mapping.get(plan_key or "", "starter")
+
+    @staticmethod
+    def _mask_identifier(value: str | None) -> str | None:
+        if not value:
+            return None
+        if len(value) <= 12:
+            return value
+        return f"{value[:6]}...{value[-4:]}"
+
+    def _apply_stripe_event(
+        self,
+        repository: BotSocietyRepository,
+        event: dict[str, object],
+        *,
+        event_id: str,
+        event_type: str,
+    ) -> dict[str, str | None]:
+        data = event.get("data")
+        event_object = data.get("object") if isinstance(data, dict) else None
+        if not isinstance(event_object, dict):
+            raise ValueError("Stripe webhook payload is missing its event object")
+
+        if event_type == "checkout.session.completed":
+            return self._apply_stripe_checkout_session(repository, event_object, event_id=event_id, event_type=event_type)
+        if event_type in {"customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"}:
+            return self._apply_stripe_subscription_object(repository, event_object, event_id=event_id, event_type=event_type)
+        if event_type in {"invoice.paid", "invoice.payment_failed"}:
+            return self._apply_stripe_invoice_object(repository, event_object, event_id=event_id, event_type=event_type)
+        return {
+            "user_slug": self._resolve_billing_user_slug(
+                repository,
+                user_slug_hint=self._object_metadata(event_object).get("user_slug"),
+                customer_id=self._string_or_none(event_object.get("customer")),
+                subscription_id=self._string_or_none(event_object.get("subscription")),
+            ),
+            "provider_customer_id": self._string_or_none(event_object.get("customer")),
+            "provider_subscription_id": self._string_or_none(event_object.get("subscription")) or self._string_or_none(event_object.get("id")),
+        }
+
+    def _apply_stripe_checkout_session(
+        self,
+        repository: BotSocietyRepository,
+        session: dict[str, object],
+        *,
+        event_id: str,
+        event_type: str,
+    ) -> dict[str, str | None]:
+        metadata = self._object_metadata(session)
+        user_slug = self._resolve_billing_user_slug(
+            repository,
+            user_slug_hint=self._string_or_none(session.get("client_reference_id")) or metadata.get("user_slug"),
+            customer_id=self._string_or_none(session.get("customer")),
+            subscription_id=self._string_or_none(session.get("subscription")),
+        )
+        if not user_slug:
+            raise ValueError("Stripe checkout session could not be matched to a workspace")
+
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError(f"User {user_slug} is not available")
+
+        now = self._now()
+        customer_id = self._string_or_none(session.get("customer"))
+        subscription_id = self._string_or_none(session.get("subscription"))
+        plan_key = metadata.get("plan_key")
+        existing = repository.get_billing_subscription(user_slug)
+
+        if customer_id:
+            customer = repository.get_billing_customer(user_slug)
+            email = self._extract_customer_email(session) or user["email"]
+            repository.upsert_billing_customer(
+                {
+                    "user_slug": user_slug,
+                    "provider": "stripe",
+                    "provider_customer_id": customer_id,
+                    "email": email,
+                    "created_at": customer["created_at"] if customer else now,
+                    "updated_at": now,
+                }
+            )
+
+        repository.upsert_billing_subscription(
+            {
+                "user_slug": user_slug,
+                "provider": "stripe",
+                "provider_customer_id": customer_id or (existing.get("provider_customer_id") if existing else None),
+                "provider_subscription_id": subscription_id or (existing.get("provider_subscription_id") if existing else None),
+                "provider_checkout_session_id": self._string_or_none(session.get("id")) or (existing.get("provider_checkout_session_id") if existing else None),
+                "status": "checkout_completed",
+                "plan_key": plan_key or (existing.get("plan_key") if existing else None),
+                "price_id": existing.get("price_id") if existing else None,
+                "current_period_end": existing.get("current_period_end") if existing else None,
+                "cancel_at_period_end": bool(existing.get("cancel_at_period_end")) if existing else False,
+                "last_event_id": event_id,
+                "last_event_type": event_type,
+                "created_at": existing.get("created_at") if existing else now,
+                "updated_at": now,
+            }
+        )
+        payment_status = self._string_or_none(session.get("payment_status")) or ""
+        if payment_status in {"paid", "no_payment_required"} and plan_key:
+            repository.update_user(user_slug, {"tier": self._tier_for_plan(plan_key)})
+
+        return {
+            "user_slug": user_slug,
+            "provider_customer_id": customer_id,
+            "provider_subscription_id": subscription_id,
+        }
+
+    def _apply_stripe_subscription_object(
+        self,
+        repository: BotSocietyRepository,
+        subscription: dict[str, object],
+        *,
+        event_id: str,
+        event_type: str,
+    ) -> dict[str, str | None]:
+        metadata = self._object_metadata(subscription)
+        customer_id = self._string_or_none(subscription.get("customer"))
+        subscription_id = self._string_or_none(subscription.get("id"))
+        user_slug = self._resolve_billing_user_slug(
+            repository,
+            user_slug_hint=metadata.get("user_slug"),
+            customer_id=customer_id,
+            subscription_id=subscription_id,
+        )
+        if not user_slug:
+            raise ValueError("Stripe subscription could not be matched to a workspace")
+
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError(f"User {user_slug} is not available")
+
+        existing = repository.get_billing_subscription(user_slug)
+        price_id = self._extract_subscription_price_id(subscription)
+        plan_key = metadata.get("plan_key") or self._plan_key_for_price_id(price_id) or (existing.get("plan_key") if existing else None)
+        status = "canceled" if event_type == "customer.subscription.deleted" else (self._string_or_none(subscription.get("status")) or "unknown")
+        now = self._now()
+
+        if customer_id:
+            customer = repository.get_billing_customer(user_slug)
+            repository.upsert_billing_customer(
+                {
+                    "user_slug": user_slug,
+                    "provider": "stripe",
+                    "provider_customer_id": customer_id,
+                    "email": user["email"],
+                    "created_at": customer["created_at"] if customer else now,
+                    "updated_at": now,
+                }
+            )
+
+        repository.upsert_billing_subscription(
+            {
+                "user_slug": user_slug,
+                "provider": "stripe",
+                "provider_customer_id": customer_id or (existing.get("provider_customer_id") if existing else None),
+                "provider_subscription_id": subscription_id or (existing.get("provider_subscription_id") if existing else None),
+                "provider_checkout_session_id": existing.get("provider_checkout_session_id") if existing else None,
+                "status": status,
+                "plan_key": plan_key,
+                "price_id": price_id or (existing.get("price_id") if existing else None),
+                "current_period_end": self._timestamp_from_epoch(subscription.get("current_period_end")) or (existing.get("current_period_end") if existing else None),
+                "cancel_at_period_end": bool(subscription.get("cancel_at_period_end")),
+                "last_event_id": event_id,
+                "last_event_type": event_type,
+                "created_at": existing.get("created_at") if existing else now,
+                "updated_at": now,
+            }
+        )
+
+        if status in {"trialing", "active", "past_due", "unpaid"} and plan_key:
+            repository.update_user(user_slug, {"tier": self._tier_for_plan(plan_key)})
+        elif status in {"canceled", "incomplete_expired"}:
+            repository.update_user(user_slug, {"tier": "starter"})
+
+        return {
+            "user_slug": user_slug,
+            "provider_customer_id": customer_id,
+            "provider_subscription_id": subscription_id,
+        }
+
+    def _apply_stripe_invoice_object(
+        self,
+        repository: BotSocietyRepository,
+        invoice: dict[str, object],
+        *,
+        event_id: str,
+        event_type: str,
+    ) -> dict[str, str | None]:
+        customer_id = self._string_or_none(invoice.get("customer"))
+        subscription_id = self._string_or_none(invoice.get("subscription"))
+        user_slug = self._resolve_billing_user_slug(
+            repository,
+            user_slug_hint=self._object_metadata(invoice).get("user_slug"),
+            customer_id=customer_id,
+            subscription_id=subscription_id,
+        )
+        if not user_slug:
+            raise ValueError("Stripe invoice could not be matched to a workspace")
+
+        existing = repository.get_billing_subscription(user_slug)
+        if not existing and not subscription_id:
+            raise ValueError("Stripe invoice could not find an existing billing subscription")
+
+        price_id = self._extract_invoice_price_id(invoice) or (existing.get("price_id") if existing else None)
+        plan_key = self._plan_key_for_price_id(price_id) or (existing.get("plan_key") if existing else None)
+        status = "active" if event_type == "invoice.paid" else "past_due"
+        now = self._now()
+        repository.upsert_billing_subscription(
+            {
+                "user_slug": user_slug,
+                "provider": "stripe",
+                "provider_customer_id": customer_id or (existing.get("provider_customer_id") if existing else None),
+                "provider_subscription_id": subscription_id or (existing.get("provider_subscription_id") if existing else None),
+                "provider_checkout_session_id": existing.get("provider_checkout_session_id") if existing else None,
+                "status": status,
+                "plan_key": plan_key,
+                "price_id": price_id,
+                "current_period_end": existing.get("current_period_end") if existing else None,
+                "cancel_at_period_end": bool(existing.get("cancel_at_period_end")) if existing else False,
+                "last_event_id": event_id,
+                "last_event_type": event_type,
+                "created_at": existing.get("created_at") if existing else now,
+                "updated_at": now,
+            }
+        )
+        if event_type == "invoice.paid" and plan_key:
+            repository.update_user(user_slug, {"tier": self._tier_for_plan(plan_key)})
+
+        return {
+            "user_slug": user_slug,
+            "provider_customer_id": customer_id,
+            "provider_subscription_id": subscription_id,
+        }
+
+    def _resolve_billing_user_slug(
+        self,
+        repository: BotSocietyRepository,
+        *,
+        user_slug_hint: str | None = None,
+        customer_id: str | None = None,
+        subscription_id: str | None = None,
+    ) -> str | None:
+        if user_slug_hint and repository.get_user(user_slug_hint):
+            return user_slug_hint
+        if customer_id:
+            customer = repository.get_billing_customer_by_provider_customer_id(customer_id)
+            if customer:
+                return str(customer["user_slug"])
+        if subscription_id:
+            subscription = repository.get_billing_subscription_by_provider_subscription_id(subscription_id)
+            if subscription:
+                return str(subscription["user_slug"])
+        return None
+
+    @staticmethod
+    def _object_metadata(payload: dict[str, object]) -> dict[str, str]:
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            return {}
+        return {
+            str(key): str(value)
+            for key, value in metadata.items()
+            if value is not None and str(value).strip()
+        }
+
+    @staticmethod
+    def _string_or_none(value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @staticmethod
+    def _timestamp_from_epoch(value: object) -> str | None:
+        if not isinstance(value, (int, float)) or value <= 0:
+            return None
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _extract_customer_email(payload: dict[str, object]) -> str | None:
+        customer_details = payload.get("customer_details")
+        if isinstance(customer_details, dict):
+            email = customer_details.get("email")
+            if isinstance(email, str) and email.strip():
+                return email.strip().lower()
+        customer_email = payload.get("customer_email")
+        if isinstance(customer_email, str) and customer_email.strip():
+            return customer_email.strip().lower()
+        return None
+
+    @staticmethod
+    def _extract_subscription_price_id(payload: dict[str, object]) -> str | None:
+        items = payload.get("items")
+        if not isinstance(items, dict):
+            return None
+        data = items.get("data")
+        if not isinstance(data, list) or not data:
+            return None
+        first_item = data[0]
+        if not isinstance(first_item, dict):
+            return None
+        price = first_item.get("price")
+        if not isinstance(price, dict):
+            return None
+        price_id = price.get("id")
+        return str(price_id).strip() if price_id else None
+
+    @staticmethod
+    def _extract_invoice_price_id(payload: dict[str, object]) -> str | None:
+        lines = payload.get("lines")
+        if not isinstance(lines, dict):
+            return None
+        data = lines.get("data")
+        if not isinstance(data, list) or not data:
+            return None
+        for line in data:
+            if not isinstance(line, dict):
+                continue
+            price = line.get("price")
+            if isinstance(price, dict) and price.get("id"):
+                return str(price["id"]).strip()
+        return None
 
     @staticmethod
     def _to_user_identity(user: dict) -> UserIdentity:

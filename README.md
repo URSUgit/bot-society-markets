@@ -95,6 +95,7 @@ Included today:
 - desktop shortcut installation for one-click Windows startup
 - `.env` and `.env.local` loading for secret-aware local live-provider activation
 - commercialization readiness tracking for fiat billing, crypto onboarding, API connectors, dashboard redesign, desktop packaging, and legal workstreams
+- hosted Stripe billing foundations with subscription state, checkout session launch, customer portal launch, and signed webhook processing
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 
 ## Product Surface
@@ -122,11 +123,15 @@ Key endpoints include:
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 - `GET /api/me`
+- `GET /api/me/billing`
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
 - `GET /api/system/launch-readiness`
+- `POST /api/me/billing/checkout-session`
+- `POST /api/me/billing/portal-session`
+- `POST /api/webhooks/stripe`
 - `POST /api/simulation/run`
 - `POST /api/simulation/advanced-export`
 - `POST /api/me/alerts/{alert_id}/read`

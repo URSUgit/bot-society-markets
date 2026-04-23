@@ -10,6 +10,9 @@ from .database import (
     Database,
     alert_delivery_events_table,
     alert_rules_table,
+    billing_customers_table,
+    billing_events_table,
+    billing_subscriptions_table,
     bots_table,
     macro_snapshots_table,
     market_snapshots_table,
@@ -428,6 +431,121 @@ class BotSocietyRepository:
         stmt = select(users_table).where(func.lower(users_table.c.email) == email.lower())
         with self.database.connect() as connection:
             return self._row(connection.execute(stmt))
+
+    def update_user(self, user_slug: str, payload: dict[str, Any]) -> None:
+        stmt = update(users_table).where(users_table.c.slug == user_slug).values(**payload)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def get_billing_customer(self, user_slug: str, provider: str = "stripe") -> dict[str, Any] | None:
+        stmt = select(billing_customers_table).where(
+            and_(
+                billing_customers_table.c.user_slug == user_slug,
+                billing_customers_table.c.provider == provider,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_billing_customer_by_provider_customer_id(
+        self,
+        provider_customer_id: str,
+        provider: str = "stripe",
+    ) -> dict[str, Any] | None:
+        stmt = select(billing_customers_table).where(
+            and_(
+                billing_customers_table.c.provider == provider,
+                billing_customers_table.c.provider_customer_id == provider_customer_id,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_billing_customer(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(billing_customers_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[billing_customers_table.c.user_slug, billing_customers_table.c.provider],
+            set_={
+                "provider_customer_id": stmt.excluded.provider_customer_id,
+                "email": stmt.excluded.email,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def get_billing_subscription(self, user_slug: str, provider: str = "stripe") -> dict[str, Any] | None:
+        stmt = select(billing_subscriptions_table).where(
+            and_(
+                billing_subscriptions_table.c.user_slug == user_slug,
+                billing_subscriptions_table.c.provider == provider,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_billing_subscription_by_provider_customer_id(
+        self,
+        provider_customer_id: str,
+        provider: str = "stripe",
+    ) -> dict[str, Any] | None:
+        stmt = select(billing_subscriptions_table).where(
+            and_(
+                billing_subscriptions_table.c.provider == provider,
+                billing_subscriptions_table.c.provider_customer_id == provider_customer_id,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_billing_subscription_by_provider_subscription_id(
+        self,
+        provider_subscription_id: str,
+        provider: str = "stripe",
+    ) -> dict[str, Any] | None:
+        stmt = select(billing_subscriptions_table).where(
+            and_(
+                billing_subscriptions_table.c.provider == provider,
+                billing_subscriptions_table.c.provider_subscription_id == provider_subscription_id,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_billing_subscription(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(billing_subscriptions_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[billing_subscriptions_table.c.user_slug, billing_subscriptions_table.c.provider],
+            set_={
+                "provider_customer_id": stmt.excluded.provider_customer_id,
+                "provider_subscription_id": stmt.excluded.provider_subscription_id,
+                "provider_checkout_session_id": stmt.excluded.provider_checkout_session_id,
+                "status": stmt.excluded.status,
+                "plan_key": stmt.excluded.plan_key,
+                "price_id": stmt.excluded.price_id,
+                "current_period_end": stmt.excluded.current_period_end,
+                "cancel_at_period_end": stmt.excluded.cancel_at_period_end,
+                "last_event_id": stmt.excluded.last_event_id,
+                "last_event_type": stmt.excluded.last_event_type,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def create_billing_event(self, payload: dict[str, Any]) -> bool:
+        stmt = self.database.upsert_insert(billing_events_table).values(**payload)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[billing_events_table.c.provider_event_id])
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return bool(result.rowcount)
+
+    def update_billing_event(self, provider_event_id: str, payload: dict[str, Any]) -> None:
+        stmt = update(billing_events_table).where(
+            billing_events_table.c.provider_event_id == provider_event_id
+        ).values(**payload)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
 
     def upsert_user_follows(self, follows: Iterable[dict[str, Any]]) -> None:
         follow_list = list(follows)

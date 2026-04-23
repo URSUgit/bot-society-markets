@@ -116,6 +116,8 @@ class Settings:
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     stripe_basic_price_id: str | None = None
+    stripe_pro_price_id: str | None = None
+    stripe_enterprise_price_id: str | None = None
     stripe_customer_portal_enabled: bool = False
     crypto_onramp_provider: CryptoOnrampProvider = "none"
     crypto_checkout_provider: CryptoCheckoutProvider = "none"
@@ -323,6 +325,8 @@ def get_settings() -> Settings:
         stripe_secret_key=os.getenv("BSM_STRIPE_SECRET_KEY") or None,
         stripe_webhook_secret=os.getenv("BSM_STRIPE_WEBHOOK_SECRET") or None,
         stripe_basic_price_id=os.getenv("BSM_STRIPE_BASIC_PRICE_ID") or None,
+        stripe_pro_price_id=os.getenv("BSM_STRIPE_PRO_PRICE_ID") or None,
+        stripe_enterprise_price_id=os.getenv("BSM_STRIPE_ENTERPRISE_PRICE_ID") or None,
         stripe_customer_portal_enabled=_env_bool("BSM_STRIPE_CUSTOMER_PORTAL_ENABLED", False),
         crypto_onramp_provider=crypto_onramp_provider,
         crypto_checkout_provider=crypto_checkout_provider,

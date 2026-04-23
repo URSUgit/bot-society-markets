@@ -20,6 +20,11 @@ from .models import (
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthSessionSnapshot,
+    BillingCheckoutSessionRequest,
+    BillingSessionLaunch,
+    BillingSnapshot,
+    BillingPortalSessionRequest,
+    BillingWebhookAck,
     BotDetail,
     BotSummary,
     CycleResult,
@@ -78,6 +83,22 @@ def _request_scheme(request: Request) -> str:
         if scheme in {"http", "https"}:
             return scheme
     return request.url.scheme.lower()
+
+
+def _request_authority(request: Request) -> str:
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_host:
+        return forwarded_host.split(",", 1)[0].strip()
+    host = request.headers.get("host")
+    if host:
+        return host.strip()
+    return request.url.netloc
+
+
+def _request_origin(request: Request, settings: Settings) -> str:
+    scheme = "https" if settings.force_https else _request_scheme(request)
+    host = settings.canonical_host or _request_authority(request)
+    return f"{scheme}://{host}"
 
 
 def _redirect_target(request: Request, *, scheme: str, host: str) -> str:
@@ -271,6 +292,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def me(request: Request) -> UserProfile:
         return get_service(request).get_user_profile(current_user_slug(request) or active_settings.default_user_slug)
 
+    @app.get("/api/me/billing", response_model=BillingSnapshot)
+    def me_billing(request: Request) -> BillingSnapshot:
+        return get_service(request).get_billing_snapshot(current_user_slug(request) or active_settings.default_user_slug)
+
+    @app.post("/api/me/billing/checkout-session", response_model=BillingSessionLaunch)
+    def billing_checkout_session(payload: BillingCheckoutSessionRequest, request: Request) -> BillingSessionLaunch:
+        return run_validated(
+            lambda: get_service(request).create_billing_checkout_session(
+                authenticated_user_slug(request),
+                payload,
+                base_url=_request_origin(request, active_settings),
+            )
+        )
+
+    @app.post("/api/me/billing/portal-session", response_model=BillingSessionLaunch)
+    def billing_portal_session(payload: BillingPortalSessionRequest, request: Request) -> BillingSessionLaunch:
+        return run_validated(
+            lambda: get_service(request).create_billing_portal_session(
+                authenticated_user_slug(request),
+                payload,
+                base_url=_request_origin(request, active_settings),
+            )
+        )
+
     @app.get("/api/me/alerts", response_model=AlertInbox)
     def alert_inbox(request: Request, unread_only: bool = False) -> AlertInbox:
         return get_service(request).get_alert_inbox(current_user_slug(request) or active_settings.default_user_slug, unread_only=unread_only)
@@ -385,6 +430,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/admin/retry-notifications", response_model=NotificationRetryResult)
     def retry_notifications(request: Request) -> NotificationRetryResult:
         return get_service(request).retry_failed_notifications()
+
+    @app.post("/api/webhooks/stripe", response_model=BillingWebhookAck)
+    async def stripe_webhook(request: Request) -> BillingWebhookAck:
+        body = await request.body()
+        return run_validated(
+            lambda: get_service(request).handle_stripe_webhook(
+                body,
+                request.headers.get("stripe-signature"),
+            )
+        )
 
     @app.get("/")
     def home() -> FileResponse:

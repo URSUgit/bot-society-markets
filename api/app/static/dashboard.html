@@ -303,6 +303,21 @@
               </form>
             </article>
           </div>
+          <div class="billing-control-grid">
+            <article class="workspace-card billing-workspace-card">
+              <div class="workspace-head">
+                <div>
+                  <h4>Workspace billing</h4>
+                  <p class="workspace-subtitle" id="billing-summary">Loading billing posture...</p>
+                </div>
+                <span class="status-pill" id="billing-status-badge">Loading</span>
+              </div>
+              <p class="panel-note">Hosted Stripe Checkout only. Card collection stays off your application servers, which is the right legal and operational posture for this stage.</p>
+              <div class="billing-plan-grid" id="billing-plan-grid"></div>
+              <ul class="launch-track-list billing-warning-list" id="billing-warning-list"></ul>
+              <div class="hero-actions compact-actions" id="billing-actions"></div>
+            </article>
+          </div>
         </article>
       </section>
 

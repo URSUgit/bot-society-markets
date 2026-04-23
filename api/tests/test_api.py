@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import hashlib
+import hmac
 from io import BytesIO
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 from unittest.mock import patch
 import zipfile
 
@@ -25,6 +29,14 @@ def build_client(settings: Settings | None = None):
         app = create_app(active_settings)
         with TestClient(app) as client:
             yield client
+
+
+def stripe_signature(secret: str, payload: dict[str, object], *, timestamp: int | None = None) -> tuple[str, bytes]:
+    active_timestamp = timestamp or int(time.time())
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signed_payload = f"{active_timestamp}.{payload_bytes.decode('utf-8')}".encode("utf-8")
+    digest = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+    return f"t={active_timestamp},v1={digest}", payload_bytes
 
 
 def test_healthcheck() -> None:
@@ -70,6 +82,7 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["paper_venues"]["recommended_venue_id"] == "polysandbox"
         assert payload["launch_readiness"]["tracks"]
         assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
+        assert "billing" in payload["user_profile"]
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
@@ -219,6 +232,140 @@ def test_auth_and_notification_channels_flow() -> None:
         notification_health = client.get("/api/me/notification-health")
         assert notification_health.status_code == 200
         assert notification_health.json()["active_channels"] == 1
+
+
+def test_stripe_billing_snapshot_checkout_and_portal_flow() -> None:
+    settings = Settings(
+        fiat_billing_provider="stripe",
+        stripe_publishable_key="pk_test_123",
+        stripe_secret_key="sk_test_123",
+        stripe_basic_price_id="price_basic_123",
+        stripe_customer_portal_enabled=True,
+    )
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Billing User",
+                "email": "billing@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        billing_response = client.get("/api/me/billing")
+        assert billing_response.status_code == 200
+        billing_payload = billing_response.json()
+        assert billing_payload["provider"] == "stripe"
+        assert billing_payload["checkout_ready"] is True
+        assert any(plan["key"] == "basic" and plan["configured"] for plan in billing_payload["available_plans"])
+
+        with patch(
+            "api.app.services.StripeClient.create_checkout_session",
+            return_value={
+                "id": "cs_test_123",
+                "url": "https://checkout.stripe.com/c/pay/cs_test_123",
+                "customer": "cus_test_123",
+                "subscription": "sub_test_123",
+            },
+        ):
+            checkout_response = client.post("/api/me/billing/checkout-session", json={"plan_key": "basic"})
+        assert checkout_response.status_code == 200
+        checkout_payload = checkout_response.json()
+        assert checkout_payload["url"].startswith("https://checkout.stripe.com/")
+        assert checkout_payload["plan_key"] == "basic"
+
+        billing_after_checkout = client.get("/api/me/billing")
+        assert billing_after_checkout.status_code == 200
+        billing_after_payload = billing_after_checkout.json()
+        assert billing_after_payload["customer_state"] == "linked"
+        assert billing_after_payload["subscription_status"] == "checkout_created"
+        assert billing_after_payload["portal_ready"] is True
+
+        with patch(
+            "api.app.services.StripeClient.create_customer_portal_session",
+            return_value={
+                "id": "bps_test_123",
+                "url": "https://billing.stripe.com/p/session/test_123",
+            },
+        ):
+            portal_response = client.post("/api/me/billing/portal-session", json={"return_path": "/dashboard"})
+        assert portal_response.status_code == 200
+        assert portal_response.json()["url"].startswith("https://billing.stripe.com/")
+
+
+def test_stripe_webhook_upgrades_workspace_and_deduplicates_events() -> None:
+    settings = Settings(
+        fiat_billing_provider="stripe",
+        stripe_publishable_key="pk_test_123",
+        stripe_secret_key="sk_test_123",
+        stripe_webhook_secret="whsec_test_123",
+        stripe_basic_price_id="price_basic_123",
+        stripe_pro_price_id="price_pro_123",
+        stripe_customer_portal_enabled=True,
+    )
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Webhook User",
+                "email": "webhook@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        event = {
+            "id": "evt_test_subscription_updated",
+            "type": "customer.subscription.updated",
+            "data": {
+                "object": {
+                    "id": "sub_test_pro",
+                    "customer": "cus_test_pro",
+                    "status": "active",
+                    "cancel_at_period_end": False,
+                    "current_period_end": int(time.time()) + 86400,
+                    "metadata": {
+                        "user_slug": user_slug,
+                        "plan_key": "pro",
+                    },
+                    "items": {
+                        "data": [
+                            {
+                                "price": {
+                                    "id": "price_pro_123",
+                                }
+                            }
+                        ]
+                    },
+                }
+            },
+        }
+        signature, body = stripe_signature(settings.stripe_webhook_secret or "", event)
+        webhook_response = client.post(
+            "/api/webhooks/stripe",
+            content=body,
+            headers={"stripe-signature": signature},
+        )
+        assert webhook_response.status_code == 200
+        assert webhook_response.json()["event_type"] == "customer.subscription.updated"
+        assert webhook_response.json()["duplicate"] is False
+
+        duplicate_response = client.post(
+            "/api/webhooks/stripe",
+            content=body,
+            headers={"stripe-signature": signature},
+        )
+        assert duplicate_response.status_code == 200
+        assert duplicate_response.json()["duplicate"] is True
+
+        me_response = client.get("/api/me")
+        assert me_response.status_code == 200
+        me_payload = me_response.json()
+        assert me_payload["tier"] == "pro"
+        assert me_payload["billing"]["plan_key"] == "pro"
+        assert me_payload["billing"]["has_active_subscription"] is True
 
 
 def test_demo_workspace_is_read_only_for_mutations() -> None:

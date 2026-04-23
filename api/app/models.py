@@ -13,6 +13,7 @@ SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "br
 SimulationHistorySourceMode = Literal["auto", "real", "local"]
 PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
 LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
+BillingPlanKey = Literal["basic", "pro", "enterprise"]
 
 
 class Summary(BaseModel):
@@ -582,6 +583,81 @@ class NotificationRetryResult(BaseModel):
     exhausted: int = Field(ge=0)
 
 
+class BillingPlanView(BaseModel):
+    key: BillingPlanKey
+    label: str
+    headline: str
+    price_id: str | None = None
+    configured: bool = False
+    recommended: bool = False
+    features: list[str] = Field(default_factory=list)
+
+
+class BillingSnapshot(BaseModel):
+    provider: str
+    configured: bool = False
+    checkout_ready: bool = False
+    portal_ready: bool = False
+    can_manage: bool = False
+    tier: str
+    summary: str
+    warnings: list[str] = Field(default_factory=list)
+    available_plans: list[BillingPlanView] = Field(default_factory=list)
+    publishable_key: str | None = None
+    contact_email: str | None = None
+    customer_state: str = "none"
+    subscription_status: str | None = None
+    plan_key: BillingPlanKey | None = None
+    plan_label: str | None = None
+    current_period_end: str | None = None
+    cancel_at_period_end: bool = False
+    has_active_subscription: bool = False
+    last_event_type: str | None = None
+    provider_customer_id: str | None = None
+    provider_subscription_id: str | None = None
+
+
+class BillingCheckoutSessionRequest(BaseModel):
+    plan_key: BillingPlanKey = "basic"
+    success_path: str = "/dashboard?billing=success"
+    cancel_path: str = "/dashboard?billing=cancelled"
+
+    @model_validator(mode="after")
+    def validate_paths(self) -> "BillingCheckoutSessionRequest":
+        self.success_path = self.success_path.strip() or "/dashboard?billing=success"
+        self.cancel_path = self.cancel_path.strip() or "/dashboard?billing=cancelled"
+        if not self.success_path.startswith("/"):
+            raise ValueError("success_path must start with /")
+        if not self.cancel_path.startswith("/"):
+            raise ValueError("cancel_path must start with /")
+        return self
+
+
+class BillingPortalSessionRequest(BaseModel):
+    return_path: str = "/dashboard#account-section"
+
+    @model_validator(mode="after")
+    def validate_return_path(self) -> "BillingPortalSessionRequest":
+        self.return_path = self.return_path.strip() or "/dashboard#account-section"
+        if not self.return_path.startswith("/"):
+            raise ValueError("return_path must start with /")
+        return self
+
+
+class BillingSessionLaunch(BaseModel):
+    provider: str
+    url: str
+    session_id: str | None = None
+    plan_key: BillingPlanKey | None = None
+
+
+class BillingWebhookAck(BaseModel):
+    received: bool = True
+    duplicate: bool = False
+    event_type: str | None = None
+    status: str = "processed"
+
+
 class LaunchReadinessTrack(BaseModel):
     key: str
     label: str
@@ -730,6 +806,7 @@ class UserProfile(BaseModel):
     email: str
     tier: str
     is_demo_user: bool = False
+    billing: BillingSnapshot | None = None
     follows: list[FollowedBot]
     watchlist: list[WatchlistItem]
     alert_rules: list[AlertRule]

@@ -174,6 +174,56 @@ users_table = Table(
     Column("is_demo_user", Boolean, nullable=False, default=False, server_default=text("false")),
 )
 
+billing_customers_table = Table(
+    "billing_customers",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("provider", String(32), nullable=False),
+    Column("provider_customer_id", String(255), nullable=False, unique=True),
+    Column("email", String(320)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "provider", name="uq_billing_customers_user_provider"),
+)
+
+billing_subscriptions_table = Table(
+    "billing_subscriptions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("provider", String(32), nullable=False),
+    Column("provider_customer_id", String(255)),
+    Column("provider_subscription_id", String(255), unique=True),
+    Column("provider_checkout_session_id", String(255)),
+    Column("status", String(64), nullable=False),
+    Column("plan_key", String(32)),
+    Column("price_id", String(255)),
+    Column("current_period_end", String(64)),
+    Column("cancel_at_period_end", Boolean, nullable=False, default=False, server_default=text("false")),
+    Column("last_event_id", String(255)),
+    Column("last_event_type", String(255)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "provider", name="uq_billing_subscriptions_user_provider"),
+)
+
+billing_events_table = Table(
+    "billing_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("provider", String(32), nullable=False),
+    Column("provider_event_id", String(255), nullable=False, unique=True),
+    Column("event_type", String(255), nullable=False),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="SET NULL")),
+    Column("provider_customer_id", String(255)),
+    Column("provider_subscription_id", String(255)),
+    Column("status", String(32), nullable=False),
+    Column("payload_json", Text, nullable=False),
+    Column("received_at", String(64), nullable=False),
+    Column("processed_at", String(64)),
+)
+
 user_sessions_table = Table(
     "user_sessions",
     metadata,
@@ -269,6 +319,18 @@ Index("idx_predictions_published_at", predictions_table.c.published_at.desc())
 Index("idx_predictions_status", predictions_table.c.status, predictions_table.c.published_at.desc())
 Index("idx_paper_positions_user_status_opened", paper_positions_table.c.user_slug, paper_positions_table.c.status, paper_positions_table.c.opened_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
+Index("idx_billing_customers_user_provider", billing_customers_table.c.user_slug, billing_customers_table.c.provider)
+Index(
+    "idx_billing_subscriptions_user_provider",
+    billing_subscriptions_table.c.user_slug,
+    billing_subscriptions_table.c.provider,
+)
+Index(
+    "idx_billing_events_provider_status_received",
+    billing_events_table.c.provider,
+    billing_events_table.c.status,
+    billing_events_table.c.received_at.desc(),
+)
 Index("idx_alert_rules_user", alert_rules_table.c.user_slug, alert_rules_table.c.created_at.desc())
 Index("idx_notification_channels_user", notification_channels_table.c.user_slug, notification_channels_table.c.created_at.desc())
 Index("idx_alert_delivery_events_user", alert_delivery_events_table.c.user_slug, alert_delivery_events_table.c.created_at.desc())

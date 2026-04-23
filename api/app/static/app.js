@@ -256,6 +256,16 @@ function setStatus(message) {
   }
 }
 
+function applyBillingQueryStatus() {
+  const params = new URLSearchParams(window.location.search);
+  const billingState = params.get("billing");
+  if (billingState === "success") {
+    setStatus("Billing returned from Stripe successfully. Refreshing workspace entitlements.");
+  } else if (billingState === "cancelled") {
+    setStatus("Stripe checkout was cancelled. Your workspace remains unchanged.");
+  }
+}
+
 function setLiveBadge(label, variant = "neutral") {
   const badge = document.getElementById("live-badge");
   if (!badge) {
@@ -2020,6 +2030,81 @@ function renderAuthPanel(authSession, profile) {
   registerCard.hidden = false;
 }
 
+function renderBillingPanel(billing, authSession) {
+  const badge = document.getElementById("billing-status-badge");
+  const summary = document.getElementById("billing-summary");
+  const planGrid = document.getElementById("billing-plan-grid");
+  const actions = document.getElementById("billing-actions");
+  const warningList = document.getElementById("billing-warning-list");
+
+  if (!badge || !summary || !planGrid || !actions || !warningList || !billing) {
+    return;
+  }
+
+  const signedIn = Boolean(authSession?.authenticated && authSession?.user);
+  const variant = billing.has_active_subscription ? "positive" : (billing.checkout_ready ? "warning" : "neutral");
+  const statusLabel = billing.has_active_subscription
+    ? `${billing.plan_label || "Paid"} active`
+    : (billing.checkout_ready ? "Checkout ready" : (signedIn ? "Needs setup" : "Sign in required"));
+
+  badge.textContent = statusLabel;
+  badge.dataset.variant = variant;
+
+  const subscriptionMeta = [];
+  if (billing.subscription_status) {
+    subscriptionMeta.push(`status ${billing.subscription_status}`);
+  }
+  if (billing.current_period_end) {
+    subscriptionMeta.push(`renews ${fmtDateTime(billing.current_period_end)}`);
+  }
+  if (billing.cancel_at_period_end) {
+    subscriptionMeta.push("set to cancel at period end");
+  }
+  summary.textContent = subscriptionMeta.length ? `${billing.summary} ${subscriptionMeta.join(" · ")}.` : billing.summary;
+
+  planGrid.innerHTML = (billing.available_plans || []).map((plan) => {
+    const currentPlan = billing.plan_key === plan.key;
+    const actionLabel = currentPlan && billing.has_active_subscription
+      ? "Active plan"
+      : (plan.configured ? `Choose ${plan.label}` : "Pending setup");
+    return `
+      <article class="billing-plan-card ${plan.configured ? "is-configured" : ""} ${currentPlan ? "is-current" : ""}">
+        <div class="workspace-head">
+          <div>
+            <h5>${plan.label}${plan.recommended ? " · Recommended" : ""}</h5>
+            <p class="panel-note">${plan.headline}</p>
+          </div>
+          <span class="badge">${plan.configured ? "Configured" : "Waiting"}</span>
+        </div>
+        <ul class="launch-track-list billing-feature-list">
+          ${(plan.features || []).map((feature) => `<li>${feature}</li>`).join("")}
+        </ul>
+        <button
+          class="button tertiary small-button"
+          type="button"
+          data-action="start-checkout"
+          data-plan-key="${plan.key}"
+          ${disabledAttr(!billing.can_manage || !billing.checkout_ready || !plan.configured || (currentPlan && billing.has_active_subscription))}
+        >
+          ${actionLabel}
+        </button>
+      </article>
+    `;
+  }).join("");
+
+  warningList.innerHTML = (billing.warnings || []).map((warning) => `<li>${warning}</li>`).join("")
+    || "<li>No billing blockers are recorded right now.</li>";
+
+  actions.innerHTML = `
+    <button class="button primary" type="button" data-action="start-checkout" data-plan-key="${billing.available_plans?.find((plan) => plan.recommended && plan.configured)?.key || "basic"}" ${disabledAttr(!billing.can_manage || !billing.checkout_ready)}>
+      ${billing.has_active_subscription ? "Change Plan" : "Launch Checkout"}
+    </button>
+    <button class="button secondary" type="button" data-action="open-billing-portal" ${disabledAttr(!billing.can_manage || !billing.portal_ready)}>
+      Open Billing Portal
+    </button>
+  `;
+}
+
 function renderNotificationChannels(profile, notificationHealth) {
   const list = document.getElementById("notification-channel-list");
   const badge = document.getElementById("channel-count-badge");
@@ -2215,6 +2300,7 @@ async function loadDashboard(options = {}) {
     renderPredictions(snapshot.recent_predictions);
     renderSignals(snapshot.recent_signals);
     renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
+    renderBillingPanel(snapshot.user_profile?.billing, snapshot.auth_session);
     renderNotificationHealth(snapshot.notification_health);
     renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
     applyWorkspaceMode(snapshot);
@@ -2230,6 +2316,7 @@ async function loadDashboard(options = {}) {
     if (!options.silent) {
       setStatus(`Dashboard synced ${fmtRelativeTime(lastDashboardRefreshAt)}. ${snapshot.summary.pending_predictions} predictions are still waiting for score windows.`);
     }
+    applyBillingQueryStatus();
   } finally {
     dashboardLoadInFlight = false;
   }
@@ -2381,6 +2468,28 @@ async function addNotificationChannel(channelType, target, secret) {
 async function deleteNotificationChannel(channelId) {
   await fetchJson(`/api/me/notification-channels/${channelId}`, { method: "DELETE" });
   await loadDashboard();
+}
+
+async function startBillingCheckout(planKey) {
+  const payload = await fetchJson("/api/me/billing/checkout-session", {
+    method: "POST",
+    body: JSON.stringify({
+      plan_key: planKey || "basic",
+      success_path: "/dashboard?billing=success",
+      cancel_path: "/dashboard?billing=cancelled",
+    }),
+  });
+  window.location.assign(payload.url);
+}
+
+async function openBillingPortal() {
+  const payload = await fetchJson("/api/me/billing/portal-session", {
+    method: "POST",
+    body: JSON.stringify({
+      return_path: "/dashboard#account-section",
+    }),
+  });
+  window.location.assign(payload.url);
 }
 
 async function loginUser(email, password) {
@@ -2658,6 +2767,20 @@ function bindInteractions() {
       }
       if (action === "logout") {
         await logoutUser();
+        return;
+      }
+      if (action === "start-checkout") {
+        if (!requireEditable()) {
+          return;
+        }
+        await startBillingCheckout(target.dataset.planKey || "basic");
+        return;
+      }
+      if (action === "open-billing-portal") {
+        if (!requireEditable()) {
+          return;
+        }
+        await openBillingPortal();
         return;
       }
     } catch (error) {
