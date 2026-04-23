@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -68,6 +67,10 @@ class Settings:
     environment_name: str = "development"
     deployment_target: str = "local"
     site_home_page: SiteHomePage = "landing"
+    canonical_host: str | None = None
+    canonical_redirect_hosts: tuple[str, ...] = ()
+    force_https: bool = False
+    secure_session_cookie: bool | None = None
     database_path: Path = field(default_factory=_default_database_path)
     export_artifacts_dir: Path = field(default_factory=_default_export_artifacts_dir)
     database_url: str | None = None
@@ -137,6 +140,19 @@ class Settings:
     simulation_live_history: bool = True
     simulation_cache_hours: int = 12
 
+    def __post_init__(self) -> None:
+        canonical_host = self.canonical_host.strip().lower() if self.canonical_host else None
+        redirect_hosts = tuple(
+            host
+            for host in dict.fromkeys(host.strip().lower() for host in self.canonical_redirect_hosts if host.strip())
+            if host and host != canonical_host
+        )
+        secure_session_cookie = self.force_https if self.secure_session_cookie is None else self.secure_session_cookie
+
+        object.__setattr__(self, "canonical_host", canonical_host)
+        object.__setattr__(self, "canonical_redirect_hosts", redirect_hosts)
+        object.__setattr__(self, "secure_session_cookie", secure_session_cookie)
+
 
 def _split_csv_env(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
@@ -150,6 +166,9 @@ def get_settings() -> Settings:
     database_path = Path(os.getenv("BSM_DATABASE_PATH", str(_default_database_path())))
     database_url = os.getenv("BSM_DATABASE_URL") or None
     seed_demo_data = _env_bool("BSM_SEED_DEMO_DATA", True)
+    force_https = _env_bool("BSM_FORCE_HTTPS", False)
+    secure_session_cookie_env = os.getenv("BSM_SECURE_SESSION_COOKIE")
+    secure_session_cookie = None if secure_session_cookie_env is None else _env_bool("BSM_SECURE_SESSION_COOKIE", False)
 
     market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", "demo").lower()
     if market_provider_mode not in {"demo", "coingecko", "hyperliquid"}:
@@ -184,6 +203,8 @@ def get_settings() -> Settings:
     site_home_page = os.getenv("BSM_SITE_HOME_PAGE", "landing").lower()
     if site_home_page not in {"landing", "dashboard"}:
         site_home_page = "landing"
+    canonical_host = os.getenv("BSM_CANONICAL_HOST") or None
+    canonical_redirect_hosts = _split_csv_env(os.getenv("BSM_CANONICAL_REDIRECT_HOSTS", ""))
 
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
@@ -212,6 +233,10 @@ def get_settings() -> Settings:
         environment_name=os.getenv("BSM_ENVIRONMENT_NAME", "development"),
         deployment_target=os.getenv("BSM_DEPLOYMENT_TARGET", "local"),
         site_home_page=site_home_page,
+        canonical_host=canonical_host,
+        canonical_redirect_hosts=canonical_redirect_hosts,
+        force_https=force_https,
+        secure_session_cookie=secure_session_cookie,
         database_path=database_path,
         export_artifacts_dir=export_artifacts_dir,
         database_url=database_url,

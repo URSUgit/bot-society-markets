@@ -18,6 +18,9 @@ services:
       - BSM_ENVIRONMENT_NAME=production
       - BSM_DEPLOYMENT_TARGET=akash
       - BSM_SITE_HOME_PAGE=dashboard
+      - BSM_CANONICAL_HOST=app.bitprivat.com
+      - BSM_CANONICAL_REDIRECT_HOSTS=bitprivat.com,www.bitprivat.com
+      - BSM_FORCE_HTTPS=true
       - BSM_DATABASE_PATH=/tmp/BotSocietyMarkets/bot_society_markets.db
       - BSM_SEED_DEMO_DATA=true
       - BSM_MARKET_PROVIDER=demo
@@ -30,6 +33,8 @@ services:
         as: 80
         accept:
           - app.bitprivat.com
+          - bitprivat.com
+          - www.bitprivat.com
         to:
           - global: true
         http_options:

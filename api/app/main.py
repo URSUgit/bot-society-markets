@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -54,6 +55,37 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
 
+def _request_host(request: Request) -> str:
+    forwarded_host = request.headers.get("x-forwarded-host")
+    raw_host = forwarded_host.split(",", 1)[0].strip() if forwarded_host else request.headers.get("host", "")
+    return raw_host.split(":", 1)[0].strip().lower()
+
+
+def _request_scheme(request: Request) -> str:
+    cf_visitor = request.headers.get("cf-visitor")
+    if cf_visitor:
+        try:
+            visitor_payload = json.loads(cf_visitor)
+        except json.JSONDecodeError:
+            visitor_payload = {}
+        scheme = str(visitor_payload.get("scheme", "")).strip().lower()
+        if scheme in {"http", "https"}:
+            return scheme
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        scheme = forwarded_proto.split(",", 1)[0].strip().lower()
+        if scheme in {"http", "https"}:
+            return scheme
+    return request.url.scheme.lower()
+
+
+def _redirect_target(request: Request, *, scheme: str, host: str) -> str:
+    path = request.url.path or "/"
+    query = request.url.query
+    suffix = f"?{query}" if query else ""
+    return f"{scheme}://{host}{path}{suffix}"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
     database = Database(path=active_settings.database_path, url=active_settings.database_url)
@@ -82,6 +114,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def enforce_public_routing(request: Request, call_next):
+        request_host = _request_host(request)
+        request_scheme = _request_scheme(request)
+        public_hosts = {
+            host
+            for host in (active_settings.canonical_host, *active_settings.canonical_redirect_hosts)
+            if host
+        }
+        if request_host in public_hosts:
+            target_host = active_settings.canonical_host if request_host in active_settings.canonical_redirect_hosts and active_settings.canonical_host else request_host
+            target_scheme = "https" if active_settings.force_https else request_scheme
+            if target_host != request_host or target_scheme != request_scheme:
+                return RedirectResponse(
+                    url=_redirect_target(request, scheme=target_scheme, host=target_host),
+                    status_code=308,
+                )
+
+        response = await call_next(request)
+        if active_settings.force_https:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        return response
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     def get_service(request: Request) -> BotSocietyService:
@@ -105,6 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             value=token,
             httponly=True,
             samesite="lax",
+            secure=bool(active_settings.secure_session_cookie),
             max_age=active_settings.session_ttl_hours * 3600,
         )
 

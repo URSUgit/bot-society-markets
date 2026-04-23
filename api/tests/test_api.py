@@ -612,6 +612,50 @@ def test_home_route_can_open_dashboard_for_custom_domain() -> None:
         assert "Enter a bot society" in landing_response.text
 
 
+def test_canonical_host_redirects_root_domain_to_https_app_domain() -> None:
+    settings = Settings(
+        site_home_page="dashboard",
+        canonical_host="app.bitprivat.com",
+        canonical_redirect_hosts=("bitprivat.com", "www.bitprivat.com"),
+        force_https=True,
+    )
+    with build_client(settings) as client:
+        response = client.get(
+            "/dashboard?view=live",
+            headers={"host": "bitprivat.com", "x-forwarded-proto": "http"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 308
+        assert response.headers["location"] == "https://app.bitprivat.com/dashboard?view=live"
+
+
+def test_force_https_redirects_canonical_host_and_sets_secure_cookie() -> None:
+    settings = Settings(
+        canonical_host="app.bitprivat.com",
+        force_https=True,
+    )
+    with build_client(settings) as client:
+        redirect_response = client.get(
+            "/",
+            headers={"host": "app.bitprivat.com", "x-forwarded-proto": "http"},
+            follow_redirects=False,
+        )
+        assert redirect_response.status_code == 308
+        assert redirect_response.headers["location"] == "https://app.bitprivat.com/"
+
+        register_response = client.post(
+            "/api/auth/register",
+            headers={"host": "app.bitprivat.com", "x-forwarded-proto": "https"},
+            json={
+                "display_name": "Secure User",
+                "email": "secure@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        assert "secure" in register_response.headers["set-cookie"].lower()
+
+
 def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
     with build_client() as client:
         response = client.get("/api/signals", params={"limit": 12})
