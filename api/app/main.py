@@ -45,6 +45,7 @@ from .models import (
     PaperTradingSnapshot,
     PaperVenuesSnapshot,
     PredictionView,
+    ProductionCutoverEnvelope,
     ProviderStatusEnvelope,
     SignalView,
     SimulationConfig,
@@ -425,6 +426,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def infrastructure_readiness(request: Request) -> InfrastructureReadinessEnvelope:
         return InfrastructureReadinessEnvelope(
             infrastructure_readiness=get_service(request).get_infrastructure_readiness()
+        )
+
+    @app.get("/api/system/production-cutover", response_model=ProductionCutoverEnvelope)
+    def production_cutover(request: Request) -> ProductionCutoverEnvelope:
+        return ProductionCutoverEnvelope(
+            production_cutover=get_service(request).get_production_cutover()
         )
 
     @app.post("/api/admin/run-cycle", response_model=CycleResult)

@@ -14,10 +14,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+configured_url = config.get_main_option("sqlalchemy.url")
 settings = get_settings()
-database_url = settings.database_url
-if not database_url:
-    database_url = f"sqlite:///{settings.database_path.resolve().as_posix()}"
+
+if configured_url and configured_url != "sqlite:///api/data/bot_society_markets.db":
+    database_url = configured_url
+else:
+    database_url = settings.database_url
+    if not database_url:
+        database_url = f"sqlite:///{settings.database_path.resolve().as_posix()}"
+
 config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = metadata

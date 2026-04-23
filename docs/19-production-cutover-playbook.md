@@ -117,12 +117,23 @@ The preview Akash deployment currently uses SQLite inside the container. That is
 The repo already includes a database copy operation:
 
 ```powershell
+python -m api.app.jobs db-backup `
+  --source-path path\to\source.db
+```
+
+```powershell
 python -m api.app.jobs db-copy `
   --source-path path\\to\\source.db `
   --target-url "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
 ```
 
 This is ideal for local-to-Postgres promotion or controlled exports. For Akash preview SQLite running inside a live container, treat the preview data as disposable unless you have a deliberate export path from the provider environment.
+
+You can also print the operator checklist directly from the app tooling:
+
+```powershell
+python -m api.app.jobs cutover-report
+```
 
 ## Operational Recommendation
 

@@ -6,7 +6,10 @@ import hmac
 from io import BytesIO
 import json
 from pathlib import Path
+import sqlite3
+import shutil
 from tempfile import TemporaryDirectory
+import tempfile
 import time
 from unittest.mock import patch
 import zipfile
@@ -14,6 +17,8 @@ import zipfile
 from fastapi.testclient import TestClient
 
 from api.app.config import Settings
+from api.app.database import Database
+from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.main import create_app
 
 
@@ -84,6 +89,7 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
         assert payload["connector_control"]["connectors"]
         assert payload["infrastructure_readiness"]["tasks"]
+        assert payload["production_cutover"]["steps"]
         assert "billing" in payload["user_profile"]
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
@@ -127,6 +133,14 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert infrastructure_payload["production_posture"] == "attention"
         assert any(task["key"] == "managed_database" for task in infrastructure_payload["tasks"])
 
+        cutover_response = client.get("/api/system/production-cutover")
+        assert cutover_response.status_code == 200
+        cutover_payload = cutover_response.json()["production_cutover"]
+        assert cutover_payload["current_backend"] == "sqlite"
+        assert cutover_payload["target_backend"] == "postgresql"
+        assert any(step["key"] == "generate_manifest" for step in cutover_payload["steps"])
+        assert cutover_payload["verification_urls"]
+
 
 def test_public_legal_pages_are_served() -> None:
     with build_client() as client:
@@ -141,6 +155,46 @@ def test_public_legal_pages_are_served() -> None:
         risk_response = client.get("/risk")
         assert risk_response.status_code == 200
         assert "market, model, and platform risk all remain real" in risk_response.text.lower()
+
+
+def test_sqlite_backup_helper_creates_portable_copy() -> None:
+    temp_root = Path(tempfile.mkdtemp())
+    try:
+        source_path = temp_root / "source.db"
+        with sqlite3.connect(source_path) as connection:
+            connection.execute("create table sample (id integer primary key, label text)")
+            connection.execute("insert into sample (label) values (?)", ("bot-society",))
+            connection.commit()
+
+        summary = backup_sqlite_database(source_path, backup_dir=temp_root / "backups")
+        assert summary.backup_path.exists()
+        assert summary.size_bytes > 0
+
+        with sqlite3.connect(summary.backup_path) as backup_connection:
+            row = backup_connection.execute("select label from sample limit 1").fetchone()
+        assert row[0] == "bot-society"
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def test_database_copy_tolerates_older_source_schema() -> None:
+    temp_root = Path(tempfile.mkdtemp())
+    try:
+        source_path = temp_root / "legacy.db"
+        target_path = temp_root / "target.db"
+        with sqlite3.connect(source_path) as connection:
+            connection.execute("create table users (slug text primary key, display_name text, email text, tier text, created_at text, password_hash text, is_active integer, is_demo_user integer)")
+            connection.execute("insert into users values (?, ?, ?, ?, ?, ?, ?, ?)", ("legacy-user", "Legacy User", "legacy@example.com", "starter", "2026-04-23T00:00:00Z", "", 1, 0))
+            connection.execute("create table alembic_version (version_num text not null)")
+            connection.execute("insert into alembic_version values (?)", ("legacy",))
+            connection.commit()
+
+        summary = copy_database(Database(path=source_path), Database(path=target_path))
+        assert summary.copied_rows["users"] == 1
+        assert "billing_customers" in summary.copied_rows
+        assert summary.copied_rows["billing_customers"] == 0
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def test_user_workspace_mutations() -> None:

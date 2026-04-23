@@ -700,6 +700,26 @@ class InfrastructureReadinessSnapshot(BaseModel):
     tasks: list[InfrastructureTask] = Field(default_factory=list)
 
 
+class ProductionCutoverStep(BaseModel):
+    key: str
+    label: str
+    state: InfrastructureTaskState
+    detail: str
+    command: str | None = None
+
+
+class ProductionCutoverSnapshot(BaseModel):
+    generated_at: str
+    posture: InfrastructureTaskState
+    current_backend: str
+    current_target: str
+    target_backend: str
+    summary: str
+    source_data_note: str
+    verification_urls: list[str] = Field(default_factory=list)
+    steps: list[ProductionCutoverStep] = Field(default_factory=list)
+
+
 class LaunchReadinessTrack(BaseModel):
     key: str
     label: str
@@ -739,6 +759,7 @@ class DashboardSnapshot(BaseModel):
     launch_readiness: LaunchReadinessSnapshot
     connector_control: ConnectorControlSnapshot
     infrastructure_readiness: InfrastructureReadinessSnapshot
+    production_cutover: ProductionCutoverSnapshot
 
 
 class LandingSnapshot(BaseModel):
@@ -877,3 +898,7 @@ class ConnectorControlEnvelope(BaseModel):
 
 class InfrastructureReadinessEnvelope(BaseModel):
     infrastructure_readiness: InfrastructureReadinessSnapshot
+
+
+class ProductionCutoverEnvelope(BaseModel):
+    production_cutover: ProductionCutoverSnapshot

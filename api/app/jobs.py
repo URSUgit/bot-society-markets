@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import get_settings
 from .database import Database
-from .db_ops import copy_database, upgrade_database
+from .db_ops import backup_sqlite_database, copy_database, upgrade_database
 from .services import BotSocietyService
 from .worker import PipelineWorker
 
@@ -42,6 +42,8 @@ def main() -> None:
             "notification-health",
             "db-upgrade",
             "db-copy",
+            "db-backup",
+            "cutover-report",
         ],
     )
     parser.add_argument("--interval-seconds", type=int, default=None)
@@ -53,6 +55,7 @@ def main() -> None:
     parser.add_argument("--target-url", type=str, default=None)
     parser.add_argument("--source-path", type=str, default=None)
     parser.add_argument("--target-path", type=str, default=None)
+    parser.add_argument("--backup-dir", type=str, default=None)
     parser.add_argument("--no-truncate-target", action="store_true")
     parser.add_argument("--probe-live", action="store_true")
     args = parser.parse_args()
@@ -80,6 +83,19 @@ def main() -> None:
         )
         for table_name, count in summary.copied_rows.items():
             print(f"  {table_name}: {count}")
+        return
+
+    if args.command == "db-backup":
+        settings = get_settings()
+        source_path = Path(args.source_path) if args.source_path else settings.database_path
+        summary = backup_sqlite_database(
+            source_path,
+            backup_dir=Path(args.backup_dir) if args.backup_dir else None,
+        )
+        print(
+            f"Backed up SQLite database from {summary.source_path} to {summary.backup_path} "
+            f"({summary.size_bytes} bytes)."
+        )
         return
 
     service = build_service()
@@ -148,6 +164,24 @@ def main() -> None:
                 f"  channel={channel.channel_type}:{channel.target} delivered={channel.delivered_count} "
                 f"retry_scheduled={channel.retry_scheduled_count} exhausted={channel.exhausted_count}"
             )
+        return
+
+    if args.command == "cutover-report":
+        report = service.get_production_cutover()
+        print(
+            f"posture={report.posture} current_backend={report.current_backend} "
+            f"current_target={report.current_target} target_backend={report.target_backend}"
+        )
+        print(report.summary)
+        print(report.source_data_note)
+        for step in report.steps:
+            print(f"[{step.state}] {step.label}: {step.detail}")
+            if step.command:
+                print(f"  command: {step.command}")
+        if report.verification_urls:
+            print("verify:")
+            for url in report.verification_urls:
+                print(f"  {url}")
         return
 
     if args.command == "worker":

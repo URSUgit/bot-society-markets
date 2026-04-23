@@ -493,6 +493,40 @@ function renderInfrastructureReadiness(infrastructureReadiness) {
   `).join("");
 }
 
+function renderProductionCutover(productionCutover) {
+  const summary = document.getElementById("cutover-summary");
+  const sourceNote = document.getElementById("cutover-source-note");
+  const badge = document.getElementById("cutover-badge");
+  const grid = document.getElementById("cutover-step-grid");
+  if (!summary || !sourceNote || !badge || !grid || !productionCutover) {
+    return;
+  }
+
+  summary.textContent = productionCutover.summary;
+  sourceNote.textContent = productionCutover.source_data_note;
+  badge.textContent = productionCutover.posture === "ready" ? "Cutover complete" : "Cutover pending";
+  badge.dataset.variant = productionCutover.posture === "ready" ? "positive" : "warning";
+
+  grid.innerHTML = (productionCutover.steps || []).map((step) => {
+    const command = step.command
+      ? `<pre class="cutover-command"><code>${step.command}</code></pre>`
+      : "";
+    return `
+      <article class="cutover-step-card cutover-${step.state}">
+        <div class="connector-head">
+          <div>
+            <p class="eyebrow">Cutover step</p>
+            <h4>${step.label}</h4>
+          </div>
+          <span class="status-pill" data-variant="${step.state === "ready" ? "positive" : (step.state === "planned" ? "neutral" : "warning")}">${step.state === "ready" ? "Ready" : (step.state === "planned" ? "Planned" : "Attention")}</span>
+        </div>
+        <p>${step.detail}</p>
+        ${command}
+      </article>
+    `;
+  }).join("");
+}
+
 function renderMarketTape(assets) {
   const track = document.getElementById("market-tape-track");
   if (!track) {
@@ -2388,6 +2422,7 @@ async function loadDashboard(options = {}) {
     renderLaunchReadiness(snapshot.launch_readiness);
     renderConnectorControl(snapshot.connector_control);
     renderInfrastructureReadiness(snapshot.infrastructure_readiness);
+    renderProductionCutover(snapshot.production_cutover);
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);

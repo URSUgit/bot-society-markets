@@ -97,6 +97,7 @@ Included today:
 - commercialization readiness tracking for fiat billing, crypto onboarding, API connectors, dashboard redesign, desktop packaging, and legal workstreams
 - hosted Stripe billing foundations with subscription state, checkout session launch, customer portal launch, and signed webhook processing
 - connector command and infrastructure-readiness surfaces inside the dashboard for production cutover planning
+- a production cutover board with SQLite backup, Neon migration, Akash manifest generation, and verification guidance
 - public legal pages for Terms of Service, Privacy Policy, and Risk Disclosure inside the hosted product
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 
@@ -133,6 +134,7 @@ Key endpoints include:
 - `GET /api/system/launch-readiness`
 - `GET /api/system/connectors`
 - `GET /api/system/infrastructure`
+- `GET /api/system/production-cutover`
 - `POST /api/me/billing/checkout-session`
 - `POST /api/me/billing/portal-session`
 - `POST /api/webhooks/stripe`
@@ -198,6 +200,8 @@ python -m api.app.jobs run-cycle
 python -m api.app.jobs retry-notifications
 python -m api.app.jobs notification-health
 python -m api.app.jobs db-upgrade
+python -m api.app.jobs db-backup
+python -m api.app.jobs cutover-report
 python -m api.app.jobs worker --cycles 1 --interval-seconds 300
 ```
 

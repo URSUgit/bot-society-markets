@@ -66,6 +66,8 @@ from .models import (
     PredictionView,
     ProviderComponentStatus,
     ProviderStatus,
+    ProductionCutoverSnapshot,
+    ProductionCutoverStep,
     SignalView,
     SignalMixItem,
     SimulationConfig,
@@ -1968,6 +1970,138 @@ class BotSocietyService:
             tasks=tasks,
         )
 
+    def get_production_cutover(self) -> ProductionCutoverSnapshot:
+        provider_status = self.get_provider_status()
+        current_backend = provider_status.database_backend
+        current_target = provider_status.database_target
+        source_path = str(self.settings.database_path)
+        canonical_host = self.settings.canonical_host or "app.bitprivat.com"
+        root_domain = (
+            self.settings.canonical_redirect_hosts[0]
+            if self.settings.canonical_redirect_hosts
+            else ".".join(canonical_host.split(".")[-2:])
+        )
+        database_placeholder = "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+        backup_command = f'python -m api.app.jobs db-backup --source-path "{source_path}"'
+        copy_command = (
+            f'python -m api.app.jobs db-copy --source-path "{source_path}" '
+            f'--target-url "{database_placeholder}"'
+        )
+        manifest_command = (
+            f'.\\deploy\\akash\\prepare-bitprivat-neon.ps1 -DatabaseUrl "{database_placeholder}" '
+            f'-CanonicalHost "{canonical_host}" -RootDomain "{root_domain}"'
+        )
+
+        using_postgres = current_backend == "postgresql"
+        hosted_sqlite_preview = (
+            current_backend == "sqlite"
+            and self.settings.deployment_target == "akash"
+            and str(self.settings.database_path).startswith("/tmp/")
+        )
+
+        steps = [
+            ProductionCutoverStep(
+                key="backup",
+                label="Back Up Current SQLite State",
+                state="ready" if using_postgres else "attention",
+                detail=(
+                    "Managed Postgres is already active, so SQLite backup is not the primary concern."
+                    if using_postgres
+                    else (
+                        "Create a safe SQLite backup before any copy or redeploy work if the source database is local and accessible."
+                    )
+                ),
+                command=None if using_postgres or hosted_sqlite_preview else backup_command,
+            ),
+            ProductionCutoverStep(
+                key="provision_neon",
+                label="Provision Managed Postgres",
+                state="ready" if using_postgres else "attention",
+                detail=(
+                    "A durable Postgres target is already configured for the production app."
+                    if using_postgres
+                    else "Create a Neon production database and capture the pooled psycopg connection string with sslmode=require."
+                ),
+                command=None,
+            ),
+            ProductionCutoverStep(
+                key="copy_data",
+                label="Copy Durable Data Into Postgres",
+                state="ready" if using_postgres else "attention",
+                detail=(
+                    "Application data already lives on Postgres."
+                    if using_postgres
+                    else (
+                        "Use the built-in db-copy job when the SQLite source is local. "
+                        "If the current Akash preview data only exists inside the container, treat it as disposable unless you export it deliberately."
+                    )
+                ),
+                command=None if using_postgres or hosted_sqlite_preview else copy_command,
+            ),
+            ProductionCutoverStep(
+                key="generate_manifest",
+                label="Generate the Akash Production Manifest",
+                state="ready" if using_postgres else "attention",
+                detail=(
+                    "The hosted environment should point Akash at the managed database URL and preserve the canonical domain."
+                ),
+                command=manifest_command,
+            ),
+            ProductionCutoverStep(
+                key="redeploy_and_dns",
+                label="Redeploy and Confirm Cloudflare Target",
+                state="planned" if using_postgres else "attention",
+                detail=(
+                    "Redeploy Akash with the generated manifest, then update the Cloudflare app CNAME if Akash issues a new ingress hostname."
+                ),
+                command=None,
+            ),
+            ProductionCutoverStep(
+                key="verify",
+                label="Verify Health, Dashboard, and Simulation",
+                state="planned" if using_postgres else "attention",
+                detail=(
+                    "Confirm health, dashboard, simulation, and legal pages after the database-backed redeploy."
+                ),
+                command=None,
+            ),
+        ]
+
+        posture = "ready" if using_postgres else "attention"
+        source_data_note = (
+            "Managed Postgres is already the system of record."
+            if using_postgres
+            else (
+                "The current deployment is still SQLite-based. "
+                + (
+                    "Because the hosted Akash preview stores SQLite inside the running container, treat preview data as disposable unless you export it from the provider environment first."
+                    if hosted_sqlite_preview
+                    else "Because the SQLite file is locally addressable, you can back it up and copy it forward with the included jobs."
+                )
+            )
+        )
+
+        return ProductionCutoverSnapshot(
+            generated_at=self._now(),
+            posture=posture,
+            current_backend=current_backend,
+            current_target=current_target,
+            target_backend="postgresql",
+            summary=(
+                "Move the live platform to managed Postgres before enabling heavier payments, live connectors, or long-lived worker automation."
+                if not using_postgres
+                else "The durable database cutover is complete; future changes should flow through managed Postgres migrations."
+            ),
+            source_data_note=source_data_note,
+            verification_urls=[
+                f"https://{canonical_host}/health",
+                f"https://{canonical_host}/dashboard",
+                f"https://{canonical_host}/simulation",
+                f"https://{canonical_host}/terms",
+            ],
+            steps=steps,
+        )
+
     def _connector_item(
         self,
         *,
@@ -2294,6 +2428,7 @@ class BotSocietyService:
             launch_readiness=self.get_launch_readiness(),
             connector_control=self.get_connector_control(),
             infrastructure_readiness=self.get_infrastructure_readiness(),
+            production_cutover=self.get_production_cutover(),
         )
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
