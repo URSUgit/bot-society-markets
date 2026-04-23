@@ -12,6 +12,7 @@ PaperPositionStatus = Literal["open", "closed"]
 SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout", "custom_creator"]
 SimulationHistorySourceMode = Literal["auto", "real", "local"]
 PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
+LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 
 
 class Summary(BaseModel):
@@ -581,6 +582,25 @@ class NotificationRetryResult(BaseModel):
     exhausted: int = Field(ge=0)
 
 
+class LaunchReadinessTrack(BaseModel):
+    key: str
+    label: str
+    level: LaunchReadinessLevel
+    headline: str
+    summary: str
+    recommended_provider: str
+    target_release: str
+    next_actions: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+
+
+class LaunchReadinessSnapshot(BaseModel):
+    generated_at: str
+    level: LaunchReadinessLevel
+    summary: str
+    tracks: list[LaunchReadinessTrack] = Field(default_factory=list)
+
+
 class DashboardSnapshot(BaseModel):
     summary: Summary
     assets: list[AssetSnapshot]
@@ -598,6 +618,7 @@ class DashboardSnapshot(BaseModel):
     user_profile: "UserProfile"
     notification_health: NotificationHealthSnapshot
     provider_status: ProviderStatus
+    launch_readiness: LaunchReadinessSnapshot
 
 
 class LandingSnapshot(BaseModel):
@@ -723,3 +744,7 @@ class ProviderStatusEnvelope(BaseModel):
 
 class SystemPulseEnvelope(BaseModel):
     system_pulse: SystemPulseSnapshot
+
+
+class LaunchReadinessEnvelope(BaseModel):
+    launch_readiness: LaunchReadinessSnapshot

@@ -105,6 +105,31 @@ function sentimentLabel(value) {
   return "Balanced";
 }
 
+function readinessLevelLabel(level) {
+  switch (level) {
+    case "live":
+      return "Live";
+    case "ready":
+      return "Ready";
+    case "building":
+      return "Building";
+    default:
+      return "Selected";
+  }
+}
+
+function readinessLevelVariant(level) {
+  switch (level) {
+    case "live":
+    case "ready":
+      return "positive";
+    case "building":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
 function providerState(providerStatus) {
   const healthy = providerStatus?.market_provider_ready
     && providerStatus?.signal_provider_ready
@@ -307,6 +332,51 @@ function renderRibbon(snapshot) {
   } else {
     setLiveBadge("Needs Attention", "warning");
   }
+}
+
+function renderLaunchReadiness(launchReadiness) {
+  const badge = document.getElementById("launch-readiness-badge");
+  const summary = document.getElementById("launch-readiness-summary");
+  const grid = document.getElementById("launch-readiness-grid");
+  if (!badge || !summary || !grid || !launchReadiness) {
+    return;
+  }
+
+  badge.textContent = readinessLevelLabel(launchReadiness.level);
+  badge.dataset.variant = readinessLevelVariant(launchReadiness.level);
+  summary.textContent = launchReadiness.summary;
+  grid.innerHTML = (launchReadiness.tracks || []).map((track) => {
+    const nextActions = (track.next_actions || []).map((item) => `<li>${item}</li>`).join("");
+    const blockers = (track.blockers || []).length
+      ? track.blockers.map((item) => `<li>${item}</li>`).join("")
+      : "<li>No critical blockers recorded right now.</li>";
+    return `
+      <article class="launch-track-card launch-${track.level}">
+        <div class="launch-track-head">
+          <div>
+            <p class="eyebrow">${track.label}</p>
+            <h4>${track.headline}</h4>
+          </div>
+          <span class="status-pill" data-variant="${readinessLevelVariant(track.level)}">${readinessLevelLabel(track.level)}</span>
+        </div>
+        <p class="launch-track-summary">${track.summary}</p>
+        <div class="launch-track-meta">
+          <span><strong>Provider:</strong> ${track.recommended_provider}</span>
+          <span><strong>Target:</strong> ${track.target_release}</span>
+        </div>
+        <div class="launch-track-columns">
+          <div>
+            <strong>Next actions</strong>
+            <ul class="launch-track-list">${nextActions}</ul>
+          </div>
+          <div>
+            <strong>Blockers</strong>
+            <ul class="launch-track-list">${blockers}</ul>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderMarketTape(assets) {
@@ -2126,6 +2196,7 @@ async function loadDashboard(options = {}) {
     nextDashboardRefreshAt = autoRefreshEnabled ? Date.now() + AUTO_REFRESH_MS : null;
     renderHeroMeta(snapshot);
     renderRibbon(snapshot);
+    renderLaunchReadiness(snapshot.launch_readiness);
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);

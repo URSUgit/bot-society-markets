@@ -34,6 +34,8 @@ from .models import (
     EdgeSnapshot,
     FollowedBot,
     LandingSnapshot,
+    LaunchReadinessSnapshot,
+    LaunchReadinessTrack,
     MacroObservationPoint,
     MacroSeriesSnapshot,
     MacroSnapshot,
@@ -1508,6 +1510,250 @@ class BotSocietyService:
             wallet_fallback_active=self.wallet_provider_fallback,
         )
 
+    @staticmethod
+    def _readiness_level_from_counts(completed: int, total: int, *, live: bool = False) -> str:
+        if live:
+            return "live"
+        if total > 0 and completed >= total:
+            return "ready"
+        if completed > 0:
+            return "building"
+        return "selected"
+
+    def get_launch_readiness(self) -> LaunchReadinessSnapshot:
+        provider_status = self.get_provider_status()
+
+        stripe_completed = sum(
+            bool(value)
+            for value in (
+                self.settings.stripe_publishable_key,
+                self.settings.stripe_secret_key,
+                self.settings.stripe_webhook_secret,
+                self.settings.stripe_basic_price_id,
+            )
+        )
+        fiat_track = LaunchReadinessTrack(
+            key="fiat_onboarding",
+            label="Fiat Card Onboarding",
+            level=self._readiness_level_from_counts(stripe_completed, 4),
+            headline="Hosted card onboarding should run through Stripe Checkout and Billing.",
+            summary=(
+                "Use Stripe-hosted checkout, subscriptions, customer portal, and tax so the platform can sell plans "
+                "without bringing raw card data onto your own servers."
+            ),
+            recommended_provider="Stripe Checkout + Billing + Customer Portal + Stripe Tax",
+            target_release="Phase 1 - retail subscriptions and enterprise invoicing",
+            next_actions=[
+                "Create Starter, Pro, and Enterprise price IDs in Stripe.",
+                "Add webhook handlers for checkout.session.completed, invoice.paid, and customer.subscription.updated.",
+                "Map paid plans to entitlements inside the workspace and API layer.",
+                "Turn on Stripe Tax and define VAT handling before EU launch.",
+            ],
+            blockers=[
+                message
+                for condition, message in (
+                    (not self.settings.stripe_publishable_key, "Stripe publishable key is not configured."),
+                    (not self.settings.stripe_secret_key, "Stripe secret key is not configured."),
+                    (not self.settings.stripe_webhook_secret, "Stripe webhook signing secret is not configured."),
+                    (not self.settings.stripe_basic_price_id, "Starter or Basic Stripe price ID is not configured."),
+                )
+                if condition
+            ],
+        )
+
+        crypto_completed = int(bool(self.settings.coinbase_onramp_api_key)) + int(bool(self.settings.coinbase_onramp_app_id))
+        crypto_completed += int(bool(self.settings.coinbase_commerce_api_key or self.settings.moonpay_api_key))
+        crypto_track = LaunchReadinessTrack(
+            key="crypto_onboarding",
+            label="Crypto Payment Onboarding",
+            level=self._readiness_level_from_counts(crypto_completed, 3),
+            headline="Fund wallets and optional crypto checkout through hosted third-party rails first.",
+            summary=(
+                "Primary path should be Coinbase-hosted Onramp for funded wallets and optional Coinbase Commerce or MoonPay "
+                "for controlled crypto-denominated settlement, while avoiding direct custody."
+            ),
+            recommended_provider="Coinbase Onramp primary, Coinbase Commerce or MoonPay secondary",
+            target_release="Phase 2 - wallet funding and crypto-denominated credits",
+            next_actions=[
+                "Launch Coinbase-hosted Onramp first and keep KYC inside the provider flow.",
+                "Use crypto checkout only for account credits or enterprise settlement, not primary SaaS subscriptions.",
+                "Add webhook ledgering for onramp completions and credit assignment.",
+                "Write explicit user disclosures covering volatility, fees, and third-party provider terms.",
+            ],
+            blockers=[
+                message
+                for condition, message in (
+                    (not self.settings.coinbase_onramp_api_key, "Coinbase Onramp API key is not configured."),
+                    (not self.settings.coinbase_onramp_app_id, "Coinbase Onramp app ID is not configured."),
+                    (not (self.settings.coinbase_commerce_api_key or self.settings.moonpay_api_key), "No backup crypto rail is configured for checkout or regional coverage."),
+                )
+                if condition
+            ],
+        )
+
+        live_connector_count = (
+            int(provider_status.market_provider_live_capable)
+            + int(provider_status.signal_provider_live_capable)
+            + int(provider_status.macro_provider_live_capable)
+            + int(provider_status.wallet_provider_live_capable)
+            + sum(1 for provider in provider_status.venue_signal_providers if provider.live_capable)
+        )
+        connector_track = LaunchReadinessTrack(
+            key="api_connectors",
+            label="API Connectors",
+            level=self._readiness_level_from_counts(
+                min(live_connector_count, 5),
+                5,
+                live=live_connector_count >= 5 and not (
+                    provider_status.market_fallback_active
+                    or provider_status.signal_fallback_active
+                    or provider_status.macro_fallback_active
+                    or provider_status.wallet_fallback_active
+                ),
+            ),
+            headline="Market intelligence connectors are already online; revenue and operations connectors come next.",
+            summary=(
+                f"{live_connector_count} live-capable data connectors are already exposed across market, signal, macro, "
+                "wallet, and venue layers. Next connectors should add billing webhooks, onramp callbacks, CRM alerts, and exports."
+            ),
+            recommended_provider="Hyperliquid, Polymarket, Kalshi, FRED, Stripe webhooks, Coinbase webhooks",
+            target_release="Continuous track - data, billing, and operations",
+            next_actions=[
+                "Keep public market connectors live and add Stripe and Coinbase webhook ingestion as first private connectors.",
+                "Add connector health checks for billing, onramp, and outbound webhook destinations.",
+                "Publish a connector inventory with owner, SLA, retry policy, and fallback path.",
+            ],
+            blockers=[
+                message
+                for condition, message in (
+                    (not provider_status.market_provider_live_capable, "Primary market data connector is still demo-only."),
+                    (not provider_status.signal_provider_live_capable, "Primary signal connector is still demo-only."),
+                    (not provider_status.wallet_provider_live_capable, "Wallet intelligence is not yet live-configured."),
+                )
+                if condition
+            ],
+        )
+
+        dashboard_track = LaunchReadinessTrack(
+            key="dashboard_redesign",
+            label="Dashboard Redesign",
+            level="building",
+            headline="The command-center visual system is live; commercial conversion surfaces are the next layer.",
+            summary=(
+                "The dashboard already functions as a live command center. The next redesign pass should add onboarding funnels, "
+                "plan comparison states, connector health drilldowns, payment activation panels, and enterprise-ready reporting cards."
+            ),
+            recommended_provider="Design system refresh inside the existing FastAPI static frontend",
+            target_release="Phase 1 - conversion-focused command center",
+            next_actions=[
+                "Add a monetization rail section with pricing, onboarding status, and entitlement state.",
+                "Add operator drilldowns for connector health, billing events, and legal blockers.",
+                "Introduce a cleaner onboarding path for retail, enterprise, and desktop install users.",
+            ],
+            blockers=[
+                "The current dashboard does not yet surface subscription state or payment-provider events.",
+                "Commercial onboarding and legal notices are not yet part of the in-product flow.",
+            ],
+        )
+
+        desktop_completed = int(self.settings.desktop_app_framework != "none") + int(bool(self.settings.desktop_bundle_id))
+        desktop_completed += int(bool(self.settings.apple_developer_team_id or self.settings.windows_distribution_channel == "store"))
+        desktop_track = LaunchReadinessTrack(
+            key="desktop_apps",
+            label="Windows and macOS App",
+            level=self._readiness_level_from_counts(desktop_completed, 3),
+            headline="Wrap the hosted dashboard in a signed desktop shell before adding local-side features.",
+            summary=(
+                "Use a Tauri desktop shell around the hosted product, open payment flows in the system browser, and distribute "
+                "through Microsoft Store or signed direct download on Windows plus Developer ID and notarized builds on macOS."
+            ),
+            recommended_provider="Tauri desktop shell, Microsoft Store MSIX, Apple Developer ID notarization",
+            target_release="Phase 3 - installable desktop distribution",
+            next_actions=[
+                "Initialize a Tauri workspace that points to the hosted dashboard domain.",
+                "Use system-browser payment redirects rather than embedding sensitive payment flows inside the webview.",
+                "Prepare Windows MSIX packaging and Apple notarization CI once the shell is stable.",
+            ],
+            blockers=[
+                message
+                for condition, message in (
+                    (self.settings.desktop_app_framework == "none", "Desktop shell framework is not set."),
+                    (not self.settings.desktop_bundle_id, "Desktop bundle identifier is not configured."),
+                    (not self.settings.apple_developer_team_id, "Apple Developer team ID is not configured for macOS signing and notarization."),
+                )
+                if condition
+            ],
+        )
+
+        legal_completed = sum(
+            bool(value)
+            for value in (
+                self.settings.legal_entity_name,
+                self.settings.legal_primary_jurisdiction,
+                self.settings.privacy_contact_email,
+                self.settings.terms_url,
+                self.settings.privacy_url,
+                self.settings.risk_disclosure_url,
+                self.settings.aml_program_owner,
+            )
+        )
+        legal_track = LaunchReadinessTrack(
+            key="legal_compliance",
+            label="Legal and Compliance",
+            level=self._readiness_level_from_counts(legal_completed, 7),
+            headline="Keep the product research-only until counsel approves the commercial perimeter.",
+            summary=(
+                "Stay on the analytics and alerting side until counsel signs off on terms, privacy, disclosures, payments posture, "
+                "crypto rails, sanctions handling, and any copy-trading or investment-advice boundary questions."
+            ),
+            recommended_provider="External fintech, payments, privacy, and securities counsel",
+            target_release="Must be complete before paid production launch",
+            next_actions=[
+                "Finalize Terms of Service, Privacy Policy, Cookie Notice, and risk disclosures.",
+                "Document that the product does not custody funds and is not auto-executing customer trades.",
+                "Run US and EU counsel review for MSB, MiCA, MiFID, and investment-advice perimeter analysis.",
+                "Define AML, sanctions, complaints, and incident-response ownership.",
+            ],
+            blockers=[
+                message
+                for condition, message in (
+                    (not self.settings.legal_entity_name, "Operating legal entity is not recorded in configuration."),
+                    (not self.settings.terms_url, "Terms of Service URL is missing."),
+                    (not self.settings.privacy_url, "Privacy Policy URL is missing."),
+                    (not self.settings.risk_disclosure_url, "Risk disclosure URL is missing."),
+                    (not self.settings.aml_program_owner, "AML or sanctions ownership is not assigned."),
+                )
+                if condition
+            ],
+        )
+
+        tracks = [
+            fiat_track,
+            crypto_track,
+            connector_track,
+            dashboard_track,
+            desktop_track,
+            legal_track,
+        ]
+        ready_or_live = sum(track.level in {"ready", "live"} for track in tracks)
+        any_building = any(track.level == "building" for track in tracks)
+        any_live = any(track.level == "live" for track in tracks)
+        overall_level = "selected"
+        if any_live or ready_or_live >= 3:
+            overall_level = "ready"
+        elif any_building or ready_or_live:
+            overall_level = "building"
+
+        return LaunchReadinessSnapshot(
+            generated_at=self._now(),
+            level=overall_level,
+            summary=(
+                "Commercial expansion is in motion: live market connectors are already operating, the dashboard redesign is active, "
+                "and the next controlled gates are fiat billing, crypto onboarding, signed desktop distribution, and legal readiness."
+            ),
+            tracks=tracks,
+        )
+
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
         macro_snapshot = self.get_macro_snapshot(repository)
@@ -1531,6 +1777,7 @@ class BotSocietyService:
             user_profile=self.get_user_profile(user_slug),
             notification_health=self.get_notification_health(user_slug),
             provider_status=self.get_provider_status(),
+            launch_readiness=self.get_launch_readiness(),
         )
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:

@@ -25,6 +25,11 @@ This repository contains both the founder documentation package and a profession
 - [Paper Trading Venue Activation Plan](docs/16-paper-trading-venue-plan.md)
 - [Custom Domain Dashboard Launch Plan](docs/17-custom-domain-dashboard-launch.md)
 - [Akash Hosting Guide](docs/18-akash-hosting-guide.md)
+- [Production Cutover Playbook](docs/19-production-cutover-playbook.md)
+- [Commercial Expansion Program](docs/20-commercial-expansion-program.md)
+- [Payments and Onboarding Architecture](docs/21-payments-onboarding-architecture.md)
+- [Connectors, Dashboard, and Desktop Program](docs/22-connectors-dashboard-desktop-program.md)
+- [Legal and Compliance Readiness](docs/23-legal-and-compliance-readiness.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -89,6 +94,7 @@ Included today:
 - Docker assets for reproducible container deployment
 - desktop shortcut installation for one-click Windows startup
 - `.env` and `.env.local` loading for secret-aware local live-provider activation
+- commercialization readiness tracking for fiat billing, crypto onboarding, API connectors, dashboard redesign, desktop packaging, and legal workstreams
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 
 ## Product Surface
@@ -120,6 +126,7 @@ Key endpoints include:
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
+- `GET /api/system/launch-readiness`
 - `POST /api/simulation/run`
 - `POST /api/simulation/advanced-export`
 - `POST /api/me/alerts/{alert_id}/read`

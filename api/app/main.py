@@ -27,6 +27,7 @@ from .models import (
     EdgeSnapshot,
     FollowBotRequest,
     LandingSnapshot,
+    LaunchReadinessEnvelope,
     MacroSnapshot,
     NotificationChannel,
     NotificationChannelCreate,
@@ -364,6 +365,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/system/pulse", response_model=SystemPulseEnvelope)
     def system_pulse(request: Request) -> SystemPulseEnvelope:
         return SystemPulseEnvelope(system_pulse=get_service(request).get_system_pulse())
+
+    @app.get("/api/system/launch-readiness", response_model=LaunchReadinessEnvelope)
+    def launch_readiness(request: Request) -> LaunchReadinessEnvelope:
+        return LaunchReadinessEnvelope(launch_readiness=get_service(request).get_launch_readiness())
 
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
     def run_cycle(request: Request) -> CycleResult:

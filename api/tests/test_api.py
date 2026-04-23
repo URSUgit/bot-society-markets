@@ -68,6 +68,8 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["paper_trading"]["summary"]["starting_balance"] == 10000
         assert payload["paper_venues"]["venues"]
         assert payload["paper_venues"]["recommended_venue_id"] == "polysandbox"
+        assert payload["launch_readiness"]["tracks"]
+        assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
@@ -590,6 +592,48 @@ def test_landing_snapshot_and_system_pulse_endpoint() -> None:
         assert pulse_payload["live_provider_count"] >= 1
         assert pulse_payload["average_signal_quality"] >= 0
         assert pulse_payload["venue_pulse"]
+
+
+def test_launch_readiness_endpoint_reflects_provider_and_governance_state() -> None:
+    settings = Settings(
+        fiat_billing_provider="stripe",
+        stripe_publishable_key="pk_test_123",
+        stripe_secret_key="sk_test_123",
+        stripe_webhook_secret="whsec_123",
+        stripe_basic_price_id="price_basic_123",
+        crypto_onramp_provider="coinbase",
+        coinbase_onramp_api_key="coinbase-key",
+        coinbase_onramp_app_id="app-123",
+        crypto_checkout_provider="coinbase_commerce",
+        coinbase_commerce_api_key="commerce-key",
+        desktop_app_framework="tauri",
+        desktop_bundle_id="com.bitprivat.bot-society-markets",
+        apple_developer_team_id="TEAM12345",
+        legal_entity_name="BitPrivat Labs SRL",
+        legal_primary_jurisdiction="Romania",
+        privacy_contact_email="privacy@bitprivat.com",
+        terms_url="https://app.bitprivat.com/legal/terms",
+        privacy_url="https://app.bitprivat.com/legal/privacy",
+        risk_disclosure_url="https://app.bitprivat.com/legal/risk",
+        aml_program_owner="Head of Operations",
+        market_provider_mode="hyperliquid",
+        macro_provider_mode="fred",
+        fred_api_key="fred-key",
+        wallet_provider_mode="polymarket",
+        tracked_wallets=("0x1111111111111111111111111111111111111111",),
+        venue_signal_providers=("polymarket", "kalshi"),
+    )
+    with build_client(settings) as client:
+        response = client.get("/api/system/launch-readiness")
+        assert response.status_code == 200
+        payload = response.json()["launch_readiness"]
+        assert payload["level"] in {"building", "ready", "live"}
+        track_lookup = {track["key"]: track for track in payload["tracks"]}
+        assert track_lookup["fiat_onboarding"]["level"] == "ready"
+        assert track_lookup["crypto_onboarding"]["level"] == "ready"
+        assert track_lookup["desktop_apps"]["level"] == "ready"
+        assert track_lookup["legal_compliance"]["level"] == "ready"
+        assert track_lookup["api_connectors"]["level"] in {"ready", "live"}
 
 
 def test_status_page_route_serves_html() -> None:

@@ -17,6 +17,11 @@ MacroProviderMode = Literal["demo", "fred"]
 WalletProviderMode = Literal["demo", "polymarket"]
 PaperExecutionProviderMode = Literal["internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"]
 SiteHomePage = Literal["landing", "dashboard"]
+FiatBillingProvider = Literal["none", "stripe"]
+CryptoOnrampProvider = Literal["none", "coinbase", "moonpay"]
+CryptoCheckoutProvider = Literal["none", "coinbase_commerce"]
+DesktopAppFramework = Literal["none", "tauri", "electron"]
+WindowsDistributionChannel = Literal["direct", "store"]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -63,7 +68,7 @@ def _default_export_artifacts_dir() -> Path:
 @dataclass(slots=True)
 class Settings:
     project_name: str = "Bot Society Markets"
-    version: str = "0.6.0"
+    version: str = "0.7.0"
     environment_name: str = "development"
     deployment_target: str = "local"
     site_home_page: SiteHomePage = "landing"
@@ -106,6 +111,29 @@ class Settings:
     alert_inbox_limit: int = 10
     auth_cookie_name: str = "bsm_session"
     session_ttl_hours: int = 168
+    fiat_billing_provider: FiatBillingProvider = "none"
+    stripe_publishable_key: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_basic_price_id: str | None = None
+    stripe_customer_portal_enabled: bool = False
+    crypto_onramp_provider: CryptoOnrampProvider = "none"
+    crypto_checkout_provider: CryptoCheckoutProvider = "none"
+    coinbase_onramp_api_key: str | None = None
+    coinbase_onramp_app_id: str | None = None
+    coinbase_commerce_api_key: str | None = None
+    moonpay_api_key: str | None = None
+    desktop_app_framework: DesktopAppFramework = "none"
+    desktop_bundle_id: str | None = None
+    apple_developer_team_id: str | None = None
+    windows_distribution_channel: WindowsDistributionChannel = "direct"
+    legal_entity_name: str | None = None
+    legal_primary_jurisdiction: str | None = None
+    privacy_contact_email: str | None = None
+    terms_url: str | None = None
+    privacy_url: str | None = None
+    risk_disclosure_url: str | None = None
+    aml_program_owner: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -185,6 +213,26 @@ def get_settings() -> Settings:
     wallet_provider_mode = os.getenv("BSM_WALLET_PROVIDER", "demo").lower()
     if wallet_provider_mode not in {"demo", "polymarket"}:
         wallet_provider_mode = "demo"
+
+    fiat_billing_provider = os.getenv("BSM_FIAT_BILLING_PROVIDER", "none").lower()
+    if fiat_billing_provider not in {"none", "stripe"}:
+        fiat_billing_provider = "none"
+
+    crypto_onramp_provider = os.getenv("BSM_CRYPTO_ONRAMP_PROVIDER", "none").lower()
+    if crypto_onramp_provider not in {"none", "coinbase", "moonpay"}:
+        crypto_onramp_provider = "none"
+
+    crypto_checkout_provider = os.getenv("BSM_CRYPTO_CHECKOUT_PROVIDER", "none").lower()
+    if crypto_checkout_provider not in {"none", "coinbase_commerce"}:
+        crypto_checkout_provider = "none"
+
+    desktop_app_framework = os.getenv("BSM_DESKTOP_APP_FRAMEWORK", "none").lower()
+    if desktop_app_framework not in {"none", "tauri", "electron"}:
+        desktop_app_framework = "none"
+
+    windows_distribution_channel = os.getenv("BSM_WINDOWS_DISTRIBUTION_CHANNEL", "direct").lower()
+    if windows_distribution_channel not in {"direct", "store"}:
+        windows_distribution_channel = "direct"
 
     paper_execution_provider = os.getenv("BSM_PAPER_EXECUTION_PROVIDER", "internal").lower()
     if paper_execution_provider not in {"internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"}:
@@ -270,6 +318,29 @@ def get_settings() -> Settings:
         alert_inbox_limit=alert_inbox_limit,
         auth_cookie_name=os.getenv("BSM_AUTH_COOKIE_NAME", "bsm_session"),
         session_ttl_hours=session_ttl_hours,
+        fiat_billing_provider=fiat_billing_provider,
+        stripe_publishable_key=os.getenv("BSM_STRIPE_PUBLISHABLE_KEY") or None,
+        stripe_secret_key=os.getenv("BSM_STRIPE_SECRET_KEY") or None,
+        stripe_webhook_secret=os.getenv("BSM_STRIPE_WEBHOOK_SECRET") or None,
+        stripe_basic_price_id=os.getenv("BSM_STRIPE_BASIC_PRICE_ID") or None,
+        stripe_customer_portal_enabled=_env_bool("BSM_STRIPE_CUSTOMER_PORTAL_ENABLED", False),
+        crypto_onramp_provider=crypto_onramp_provider,
+        crypto_checkout_provider=crypto_checkout_provider,
+        coinbase_onramp_api_key=os.getenv("BSM_COINBASE_ONRAMP_API_KEY") or None,
+        coinbase_onramp_app_id=os.getenv("BSM_COINBASE_ONRAMP_APP_ID") or None,
+        coinbase_commerce_api_key=os.getenv("BSM_COINBASE_COMMERCE_API_KEY") or None,
+        moonpay_api_key=os.getenv("BSM_MOONPAY_API_KEY") or None,
+        desktop_app_framework=desktop_app_framework,
+        desktop_bundle_id=os.getenv("BSM_DESKTOP_BUNDLE_ID") or None,
+        apple_developer_team_id=os.getenv("BSM_APPLE_DEVELOPER_TEAM_ID") or None,
+        windows_distribution_channel=windows_distribution_channel,
+        legal_entity_name=os.getenv("BSM_LEGAL_ENTITY_NAME") or None,
+        legal_primary_jurisdiction=os.getenv("BSM_LEGAL_PRIMARY_JURISDICTION") or None,
+        privacy_contact_email=os.getenv("BSM_PRIVACY_CONTACT_EMAIL") or None,
+        terms_url=os.getenv("BSM_TERMS_URL") or None,
+        privacy_url=os.getenv("BSM_PRIVACY_URL") or None,
+        risk_disclosure_url=os.getenv("BSM_RISK_DISCLOSURE_URL") or None,
+        aml_program_owner=os.getenv("BSM_AML_PROGRAM_OWNER") or None,
         smtp_host=os.getenv("BSM_SMTP_HOST") or None,
         smtp_port=max(1, int(os.getenv("BSM_SMTP_PORT", "587"))),
         smtp_username=os.getenv("BSM_SMTP_USERNAME") or None,
