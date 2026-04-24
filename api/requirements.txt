@@ -6,3 +6,4 @@ psycopg[binary]==3.2.10
 uvicorn[standard]==0.37.0
 python-dotenv==1.1.1
 fredapi==0.5.2
+httpx==0.28.1
