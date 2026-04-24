@@ -16,8 +16,8 @@ services:
       - BSM_ENVIRONMENT_NAME=production
       - BSM_DEPLOYMENT_TARGET=akash
       - BSM_SITE_HOME_PAGE=dashboard
-      - BSM_CANONICAL_HOST=app.bitprivat.com
-      - BSM_CANONICAL_REDIRECT_HOSTS=bitprivat.com,www.bitprivat.com
+      - BSM_CANONICAL_HOST=bitprivat.com
+      - BSM_CANONICAL_REDIRECT_HOSTS=www.bitprivat.com,app.bitprivat.com
       - BSM_FORCE_HTTPS=true
       # Recommended: use a Neon pooled connection string with sslmode=require
       - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
@@ -33,9 +33,11 @@ services:
       - port: 8000
         as: 80
         accept:
-          - app.bitprivat.com
           - bitprivat.com
           - www.bitprivat.com
+          - app.bitprivat.com
+          - api.bitprivat.com
+          - status.bitprivat.com
         to:
           - global: true
         http_options:

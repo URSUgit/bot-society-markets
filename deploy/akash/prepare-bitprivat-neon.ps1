@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DatabaseUrl,
 
-    [string]$CanonicalHost = "app.bitprivat.com",
+    [string]$CanonicalHost = "bitprivat.com",
 
     [string]$RootDomain = "bitprivat.com",
 
@@ -64,22 +64,23 @@ $databaseUrlEscaped = $DatabaseUrl.Replace("`r", "").Replace("`n", "")
 $canonicalHostEscaped = $CanonicalHost.Trim()
 $rootDomainEscaped = $RootDomain.Trim()
 $wwwHostEscaped = "www.$rootDomainEscaped"
+$appHostEscaped = "app.$rootDomainEscaped"
+$apiHostEscaped = "api.$rootDomainEscaped"
+$statusHostEscaped = "status.$rootDomainEscaped"
 $rendered = $template.Replace(
     "ghcr.io/ursugit/bot-society-markets:latest",
     $resolvedImageRef
 ).Replace(
     "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
     $databaseUrlEscaped
-).Replace(
-    "app.bitprivat.com",
-    $canonicalHostEscaped
-).Replace(
-    "www.bitprivat.com",
-    $wwwHostEscaped
-).Replace(
-    "bitprivat.com",
-    $rootDomainEscaped
 )
+$rendered = $rendered -replace "BSM_CANONICAL_HOST=[^`r`n]*", "BSM_CANONICAL_HOST=$canonicalHostEscaped"
+$rendered = $rendered -replace "BSM_CANONICAL_REDIRECT_HOSTS=[^`r`n]*", "BSM_CANONICAL_REDIRECT_HOSTS=$wwwHostEscaped,$appHostEscaped"
+$rendered = $rendered.Replace("status.bitprivat.com", $statusHostEscaped)
+$rendered = $rendered.Replace("api.bitprivat.com", $apiHostEscaped)
+$rendered = $rendered.Replace("app.bitprivat.com", $appHostEscaped)
+$rendered = $rendered.Replace("www.bitprivat.com", $wwwHostEscaped)
+$rendered = $rendered.Replace("bitprivat.com", $rootDomainEscaped)
 
 $outputDirectory = Split-Path -Parent $resolvedOutputPath
 if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
