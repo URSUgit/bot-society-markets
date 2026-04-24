@@ -1,6 +1,12 @@
 const fmtPercent = (value, digits = 0) => `${(Number(value) * 100).toFixed(digits)}%`;
 const fmtScore = (value) => Number(value).toFixed(1);
 const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
+const fmtUsd = (value, digits = 0) => Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: Math.abs(Number(value)) >= 1000000 ? "compact" : "standard",
+  maximumFractionDigits: digits,
+}).format(Number(value || 0));
 const fmtCompactNumber = (value) => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
@@ -549,6 +555,139 @@ function renderMarketTape(assets) {
     </article>
   `).join("");
   track.innerHTML = `${chips}${chips}`;
+}
+
+function renderMarketConsole(snapshot) {
+  const badge = document.getElementById("market-console-badge");
+  const stack = document.getElementById("market-console-stack");
+  const decisions = document.getElementById("market-console-decisions");
+  const risk = document.getElementById("market-console-risk");
+  if (!badge || !stack || !decisions || !risk || !snapshot) {
+    return;
+  }
+
+  const provider = snapshot.provider_status || {};
+  const connectors = snapshot.connector_control?.connectors || [];
+  const assets = snapshot.assets || [];
+  const paperSummary = snapshot.paper_trading?.summary || {};
+  const liveConnectors = connectors.filter((connector) => connector.state === "live");
+  const readyConnectors = connectors.filter((connector) => connector.state === "live" || connector.state === "ready");
+  const fallbackActive = Boolean(
+    provider.market_fallback_active
+    || provider.signal_fallback_active
+    || provider.macro_fallback_active
+    || provider.wallet_fallback_active
+  );
+
+  badge.textContent = fallbackActive ? "Fallback guarded" : `${readyConnectors.length} surfaces ready`;
+  badge.dataset.variant = fallbackActive ? "warning" : (readyConnectors.length >= 4 ? "positive" : "neutral");
+
+  const venueLabels = (provider.venue_signal_providers || []).map((item) => item.source).join(", ") || "research queue";
+  const stackRows = [
+    {
+      label: "Market tape",
+      value: provider.market_provider_source || "market provider",
+      detail: `${assets.length} tracked assets | ${provider.market_provider_mode || "demo"} mode`,
+      state: provider.market_provider_ready ? (provider.market_provider_live_capable ? "Live-capable" : "Ready") : "Needs attention",
+      variant: provider.market_provider_ready ? "positive" : "warning",
+    },
+    {
+      label: "Signal intake",
+      value: provider.signal_provider_source || "signal provider",
+      detail: `${snapshot.system_pulse?.total_recent_signals || 0} recent signals | ${provider.signal_provider_mode || "demo"} mode`,
+      state: provider.signal_provider_ready ? (provider.signal_provider_live_capable ? "Live-capable" : "Ready") : "Needs attention",
+      variant: provider.signal_provider_ready ? "positive" : "warning",
+    },
+    {
+      label: "Prediction venues",
+      value: venueLabels,
+      detail: `${snapshot.system_pulse?.venue_pulse?.length || 0} active venue pulse cards`,
+      state: (provider.venue_signal_providers || []).some((item) => item.ready) ? "Live research" : "Planned",
+      variant: (provider.venue_signal_providers || []).some((item) => item.ready) ? "positive" : "neutral",
+    },
+    {
+      label: "Smart money",
+      value: provider.wallet_provider_source || "wallet provider",
+      detail: `${snapshot.wallet_intelligence?.wallets?.length || 0} tracked profiles | ${provider.wallet_provider_mode || "demo"} mode`,
+      state: provider.wallet_provider_ready ? (provider.wallet_provider_live_capable ? "Live-capable" : "Ready") : "Needs attention",
+      variant: provider.wallet_provider_ready ? "positive" : "warning",
+    },
+  ];
+
+  stack.innerHTML = stackRows.map((row) => `
+    <article class="console-stack-row">
+      <div>
+        <span>${escapeHtml(row.label)}</span>
+        <strong>${escapeHtml(row.value)}</strong>
+        <small>${escapeHtml(row.detail)}</small>
+      </div>
+      <span class="status-pill" data-variant="${row.variant}">${escapeHtml(row.state)}</span>
+    </article>
+  `).join("");
+
+  const edgeItems = [...(snapshot.edge_snapshot?.opportunities || [])]
+    .sort((a, b) => Math.abs(Number(b.edge_bps || 0)) - Math.abs(Number(a.edge_bps || 0)))
+    .slice(0, 2)
+    .map((item) => ({
+      type: "Edge",
+      title: `${item.asset} ${item.stance} edge`,
+      meta: `${fmtBps(item.edge_bps)} | fair ${fmtPercent(item.fair_probability)} vs market ${fmtPercent(item.implied_probability)}`,
+      strength: Number(item.confidence || 0),
+    }));
+  const signalItems = [...(snapshot.recent_signals || [])]
+    .sort((a, b) => Number(b.source_quality_score || 0) - Number(a.source_quality_score || 0))
+    .slice(0, 2)
+    .map((item) => ({
+      type: item.source_type === "prediction-market" ? "Venue" : "Signal",
+      title: `${item.asset} | ${item.title}`,
+      meta: `${sentimentLabel(item.sentiment)} | quality ${fmtPercent(item.source_quality_score)} | ${fmtRelativeTime(item.observed_at)}`,
+      strength: Number(item.source_quality_score || 0),
+    }));
+  const predictionItems = [...(snapshot.recent_predictions || [])]
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .slice(0, 1)
+    .map((item) => ({
+      type: "Bot call",
+      title: `${item.asset} ${item.direction} | ${item.bot_name}`,
+      meta: `${fmtPercent(item.confidence)} confidence | ${item.horizon_label}`,
+      strength: Number(item.confidence || 0),
+    }));
+  const decisionItems = [...edgeItems, ...signalItems, ...predictionItems].slice(0, 5);
+
+  decisions.innerHTML = decisionItems.length
+    ? decisionItems.map((item) => `
+      <article class="console-decision">
+        <div>
+          <span>${escapeHtml(item.type)}</span>
+          <strong>${escapeHtml(item.title)}</strong>
+          <small>${escapeHtml(item.meta)}</small>
+        </div>
+        <div class="mini-meter"><i style="width:${(clamp(item.strength, 0, 1) * 100).toFixed(2)}%"></i></div>
+      </article>
+    `).join("")
+    : '<p class="panel-note">Run a pipeline cycle to populate the decision queue.</p>';
+
+  const riskRows = [
+    ["Paper equity", fmtUsd(paperSummary.equity || 0), `${fmtSignedPercent(paperSummary.total_return || 0)} total return`],
+    ["Cash", fmtUsd(paperSummary.cash_balance || 0), `${fmtUsd(paperSummary.open_exposure || 0)} open exposure`],
+    ["Open positions", paperSummary.open_positions || 0, `${paperSummary.closed_positions || 0} closed test positions`],
+    ["Execution mode", "Paper only", `${snapshot.paper_venues?.ready_venues || 0} venues ready | live trading disabled`],
+  ];
+
+  risk.innerHTML = riskRows.map(([label, value, detail]) => `
+    <article>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </article>
+  `).join("");
+
+  if (!liveConnectors.length) {
+    risk.insertAdjacentHTML(
+      "beforeend",
+      '<p class="console-safety-note">Safety mode: research, live-capable data, and paper accounting are visible, but funded execution is intentionally blocked.</p>'
+    );
+  }
 }
 
 function destroyChart(targetId) {
@@ -1320,6 +1459,75 @@ function syncStrategyCreatorPanel() {
   }
 }
 
+function renderSimulationOptimizationBrief(result) {
+  const panel = document.getElementById("simulation-optimization-panel");
+  const badge = document.getElementById("simulation-optimization-badge");
+  const summary = document.getElementById("simulation-optimization-summary");
+  const list = document.getElementById("simulation-optimization-list");
+  if (!panel || !badge || !summary || !list || !result) {
+    return;
+  }
+
+  const selected = result.selected_result;
+  const drawdown = Math.abs(Number(selected.max_drawdown || 0));
+  const beatBenchmark = Boolean(selected.beat_buy_hold);
+  const best = result.leaderboard?.[0];
+  const recommendations = [];
+
+  if (!beatBenchmark) {
+    recommendations.push({
+      label: "Improve edge filter",
+      detail: "Raise the entry score or increase trend weight so the strategy avoids weak signals that lag buy-and-hold.",
+    });
+  }
+  if (drawdown > 0.22) {
+    recommendations.push({
+      label: "Reduce pain profile",
+      detail: "Lower max exposure or tighten stop loss; this setup is spending too much capital during adverse regimes.",
+    });
+  }
+  if (Number(selected.trade_count || 0) < 4 && selected.strategy_id !== "buy_hold") {
+    recommendations.push({
+      label: "Increase sample size",
+      detail: "Shorten the breakout or moving-average windows slightly so the test creates enough trades to trust the statistics.",
+    });
+  }
+  if (Number(selected.win_rate || 0) < 0.48 && Number(selected.trade_count || 0) >= 4) {
+    recommendations.push({
+      label: "Improve exits",
+      detail: "Raise the exit score or reduce take-profit distance so weaker reversals are cut before they erode the curve.",
+    });
+  }
+  if (Number(selected.sharpe_ratio || 0) < 0.7) {
+    recommendations.push({
+      label: "Stabilize return path",
+      detail: "Compare the same recipe on ETH and SOL, then prefer parameter sets that keep Sharpe above 0.70 across assets.",
+    });
+  }
+  if (!recommendations.length) {
+    recommendations.push({
+      label: "Promote candidate",
+      detail: "Save this strategy to the vault, rerun it on a 10-year window, and compare it against the same settings on other assets.",
+    });
+  }
+
+  const bestNote = best && best.strategy_id !== selected.strategy_id
+    ? ` Current leaderboard winner is ${best.label}, so use it as the next comparison target.`
+    : " This setup is currently leading the selected comparison window.";
+  badge.textContent = beatBenchmark ? "Candidate strong" : "Needs tuning";
+  badge.dataset.variant = beatBenchmark ? "positive" : "warning";
+  summary.textContent = `${selected.label} returned ${fmtSignedPercent(selected.total_return)} vs benchmark ${fmtSignedPercent(result.benchmark_total_return)} with ${fmtSignedPercent(selected.max_drawdown)} max drawdown.${bestNote}`;
+  list.innerHTML = recommendations.slice(0, 4).map((item, index) => `
+    <article>
+      <span>${String(index + 1).padStart(2, "0")}</span>
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </div>
+    </article>
+  `).join("");
+}
+
 function renderSimulationResult(result) {
   latestSimulationResult = result;
   renderAdvancedExport(null);
@@ -1418,6 +1626,7 @@ function renderSimulationResult(result) {
   }
 
   renderSimulationChart(result);
+  renderSimulationOptimizationBrief(result);
 }
 
 async function refreshSimulationContext(asset) {
@@ -2851,6 +3060,7 @@ async function loadDashboard(options = {}) {
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);
     renderMarketTape(snapshot.assets);
+    renderMarketConsole(snapshot);
     renderDashboardPulse(snapshot);
     renderMacroCards(snapshot.macro_snapshot, "dashboard-macro-grid", null, "dashboard-macro-summary");
     renderMacroChart(snapshot.macro_snapshot);

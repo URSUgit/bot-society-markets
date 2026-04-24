@@ -182,6 +182,19 @@ def test_public_legal_pages_are_served() -> None:
         assert "market, model, and platform risk all remain real" in risk_response.text.lower()
 
 
+def test_professional_console_pages_are_served() -> None:
+    with build_client() as client:
+        dashboard_response = client.get("/dashboard")
+        assert dashboard_response.status_code == 200
+        assert 'id="market-console-section"' in dashboard_response.text
+        assert 'id="market-console-decisions"' in dashboard_response.text
+
+        simulation_response = client.get("/simulation")
+        assert simulation_response.status_code == 200
+        assert 'id="simulation-optimization-panel"' in simulation_response.text
+        assert 'id="simulation-optimization-list"' in simulation_response.text
+
+
 def test_sqlite_backup_helper_creates_portable_copy() -> None:
     temp_root = Path(tempfile.mkdtemp())
     try:
