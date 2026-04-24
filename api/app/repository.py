@@ -19,6 +19,7 @@ from .database import (
     macro_snapshots_table,
     market_snapshots_table,
     notification_channels_table,
+    orders_table,
     paper_positions_table,
     pipeline_runs_table,
     predictions_table,
@@ -389,6 +390,49 @@ class BotSocietyRepository:
         stmt = update(paper_positions_table).where(paper_positions_table.c.id == position_id).values(**payload)
         with self.database.connect() as connection:
             connection.execute(stmt)
+
+    def create_order(self, payload: dict[str, Any]) -> int:
+        stmt = orders_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def get_order(self, user_slug: str, order_id: int) -> dict[str, Any] | None:
+        stmt = select(orders_table).where(
+            and_(
+                orders_table.c.user_slug == user_slug,
+                orders_table.c.id == order_id,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def list_orders(
+        self,
+        user_slug: str,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        stmt = select(orders_table).where(orders_table.c.user_slug == user_slug)
+        if status:
+            stmt = stmt.where(orders_table.c.status == status)
+        stmt = stmt.order_by(desc(orders_table.c.submitted_at), desc(orders_table.c.id)).limit(limit)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def update_order(self, user_slug: str, order_id: int, payload: dict[str, Any]) -> int:
+        if not payload:
+            return 0
+        stmt = (
+            update(orders_table)
+            .where(and_(orders_table.c.user_slug == user_slug, orders_table.c.id == order_id))
+            .values(**payload)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def get_latest_pipeline_run(self) -> dict[str, Any] | None:
         stmt = select(pipeline_runs_table).order_by(desc(pipeline_runs_table.c.started_at), desc(pipeline_runs_table.c.id)).limit(1)

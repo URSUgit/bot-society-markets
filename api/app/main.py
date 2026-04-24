@@ -61,6 +61,8 @@ from .models import (
     StrategyView,
     Summary,
     SystemPulseEnvelope,
+    TradingOrderRequest,
+    TradingOrderView,
     UserProfile,
     WalletIntelligenceSnapshot,
     WatchlistAssetRequest,
@@ -575,6 +577,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/paper-venues", response_model=PaperVenuesSnapshot)
     def paper_venues(request: Request) -> PaperVenuesSnapshot:
         return get_service(request).get_paper_venues()
+
+    @app.post("/api/v1/trading/orders", response_model=TradingOrderView)
+    @app.post("/api/trading/orders", response_model=TradingOrderView)
+    def place_trading_order(payload: TradingOrderRequest, request: Request) -> TradingOrderView:
+        user_slug = authenticated_user_slug(request)
+        order = run_validated(lambda: get_service(request).place_trading_order(user_slug, payload))
+        audit_event(
+            request,
+            action="trading.order_place",
+            resource_type="order",
+            resource_id=str(order.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "venue": order.venue,
+                "asset": order.asset,
+                "side": order.side,
+                "order_type": order.order_type,
+                "is_paper": order.is_paper,
+                "status": order.status,
+                "notional_usd": order.notional_usd,
+            },
+        )
+        return order
+
+    @app.get("/api/v1/trading/orders", response_model=list[TradingOrderView])
+    @app.get("/api/trading/orders", response_model=list[TradingOrderView])
+    def list_trading_orders(
+        request: Request,
+        status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> list[TradingOrderView]:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).list_trading_orders(user_slug, status=status, limit=limit))
+
+    @app.get("/api/v1/trading/orders/{order_id}", response_model=TradingOrderView)
+    @app.get("/api/trading/orders/{order_id}", response_model=TradingOrderView)
+    def get_trading_order(order_id: int, request: Request) -> TradingOrderView:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).get_trading_order(user_slug, order_id))
+
+    @app.delete("/api/v1/trading/orders/{order_id}", response_model=TradingOrderView)
+    @app.delete("/api/trading/orders/{order_id}", response_model=TradingOrderView)
+    def cancel_trading_order(order_id: int, request: Request) -> TradingOrderView:
+        user_slug = authenticated_user_slug(request)
+        order = run_validated(lambda: get_service(request).cancel_trading_order(user_slug, order_id))
+        audit_event(
+            request,
+            action="trading.order_cancel",
+            resource_type="order",
+            resource_id=str(order.id),
+            actor_user_slug=user_slug,
+            after_state={"status": order.status, "cancelled_at": order.cancelled_at},
+        )
+        return order
 
     @app.get("/api/v1/simulation/config", response_model=SimulationConfig)
     @app.get("/api/simulation/config", response_model=SimulationConfig)

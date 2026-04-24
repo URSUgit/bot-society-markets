@@ -67,7 +67,7 @@ Objective: prepare the database for real users, real paper trades, and later liv
 
 Work:
 
-- Add normalized `orders`, `positions`, `strategies`, `backtest_runs`, `wallets`, `traders`, and `audit_log` tables. `audit_logs`, `strategies`, and `backtest_runs` are implemented in the current MVP schema.
+- Add normalized `orders`, `positions`, `strategies`, `backtest_runs`, `wallets`, `traders`, and `audit_log` tables. `audit_logs`, `strategies`, `backtest_runs`, and `orders` are implemented in the current MVP schema.
 - Keep existing MVP tables until migrated.
 - Add Alembic migrations for each new table.
 - Add append-only audit records for auth, settings, paper orders, alert rules, provider changes, and Strategy Lab actions. Started with authentication, workspace mutations, billing session launches, simulations, saved strategies, saved backtests, paper-trading simulation, admin jobs, and Stripe webhook processing.
@@ -139,20 +139,22 @@ Exit criteria:
 
 ## Phase 6 - Paper Trading Engine
 
+Status: started, with the normalized internal paper order contract implemented in the monolith.
+
 Objective: extract order lifecycle logic before live execution.
 
 Work:
 
 - Create a trading engine interface.
-- Implement paper order placement, fills, status updates, and cancellations.
+- Implement paper order placement, fills, status updates, and cancellations. Internal market paper orders now fill through `/api/v1/trading/orders`; cancellation is exposed for future open orders.
 - Use the same request/response contract planned for live orders.
-- Add order risk checks: notional limits, max exposure, asset allowlists, daily loss limits.
+- Add order risk checks: notional limits, max exposure, asset allowlists, daily loss limits. Initial cash, single-order, exposure, asset, and daily-loss checks are implemented.
 - Publish order events to an internal event log.
 
 Exit criteria:
 
 - Paper orders use the same contract as future live orders.
-- All paper orders have audit records.
+- All paper orders have audit records. `trading.order_place` and `trading.order_cancel` audit actions are implemented.
 - Dashboard can show order status updates.
 
 ## Phase 7 - Event Bus and Async Processing

@@ -777,6 +777,76 @@ def test_configured_paper_venues_become_api_ready() -> None:
         assert payload["api_ready_venues"] >= 3
 
 
+def test_trading_order_contract_records_internal_paper_order() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Paper Order User",
+                "email": "paper-order@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        order_response = client.post(
+            "/api/v1/trading/orders",
+            json={
+                "venue": "paper",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "market",
+                "notional_usd": 500,
+                "client_order_id": "test-paper-order-1",
+            },
+        )
+        assert order_response.status_code == 200
+        order = order_response.json()
+        assert order["user_slug"] == user_slug
+        assert order["venue"] == "paper"
+        assert order["asset"] == "BTC"
+        assert order["status"] == "filled"
+        assert order["filled_quantity"] > 0
+        assert order["avg_fill_price"] > 0
+        assert order["fee"] > 0
+        assert order["metadata"]["execution_mode"] == "internal-paper"
+
+        with client.app.state.bot_society_service.database.connect() as connection:
+            stored_count = connection.exec_driver_sql(
+                "SELECT COUNT(*) FROM orders WHERE user_slug = ? AND id = ?",
+                (user_slug, order["id"]),
+            ).scalar_one()
+        assert stored_count == 1
+
+        list_response = client.get("/api/v1/trading/orders")
+        assert list_response.status_code == 200
+        assert list_response.json()[0]["id"] == order["id"]
+
+        detail_response = client.get(f"/api/v1/trading/orders/{order['id']}")
+        assert detail_response.status_code == 200
+        assert detail_response.json()["exchange_order_id"].startswith("paper-")
+
+        live_response = client.post(
+            "/api/v1/trading/orders",
+            json={
+                "venue": "polymarket",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "market",
+                "notional_usd": 100,
+                "is_paper": False,
+            },
+        )
+        assert live_response.status_code == 400
+        assert "Live execution is disabled" in live_response.json()["detail"]
+
+        audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
+        assert audit_response.status_code == 200
+        actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
+        assert "trading.order_place" in actions
+
+
 def test_strategy_lab_config_and_run_support_local_backtests() -> None:
     settings = Settings(simulation_live_history=False)
     with build_client(settings) as client:

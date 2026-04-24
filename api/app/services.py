@@ -95,6 +95,8 @@ from .models import (
     StrategyView,
     Summary,
     SystemPulseSnapshot,
+    TradingOrderRequest,
+    TradingOrderView,
     UserIdentity,
     UserProfile,
     VenuePulseItem,
@@ -985,6 +987,125 @@ class BotSocietyService:
             closed_positions=closed_positions,
             snapshot=self.get_paper_trading_snapshot(user_slug),
         )
+
+    def place_trading_order(self, user_slug: str, payload: TradingOrderRequest) -> TradingOrderView:
+        repository = BotSocietyRepository(self.database)
+        user = repository.get_user(user_slug)
+        if not user:
+            raise ValueError(f"User {user_slug} is not available")
+        if not payload.is_paper or payload.venue not in {"paper", "internal"}:
+            raise ValueError("Live execution is disabled. Use venue=paper and is_paper=true.")
+        if payload.order_type != "market":
+            raise ValueError("The current paper engine only accepts market orders")
+        if payload.side not in {"buy", "long"}:
+            raise ValueError("The current paper engine only supports buy/long orders")
+
+        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
+        if payload.asset not in latest_assets:
+            raise ValueError(f"Unknown or unsupported paper-trading asset: {payload.asset}")
+        mark_price = float(latest_assets[payload.asset]["price"])
+        if mark_price <= 0:
+            raise ValueError(f"Invalid market price for {payload.asset}")
+
+        slippage_multiplier = 1 + (self.settings.paper_trade_slippage_bps / 10000)
+        fill_price = round(mark_price * slippage_multiplier, 8)
+        quantity = float(payload.quantity) if payload.quantity is not None else float(payload.notional_usd or 0.0) / fill_price
+        requested_notional = quantity * fill_price
+        if requested_notional <= 0:
+            raise ValueError("Order notional must be greater than zero")
+
+        snapshot = self.get_paper_trading_snapshot(user_slug)
+        fee = requested_notional * (self.settings.paper_trade_fee_bps / 10000)
+        total_cash_required = requested_notional + fee
+        max_single_order = self.settings.paper_starting_balance * 0.25
+        max_open_exposure = self.settings.paper_starting_balance * 0.65
+        daily_loss_limit = self.settings.paper_starting_balance * -0.1
+
+        if requested_notional > max_single_order:
+            raise ValueError(f"Paper order exceeds max single-order notional of {max_single_order:.2f} USD")
+        if total_cash_required > snapshot.summary.cash_balance:
+            raise ValueError("Insufficient paper cash for order notional plus fees")
+        if snapshot.summary.open_exposure + requested_notional > max_open_exposure:
+            raise ValueError(f"Paper order would exceed max open exposure of {max_open_exposure:.2f} USD")
+        if snapshot.summary.realized_pnl <= daily_loss_limit:
+            raise ValueError("Daily paper loss limit reached; new orders are suspended")
+
+        notional = quantity * fill_price
+        fee = notional * (self.settings.paper_trade_fee_bps / 10000)
+        now = self._now()
+        metadata = {
+            "execution_mode": "internal-paper",
+            "reference_price": mark_price,
+            "slippage_bps": self.settings.paper_trade_slippage_bps,
+            "fee_bps": self.settings.paper_trade_fee_bps,
+            "risk_limits": {
+                "max_single_order_usd": round(max_single_order, 2),
+                "max_open_exposure_usd": round(max_open_exposure, 2),
+                "daily_loss_limit_usd": round(daily_loss_limit, 2),
+            },
+            "client_order_id": payload.client_order_id,
+        }
+        order_id = repository.create_order(
+            {
+                "user_slug": user_slug,
+                "prediction_id": payload.prediction_id,
+                "venue": "paper",
+                "asset": payload.asset,
+                "side": payload.side,
+                "order_type": payload.order_type,
+                "is_paper": True,
+                "quantity": round(quantity, 8),
+                "notional_usd": round(notional, 2),
+                "price": None,
+                "status": "filled",
+                "filled_quantity": round(quantity, 8),
+                "avg_fill_price": fill_price,
+                "fee": round(fee, 2),
+                "fee_currency": "USD",
+                "exchange_order_id": f"paper-{now.replace(':', '').replace('-', '').replace('Z', '')}-{payload.asset.lower()}",
+                "rejection_reason": None,
+                "submitted_at": now,
+                "filled_at": now,
+                "cancelled_at": None,
+                "metadata_json": self._encode_json_payload(metadata),
+            }
+        )
+        row = repository.get_order(user_slug, order_id)
+        if not row:
+            raise ValueError("Unable to record paper order")
+        return self._trading_order_view_from_row(row)
+
+    def list_trading_orders(
+        self,
+        user_slug: str,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[TradingOrderView]:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        return [self._trading_order_view_from_row(row) for row in repository.list_orders(user_slug, status=status, limit=limit)]
+
+    def get_trading_order(self, user_slug: str, order_id: int) -> TradingOrderView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_order(user_slug, order_id)
+        if not row:
+            raise ValueError("Order not found")
+        return self._trading_order_view_from_row(row)
+
+    def cancel_trading_order(self, user_slug: str, order_id: int) -> TradingOrderView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_order(user_slug, order_id)
+        if not row:
+            raise ValueError("Order not found")
+        if row["status"] != "open":
+            raise ValueError("Only open paper orders can be cancelled")
+        repository.update_order(user_slug, order_id, {"status": "cancelled", "cancelled_at": self._now()})
+        updated = repository.get_order(user_slug, order_id)
+        if not updated:
+            raise ValueError("Order not found")
+        return self._trading_order_view_from_row(updated)
 
     def get_paper_venues(self) -> PaperVenuesSnapshot:
         polysandbox_configured = bool(self.settings.polysandbox_api_key and self.settings.polysandbox_sandbox_id)
@@ -5173,4 +5294,31 @@ class BotSocietyService:
             summary=summary_payload if isinstance(summary_payload, dict) else {},
             result=SimulationRunResult(**result_payload) if isinstance(result_payload, dict) else None,
             error_message=row.get("error_message"),
+        )
+
+    def _trading_order_view_from_row(self, row: dict) -> TradingOrderView:
+        metadata_payload = self._decode_json_payload(row.get("metadata_json"))
+        return TradingOrderView(
+            id=int(row["id"]),
+            user_slug=str(row["user_slug"]),
+            prediction_id=int(row["prediction_id"]) if row.get("prediction_id") is not None else None,
+            venue=str(row["venue"]),
+            asset=str(row["asset"]),
+            side=row["side"],
+            order_type=row["order_type"],
+            is_paper=bool(row["is_paper"]),
+            quantity=round(float(row["quantity"]), 8),
+            notional_usd=round(float(row["notional_usd"]), 2),
+            price=float(row["price"]) if row.get("price") is not None else None,
+            status=row["status"],
+            filled_quantity=round(float(row["filled_quantity"]), 8),
+            avg_fill_price=float(row["avg_fill_price"]) if row.get("avg_fill_price") is not None else None,
+            fee=round(float(row.get("fee") or 0.0), 2),
+            fee_currency=str(row.get("fee_currency") or "USD"),
+            exchange_order_id=row.get("exchange_order_id"),
+            rejection_reason=row.get("rejection_reason"),
+            submitted_at=str(row["submitted_at"]),
+            filled_at=row.get("filled_at"),
+            cancelled_at=row.get("cancelled_at"),
+            metadata=metadata_payload if isinstance(metadata_payload, dict) else None,
         )
