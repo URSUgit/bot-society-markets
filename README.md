@@ -31,6 +31,8 @@ This repository contains both the founder documentation package and a profession
 - [Connectors, Dashboard, and Desktop Program](docs/22-connectors-dashboard-desktop-program.md)
 - [Legal and Compliance Readiness](docs/23-legal-and-compliance-readiness.md)
 - [BITprivat Business Model Strategy](docs/24-bitprivat-business-model-strategy.md)
+- [BITprivat V1 Technical Architecture](docs/25-bitprivat-v1-technical-architecture.md)
+- [BITprivat V1 Migration Roadmap](docs/26-bitprivat-v1-migration-roadmap.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
