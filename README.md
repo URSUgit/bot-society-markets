@@ -102,6 +102,9 @@ Included today:
 - public legal pages for Terms of Service, Privacy Policy, and Risk Disclosure inside the hosted product
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
 - an investor-deck-derived BITprivat business model layer with retail Autopilot, Enterprise OS, revenue architecture, strategy families, moat loop, and seed milestones exposed through the API and portfolio page
+- a streamlined public website positioned as a professional Market Intelligence OS instead of an overloaded analytics dashboard
+- a calmer BITprivat command dashboard with sticky grouped navigation and primary live-market workflows prioritized above secondary admin panels
+- Docker and Akash deployment defaults that target CoinGecko public market data plus Polymarket and Kalshi venue-signal ingestion, with safe demo fallback behavior still available
 
 ## Product Surface
 

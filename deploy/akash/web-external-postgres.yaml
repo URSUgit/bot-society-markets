@@ -24,8 +24,10 @@ services:
       # Recommended: use a Neon pooled connection string with sslmode=require
       - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
       - BSM_SEED_DEMO_DATA=true
-      - BSM_MARKET_PROVIDER=demo
+      - BSM_MARKET_PROVIDER=coingecko
+      - BSM_COINGECKO_PLAN=demo
       - BSM_SIGNAL_PROVIDER=demo
+      - BSM_VENUE_SIGNAL_PROVIDERS=polymarket,kalshi
       - BSM_ALERT_INBOX_LIMIT=10
       - BSM_SESSION_TTL_HOURS=168
       - BSM_SIMULATION_LIVE_HISTORY=true

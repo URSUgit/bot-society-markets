@@ -1600,15 +1600,26 @@ function renderLandingPortfolio(snapshot) {
   }
 
   if (metrics) {
-    metrics.innerHTML = `
-      <article><span>Model PNL</span><strong>${fmtSignedPercent(topBot?.average_strategy_return || 0)}</strong><small>Top bot avg strategy return</small></article>
-      <article><span>Total Volume</span><strong>$${fmtCompactNumber(totalVolume)}</strong><small>Tracked 24h market volume</small></article>
-      <article><span>Total Calls</span><strong>${snapshot.summary.total_predictions}</strong><small>${snapshot.summary.scored_predictions} scored</small></article>
-      <article><span>Age</span><strong>${snapshot.summary.last_cycle_at ? fmtRelativeTime(snapshot.summary.last_cycle_at) : "Bootstrap"}</strong><small>Latest research cycle</small></article>
-      <article><span>Avg Score</span><strong>${fmtScore(snapshot.summary.average_bot_score)}</strong><small>Network composite</small></article>
-      <article><span>Active Calls</span><strong>${snapshot.summary.pending_predictions}</strong><small>Open scoring windows</small></article>
-      <article><span>Win Rate</span><strong>${fmtPercent(topBot?.hit_rate || 0)}</strong><small>Current leader</small></article>
-    `;
+    const compactSite = metrics.classList.contains("strategy-metric-grid");
+    const metricItems = compactSite
+      ? [
+          ["Market Volume", `$${fmtCompactNumber(totalVolume)}`, "Tracked 24h public market context"],
+          ["Scored Calls", snapshot.summary.scored_predictions, `${snapshot.summary.pending_predictions} open prediction windows`],
+          ["Avg Bot Score", fmtScore(snapshot.summary.average_bot_score), "Composite model quality"],
+          ["Top Win Rate", fmtPercent(topBot?.hit_rate || 0), topBot ? topBot.name : "Waiting for ranked bot"],
+        ]
+      : [
+          ["Model PNL", fmtSignedPercent(topBot?.average_strategy_return || 0), "Top bot avg strategy return"],
+          ["Total Volume", `$${fmtCompactNumber(totalVolume)}`, "Tracked 24h market volume"],
+          ["Total Calls", snapshot.summary.total_predictions, `${snapshot.summary.scored_predictions} scored`],
+          ["Age", snapshot.summary.last_cycle_at ? fmtRelativeTime(snapshot.summary.last_cycle_at) : "Bootstrap", "Latest research cycle"],
+          ["Avg Score", fmtScore(snapshot.summary.average_bot_score), "Network composite"],
+          ["Active Calls", snapshot.summary.pending_predictions, "Open scoring windows"],
+          ["Win Rate", fmtPercent(topBot?.hit_rate || 0), "Current leader"],
+        ];
+    metrics.innerHTML = metricItems.map(([label, value, note]) => `
+      <article><span>${label}</span><strong>${value}</strong><small>${note}</small></article>
+    `).join("");
   }
 
   if (categories) {
@@ -1708,7 +1719,7 @@ function renderBusinessModel(strategy) {
   }
 
   if (revenue) {
-    revenue.innerHTML = (strategy.revenue_streams || []).map((stream) => `
+    revenue.innerHTML = (strategy.revenue_streams || []).slice(0, 4).map((stream) => `
       <article>
         <span>${stream.priority}</span>
         <strong>${stream.label}</strong>

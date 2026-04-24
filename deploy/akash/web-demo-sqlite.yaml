@@ -23,8 +23,10 @@ services:
       - BSM_FORCE_HTTPS=true
       - BSM_DATABASE_PATH=/tmp/BotSocietyMarkets/bot_society_markets.db
       - BSM_SEED_DEMO_DATA=true
-      - BSM_MARKET_PROVIDER=demo
+      - BSM_MARKET_PROVIDER=coingecko
+      - BSM_COINGECKO_PLAN=demo
       - BSM_SIGNAL_PROVIDER=demo
+      - BSM_VENUE_SIGNAL_PROVIDERS=polymarket,kalshi
       - BSM_ALERT_INBOX_LIMIT=10
       - BSM_SESSION_TTL_HOURS=168
       - BSM_SIMULATION_LIVE_HISTORY=true

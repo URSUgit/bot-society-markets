@@ -30,8 +30,10 @@ services:
     environment:
       BSM_DATABASE_URL: postgresql+psycopg://bsm:bsm-dev-password@postgres:5432/botsocietymarkets
       BSM_SEED_DEMO_DATA: "true"
-      BSM_MARKET_PROVIDER: demo
+      BSM_MARKET_PROVIDER: coingecko
+      BSM_COINGECKO_PLAN: demo
       BSM_SIGNAL_PROVIDER: demo
+      BSM_VENUE_SIGNAL_PROVIDERS: polymarket,kalshi
       BSM_ALERT_INBOX_LIMIT: "10"
       BSM_SESSION_TTL_HOURS: "168"
     ports:
@@ -56,8 +58,10 @@ services:
     environment:
       BSM_DATABASE_URL: postgresql+psycopg://bsm:bsm-dev-password@postgres:5432/botsocietymarkets
       BSM_SEED_DEMO_DATA: "true"
-      BSM_MARKET_PROVIDER: demo
+      BSM_MARKET_PROVIDER: coingecko
+      BSM_COINGECKO_PLAN: demo
       BSM_SIGNAL_PROVIDER: demo
+      BSM_VENUE_SIGNAL_PROVIDERS: polymarket,kalshi
       BSM_WORKER_INTERVAL_SECONDS: "300"
       BSM_WORKER_MAX_CYCLES: "0"
     command: ["python", "-m", "api.app.jobs", "worker"]
