@@ -311,6 +311,21 @@ alert_delivery_events_table = Table(
     ),
 )
 
+audit_logs_table = Table(
+    "audit_logs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("actor_user_slug", String(120), ForeignKey("users.slug", ondelete="SET NULL")),
+    Column("action", String(120), nullable=False),
+    Column("resource_type", String(120), nullable=False),
+    Column("resource_id", String(255)),
+    Column("ip_address", String(64)),
+    Column("user_agent", Text),
+    Column("before_state_json", Text),
+    Column("after_state_json", Text),
+    Column("created_at", String(64), nullable=False),
+)
+
 Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
 Index("idx_macro_snapshots_series_date", macro_snapshots_table.c.series_id, macro_snapshots_table.c.observation_date.desc())
 Index("idx_signals_source_type_observed_at", signals_table.c.source_type, signals_table.c.observed_at.desc())
@@ -345,6 +360,9 @@ Index(
     alert_delivery_events_table.c.read_at,
     alert_delivery_events_table.c.created_at.desc(),
 )
+Index("idx_audit_logs_actor_created", audit_logs_table.c.actor_user_slug, audit_logs_table.c.created_at.desc())
+Index("idx_audit_logs_resource_created", audit_logs_table.c.resource_type, audit_logs_table.c.resource_id, audit_logs_table.c.created_at.desc())
+Index("idx_audit_logs_action_created", audit_logs_table.c.action, audit_logs_table.c.created_at.desc())
 
 
 def _sqlite_url_for_path(path: Path) -> str:

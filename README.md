@@ -93,6 +93,8 @@ Included today:
 - adapter ZIP packs that bridge Strategy Lab exports into prediction-market-backtesting runner workflows
 - operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
+- versioned `/api/v1` compatibility routes for the current public, dashboard, signal, system, simulation, auth, billing, and workspace surfaces
+- append-only audit logging for authentication, workspace mutations, billing session launches, simulation runs, paper-trading simulation, admin jobs, and Stripe webhook processing
 - GitHub Actions CI for Python tests and Docker image validation
 - Docker assets for reproducible container deployment
 - desktop shortcut installation for one-click Windows startup

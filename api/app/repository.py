@@ -10,6 +10,7 @@ from .database import (
     Database,
     alert_delivery_events_table,
     alert_rules_table,
+    audit_logs_table,
     billing_customers_table,
     billing_events_table,
     billing_subscriptions_table,
@@ -898,3 +899,29 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
+
+    def create_audit_log(self, payload: dict[str, Any]) -> int:
+        stmt = audit_logs_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_audit_logs(
+        self,
+        *,
+        actor_user_slug: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        stmt = select(audit_logs_table)
+        if actor_user_slug:
+            stmt = stmt.where(audit_logs_table.c.actor_user_slug == actor_user_slug)
+        if action:
+            stmt = stmt.where(audit_logs_table.c.action == action)
+        if resource_type:
+            stmt = stmt.where(audit_logs_table.c.resource_type == resource_type)
+        stmt = stmt.order_by(desc(audit_logs_table.c.created_at), desc(audit_logs_table.c.id)).limit(limit)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))

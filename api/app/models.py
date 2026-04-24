@@ -951,6 +951,23 @@ class UserProfile(BaseModel):
     unread_alert_count: int = Field(ge=0)
 
 
+class AuditLogEntry(BaseModel):
+    id: int
+    actor_user_slug: str | None = None
+    action: str
+    resource_type: str
+    resource_id: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    before_state: dict[str, object] | None = None
+    after_state: dict[str, object] | None = None
+    created_at: str
+
+
+class AuditLogEnvelope(BaseModel):
+    audit_logs: list[AuditLogEntry]
+
+
 class ProviderStatusEnvelope(BaseModel):
     provider_status: ProviderStatus
 

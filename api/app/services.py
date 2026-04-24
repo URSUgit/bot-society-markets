@@ -19,6 +19,7 @@ from .models import (
     AdvancedBacktestExport,
     AlertDelivery,
     AlertInbox,
+    AuditLogEntry,
     AlertRule,
     AlertRuleCreate,
     AssetHistoryEnvelope,
@@ -282,6 +283,63 @@ class BotSocietyService:
             return
         repository = BotSocietyRepository(self.database)
         repository.delete_session(self.auth.hash_session_token(session_token))
+
+    def record_audit_event(
+        self,
+        *,
+        actor_user_slug: str | None,
+        action: str,
+        resource_type: str,
+        resource_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        before_state: dict[str, object] | None = None,
+        after_state: dict[str, object] | None = None,
+    ) -> int:
+        repository = BotSocietyRepository(self.database)
+        return repository.create_audit_log(
+            {
+                "actor_user_slug": actor_user_slug,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+                "before_state_json": self._encode_audit_state(before_state),
+                "after_state_json": self._encode_audit_state(after_state),
+                "created_at": self._now(),
+            }
+        )
+
+    def get_audit_logs(
+        self,
+        *,
+        actor_user_slug: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 50,
+    ) -> list[AuditLogEntry]:
+        repository = BotSocietyRepository(self.database)
+        return [
+            AuditLogEntry(
+                id=int(row["id"]),
+                actor_user_slug=row.get("actor_user_slug"),
+                action=str(row["action"]),
+                resource_type=str(row["resource_type"]),
+                resource_id=row.get("resource_id"),
+                ip_address=row.get("ip_address"),
+                user_agent=row.get("user_agent"),
+                before_state=self._decode_audit_state(row.get("before_state_json")),
+                after_state=self._decode_audit_state(row.get("after_state_json")),
+                created_at=str(row["created_at"]),
+            )
+            for row in repository.list_audit_logs(
+                actor_user_slug=actor_user_slug,
+                action=action,
+                resource_type=resource_type,
+                limit=limit,
+            )
+        ]
 
     def get_billing_snapshot(self, user_slug: str, *, can_manage: bool | None = None) -> BillingSnapshot:
         repository = BotSocietyRepository(self.database)
@@ -4864,3 +4922,19 @@ class BotSocietyService:
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _encode_audit_state(state: dict[str, object] | None) -> str | None:
+        if state is None:
+            return None
+        return json.dumps(state, separators=(",", ":"), sort_keys=True, default=str)
+
+    @staticmethod
+    def _decode_audit_state(raw_state: str | None) -> dict[str, object] | None:
+        if not raw_state:
+            return None
+        try:
+            payload = json.loads(raw_state)
+        except json.JSONDecodeError:
+            return {"raw": raw_state}
+        return payload if isinstance(payload, dict) else {"value": payload}

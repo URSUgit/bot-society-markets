@@ -256,6 +256,42 @@ def test_user_workspace_mutations() -> None:
         assert any(rule["asset"] == "BTC" for rule in alert_response.json()["alert_rules"])
 
 
+def test_v1_routes_and_audit_log_capture_mutations() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "V1 Audit User",
+                "email": "v1-audit@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        dashboard_response = client.get("/api/v1/dashboard/summary")
+        assert dashboard_response.status_code == 200
+        assert dashboard_response.json()["summary"]["active_bots"] == 6
+
+        signals_response = client.get("/api/v1/signals", params={"limit": 3})
+        assert signals_response.status_code == 200
+        assert len(signals_response.json()) == 3
+
+        watchlist_response = client.post("/api/v1/me/watchlist", json={"asset": "SOL"})
+        assert watchlist_response.status_code == 200
+        assert any(item["asset"] == "SOL" for item in watchlist_response.json()["watchlist"])
+
+        audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
+        assert audit_response.status_code == 200
+        audit_payload = audit_response.json()["audit_logs"]
+        actions = {entry["action"] for entry in audit_payload}
+        assert {"auth.register", "workspace.watchlist_add"}.issubset(actions)
+        watchlist_audit = next(entry for entry in audit_payload if entry["action"] == "workspace.watchlist_add")
+        assert watchlist_audit["resource_type"] == "watchlist_item"
+        assert watchlist_audit["resource_id"] == "SOL"
+        assert watchlist_audit["after_state"]["asset"] == "SOL"
+
+
 def test_alert_inbox_endpoints_support_read_flow() -> None:
     with build_client() as client:
         register_response = client.post(

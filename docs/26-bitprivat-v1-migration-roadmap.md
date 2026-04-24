@@ -40,11 +40,13 @@ Deliverables:
 
 ## Phase 1 - Contracts and Versioned API
 
+Status: first implementation shipped.
+
 Objective: introduce a stable V1 API without breaking the existing UI.
 
 Work:
 
-- Add `/api/v1/*` routes beside current `/api/*` routes.
+- Add `/api/v1/*` routes beside current `/api/*` routes. Done for the current auth, landing, dashboard, assets, signals, leaderboard, simulation, system, billing, workspace, paper-trading, and admin surfaces.
 - Generate OpenAPI client contracts.
 - Add route mapping from current endpoints to target endpoints.
 - Add structured error envelopes.
@@ -59,6 +61,8 @@ Exit criteria:
 
 ## Phase 2 - Data Hardening
 
+Status: started.
+
 Objective: prepare the database for real users, real paper trades, and later live trading.
 
 Work:
@@ -66,7 +70,7 @@ Work:
 - Add normalized `orders`, `positions`, `strategies`, `backtest_runs`, `wallets`, `traders`, and `audit_log` tables.
 - Keep existing MVP tables until migrated.
 - Add Alembic migrations for each new table.
-- Add append-only audit records for auth, settings, paper orders, alert rules, and provider changes.
+- Add append-only audit records for auth, settings, paper orders, alert rules, and provider changes. Started with authentication, workspace mutations, billing session launches, simulations, paper-trading simulation, admin jobs, and Stripe webhook processing.
 - Add retention policy for raw signal text.
 - Add database backup and restore verification.
 
@@ -270,4 +274,3 @@ BITprivat V1 is ready when:
 - Every state-changing action has audit logging.
 - Provider health and fallback status are visible.
 - Live trading remains locked behind explicit legal, risk, MFA, KYC, and user-consent gates.
-
