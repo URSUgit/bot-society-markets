@@ -1137,6 +1137,37 @@ def test_canonical_host_redirects_root_domain_to_https_app_domain() -> None:
         assert response.headers["location"] == "https://app.bitprivat.com/dashboard?view=live"
 
 
+def test_production_hosts_support_apex_api_and_status_routes() -> None:
+    settings = Settings(
+        site_home_page="dashboard",
+        canonical_host="bitprivat.com",
+        canonical_redirect_hosts=("www.bitprivat.com", "app.bitprivat.com"),
+        force_https=True,
+    )
+    with build_client(settings) as client:
+        app_redirect = client.get(
+            "/dashboard",
+            headers={"host": "app.bitprivat.com", "x-forwarded-proto": "https"},
+            follow_redirects=False,
+        )
+        assert app_redirect.status_code == 308
+        assert app_redirect.headers["location"] == "https://bitprivat.com/dashboard"
+
+        status_response = client.get(
+            "/",
+            headers={"host": "status.bitprivat.com", "x-forwarded-proto": "https"},
+        )
+        assert status_response.status_code == 200
+        assert "Public status and live systems posture" in status_response.text
+
+        api_response = client.get(
+            "/api/v1/system/pulse",
+            headers={"host": "api.bitprivat.com", "x-forwarded-proto": "https"},
+        )
+        assert api_response.status_code == 200
+        assert "system_pulse" in api_response.json()
+
+
 def test_force_https_redirects_canonical_host_and_sets_secure_cookie() -> None:
     settings = Settings(
         canonical_host="app.bitprivat.com",

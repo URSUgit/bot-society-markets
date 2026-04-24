@@ -960,7 +960,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return ack
 
     @app.get("/")
-    def home() -> FileResponse:
+    def home(request: Request) -> FileResponse:
+        if _request_host(request) == "status.bitprivat.com":
+            return FileResponse(STATIC_DIR / "status.html")
         if active_settings.site_home_page == "dashboard":
             return FileResponse(STATIC_DIR / "dashboard.html")
         return FileResponse(STATIC_DIR / "index.html")
