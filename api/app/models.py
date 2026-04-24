@@ -12,6 +12,9 @@ PaperPositionStatus = Literal["open", "closed"]
 SimulationStrategyId = Literal["buy_hold", "trend_follow", "mean_reversion", "breakout", "custom_creator"]
 SimulationHistorySourceMode = Literal["auto", "real", "local"]
 PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchlist"]
+OrderSide = Literal["buy", "sell", "long", "short"]
+OrderType = Literal["market", "limit"]
+OrderStatus = Literal["pending", "open", "filled", "cancelled", "rejected"]
 LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 BillingPlanKey = Literal["basic", "pro", "enterprise"]
 ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
@@ -285,6 +288,56 @@ class PaperSimulationResult(BaseModel):
     created_positions: int = Field(ge=0)
     closed_positions: int = Field(ge=0)
     snapshot: PaperTradingSnapshot
+
+
+class TradingOrderRequest(BaseModel):
+    venue: str = Field(default="paper", min_length=2, max_length=64)
+    asset: str = Field(min_length=2, max_length=16)
+    side: OrderSide
+    order_type: OrderType = "market"
+    quantity: float | None = Field(default=None, gt=0)
+    notional_usd: float | None = Field(default=None, gt=0)
+    price: float | None = Field(default=None, gt=0)
+    prediction_id: int | None = Field(default=None, ge=1)
+    is_paper: bool = True
+    client_order_id: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def normalize_order_request(self) -> "TradingOrderRequest":
+        self.venue = self.venue.strip().lower()
+        self.asset = self.asset.strip().upper()
+        if self.quantity is None and self.notional_usd is None:
+            raise ValueError("Provide either quantity or notional_usd")
+        if self.order_type == "limit" and self.price is None:
+            raise ValueError("Limit orders require a price")
+        if self.client_order_id is not None:
+            self.client_order_id = self.client_order_id.strip() or None
+        return self
+
+
+class TradingOrderView(BaseModel):
+    id: int
+    user_slug: str
+    prediction_id: int | None = None
+    venue: str
+    asset: str
+    side: OrderSide
+    order_type: OrderType
+    is_paper: bool
+    quantity: float = Field(ge=0)
+    notional_usd: float = Field(ge=0)
+    price: float | None = Field(default=None, ge=0)
+    status: OrderStatus
+    filled_quantity: float = Field(ge=0)
+    avg_fill_price: float | None = Field(default=None, ge=0)
+    fee: float = Field(ge=0)
+    fee_currency: str
+    exchange_order_id: str | None = None
+    rejection_reason: str | None = None
+    submitted_at: str
+    filled_at: str | None = None
+    cancelled_at: str | None = None
+    metadata: dict[str, object] | None = None
 
 
 class PaperVenueCapability(BaseModel):

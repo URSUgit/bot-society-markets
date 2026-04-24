@@ -147,6 +147,33 @@ paper_positions_table = Table(
     UniqueConstraint("user_slug", "prediction_id", name="uq_paper_positions_user_prediction"),
 )
 
+orders_table = Table(
+    "orders",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("prediction_id", Integer, ForeignKey("predictions.id", ondelete="SET NULL")),
+    Column("venue", String(64), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("side", String(16), nullable=False),
+    Column("order_type", String(16), nullable=False),
+    Column("is_paper", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("quantity", Float, nullable=False),
+    Column("notional_usd", Float, nullable=False),
+    Column("price", Float),
+    Column("status", String(32), nullable=False),
+    Column("filled_quantity", Float, nullable=False, default=0.0, server_default="0"),
+    Column("avg_fill_price", Float),
+    Column("fee", Float, nullable=False, default=0.0, server_default="0"),
+    Column("fee_currency", String(16), nullable=False, default="USD", server_default="USD"),
+    Column("exchange_order_id", String(255)),
+    Column("rejection_reason", Text),
+    Column("submitted_at", String(64), nullable=False),
+    Column("filled_at", String(64)),
+    Column("cancelled_at", String(64)),
+    Column("metadata_json", Text),
+)
+
 pipeline_runs_table = Table(
     "pipeline_runs",
     metadata,
@@ -363,6 +390,9 @@ Index("idx_signals_observed_at", signals_table.c.observed_at.desc())
 Index("idx_predictions_published_at", predictions_table.c.published_at.desc())
 Index("idx_predictions_status", predictions_table.c.status, predictions_table.c.published_at.desc())
 Index("idx_paper_positions_user_status_opened", paper_positions_table.c.user_slug, paper_positions_table.c.status, paper_positions_table.c.opened_at.desc())
+Index("idx_orders_user_submitted", orders_table.c.user_slug, orders_table.c.submitted_at.desc())
+Index("idx_orders_status_submitted", orders_table.c.status, orders_table.c.submitted_at.desc())
+Index("idx_orders_asset_submitted", orders_table.c.asset, orders_table.c.submitted_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
 Index("idx_billing_customers_user_provider", billing_customers_table.c.user_slug, billing_customers_table.c.provider)
 Index(

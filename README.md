@@ -83,6 +83,7 @@ Included today:
 - macro regime tracking with demo data or optional FRED ingestion across configurable economic series
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
+- normalized paper order placement through `/api/v1/trading/orders`, with cash, exposure, single-order, and daily-loss risk checks before internal fills
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
 - an Algorithm Creator inside Strategy Lab with editable signal weights, entry/exit thresholds, exposure limits, stop loss, take profit, and data-source selection
@@ -149,6 +150,10 @@ Key endpoints include:
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
+- `GET /api/trading/orders`
+- `POST /api/trading/orders`
+- `GET /api/trading/orders/{order_id}`
+- `DELETE /api/trading/orders/{order_id}`
 - `GET /api/system/launch-readiness`
 - `GET /api/system/connectors`
 - `GET /api/system/infrastructure`
