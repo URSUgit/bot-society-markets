@@ -2576,6 +2576,35 @@ form:has(:disabled) {
   align-items: stretch;
 }
 
+.strategy-vault-grid {
+  align-items: stretch;
+}
+
+.strategy-vault-list,
+.strategy-backtest-list {
+  margin-top: 16px;
+}
+
+.strategy-vault-list li,
+.strategy-backtest-list li {
+  align-items: flex-start;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(246, 237, 227, 0.5)),
+    radial-gradient(circle at top right, rgba(87, 199, 184, 0.1), transparent 34%);
+}
+
+.strategy-vault-list p,
+.strategy-vault-list small,
+.strategy-backtest-list p,
+.strategy-backtest-list small {
+  color: var(--text-soft);
+}
+
+.strategy-vault-actions {
+  grid-template-columns: repeat(2, max-content);
+  align-items: center;
+}
+
 .wallet-watch-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

@@ -50,10 +50,15 @@ from .models import (
     ProductionCutoverEnvelope,
     ProviderStatusEnvelope,
     SignalView,
+    BacktestRunView,
     SimulationConfig,
     SimulationExportArtifact,
     SimulationRequest,
     SimulationRunResult,
+    StrategyBacktestRequest,
+    StrategyCreateRequest,
+    StrategyUpdateRequest,
+    StrategyView,
     Summary,
     SystemPulseEnvelope,
     UserProfile,
@@ -618,6 +623,122 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def simulation_package_download(filename: str, request: Request) -> FileResponse:
         path = run_validated(lambda: get_service(request).get_simulation_package_path(filename))
         return FileResponse(path, media_type="application/zip", filename=path.name)
+
+    @app.post("/api/v1/strategies", response_model=StrategyView)
+    @app.post("/api/strategies", response_model=StrategyView)
+    def create_strategy(payload: StrategyCreateRequest, request: Request) -> StrategyView:
+        user_slug = authenticated_user_slug(request)
+        strategy = run_validated(lambda: get_service(request).create_strategy(user_slug, payload))
+        audit_event(
+            request,
+            action="strategy.create",
+            resource_type="strategy",
+            resource_id=str(strategy.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "name": strategy.name,
+                "asset": strategy.config.asset,
+                "strategy_id": strategy.config.strategy_id,
+                "lookback_years": strategy.config.lookback_years,
+            },
+        )
+        return strategy
+
+    @app.get("/api/v1/strategies", response_model=list[StrategyView])
+    @app.get("/api/strategies", response_model=list[StrategyView])
+    def list_strategies(request: Request) -> list[StrategyView]:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).list_strategies(user_slug))
+
+    @app.get("/api/v1/strategies/backtests", response_model=list[BacktestRunView])
+    @app.get("/api/strategies/backtests", response_model=list[BacktestRunView])
+    def list_strategy_backtests(
+        request: Request,
+        strategy_id: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> list[BacktestRunView]:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).list_backtest_runs(user_slug, strategy_id=strategy_id, limit=limit))
+
+    @app.get("/api/v1/strategies/backtests/{run_id}", response_model=BacktestRunView)
+    @app.get("/api/strategies/backtests/{run_id}", response_model=BacktestRunView)
+    def get_strategy_backtest(run_id: int, request: Request) -> BacktestRunView:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).get_backtest_run(user_slug, run_id))
+
+    @app.get("/api/v1/strategies/{strategy_id}", response_model=StrategyView)
+    @app.get("/api/strategies/{strategy_id}", response_model=StrategyView)
+    def get_strategy(strategy_id: int, request: Request) -> StrategyView:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).get_strategy(user_slug, strategy_id))
+
+    @app.put("/api/v1/strategies/{strategy_id}", response_model=StrategyView)
+    @app.put("/api/strategies/{strategy_id}", response_model=StrategyView)
+    def update_strategy(strategy_id: int, payload: StrategyUpdateRequest, request: Request) -> StrategyView:
+        user_slug = authenticated_user_slug(request)
+        before = run_validated(lambda: get_service(request).get_strategy(user_slug, strategy_id))
+        strategy = run_validated(lambda: get_service(request).update_strategy(user_slug, strategy_id, payload))
+        audit_event(
+            request,
+            action="strategy.update",
+            resource_type="strategy",
+            resource_id=str(strategy.id),
+            actor_user_slug=user_slug,
+            before_state={
+                "name": before.name,
+                "asset": before.config.asset,
+                "strategy_id": before.config.strategy_id,
+                "is_active": before.is_active,
+            },
+            after_state={
+                "name": strategy.name,
+                "asset": strategy.config.asset,
+                "strategy_id": strategy.config.strategy_id,
+                "is_active": strategy.is_active,
+            },
+        )
+        return strategy
+
+    @app.delete("/api/v1/strategies/{strategy_id}", response_model=StrategyView)
+    @app.delete("/api/strategies/{strategy_id}", response_model=StrategyView)
+    def delete_strategy(strategy_id: int, request: Request) -> StrategyView:
+        user_slug = authenticated_user_slug(request)
+        strategy = run_validated(lambda: get_service(request).delete_strategy(user_slug, strategy_id))
+        audit_event(
+            request,
+            action="strategy.delete",
+            resource_type="strategy",
+            resource_id=str(strategy.id),
+            actor_user_slug=user_slug,
+            after_state={"name": strategy.name, "is_active": strategy.is_active},
+        )
+        return strategy
+
+    @app.post("/api/v1/strategies/{strategy_id}/backtest", response_model=BacktestRunView)
+    @app.post("/api/strategies/{strategy_id}/backtest", response_model=BacktestRunView)
+    def run_strategy_backtest(
+        strategy_id: int,
+        request: Request,
+        payload: StrategyBacktestRequest | None = None,
+    ) -> BacktestRunView:
+        user_slug = authenticated_user_slug(request)
+        run = run_validated(lambda: get_service(request).run_strategy_backtest(user_slug, strategy_id, payload))
+        audit_event(
+            request,
+            action="strategy.backtest_run",
+            resource_type="backtest_run",
+            resource_id=str(run.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "strategy_id": run.strategy_id,
+                "asset": run.asset,
+                "strategy_key": run.strategy_key,
+                "lookback_years": run.lookback_years,
+                "status": run.status,
+                "total_return": run.summary.get("total_return"),
+            },
+        )
+        return run
 
     @app.post("/api/v1/me/notification-channels", response_model=UserProfile)
     @app.post("/api/me/notification-channels", response_model=UserProfile)

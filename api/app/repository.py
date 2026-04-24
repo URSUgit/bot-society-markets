@@ -11,6 +11,7 @@ from .database import (
     alert_delivery_events_table,
     alert_rules_table,
     audit_logs_table,
+    backtest_runs_table,
     billing_customers_table,
     billing_events_table,
     billing_subscriptions_table,
@@ -22,6 +23,7 @@ from .database import (
     pipeline_runs_table,
     predictions_table,
     signals_table,
+    strategies_table,
     user_follows_table,
     user_sessions_table,
     users_table,
@@ -899,6 +901,76 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
+
+    def create_strategy(self, payload: dict[str, Any]) -> int:
+        stmt = strategies_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_strategies(self, user_slug: str, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+        stmt = select(strategies_table).where(strategies_table.c.user_slug == user_slug)
+        if not include_inactive:
+            stmt = stmt.where(strategies_table.c.is_active.is_(True))
+        stmt = stmt.order_by(desc(strategies_table.c.updated_at), desc(strategies_table.c.id))
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_strategy(self, user_slug: str, strategy_id: int, *, include_inactive: bool = False) -> dict[str, Any] | None:
+        stmt = select(strategies_table).where(
+            and_(
+                strategies_table.c.user_slug == user_slug,
+                strategies_table.c.id == strategy_id,
+            )
+        )
+        if not include_inactive:
+            stmt = stmt.where(strategies_table.c.is_active.is_(True))
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def update_strategy(self, user_slug: str, strategy_id: int, payload: dict[str, Any]) -> int:
+        if not payload:
+            return 0
+        stmt = (
+            update(strategies_table)
+            .where(and_(strategies_table.c.user_slug == user_slug, strategies_table.c.id == strategy_id))
+            .values(**payload)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def create_backtest_run(self, payload: dict[str, Any]) -> int:
+        stmt = backtest_runs_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_backtest_runs(
+        self,
+        user_slug: str,
+        *,
+        strategy_id: int | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        stmt = select(backtest_runs_table).where(backtest_runs_table.c.user_slug == user_slug)
+        if strategy_id is not None:
+            stmt = stmt.where(backtest_runs_table.c.strategy_id == strategy_id)
+        stmt = stmt.order_by(desc(backtest_runs_table.c.completed_at), desc(backtest_runs_table.c.id)).limit(limit)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_backtest_run(self, user_slug: str, run_id: int) -> dict[str, Any] | None:
+        stmt = select(backtest_runs_table).where(
+            and_(
+                backtest_runs_table.c.user_slug == user_slug,
+                backtest_runs_table.c.id == run_id,
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
 
     def create_audit_log(self, payload: dict[str, Any]) -> int:
         stmt = audit_logs_table.insert().values(**payload)

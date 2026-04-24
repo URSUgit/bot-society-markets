@@ -5,6 +5,13 @@ const fmtCompactNumber = (value) => Intl.NumberFormat("en-US", { notation: "comp
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+})[character]);
 const fmtFileSize = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -170,6 +177,8 @@ let chartResizeFrame = null;
 let simulationConfig = null;
 let latestSimulationResult = null;
 let latestAdvancedExport = null;
+let savedStrategies = [];
+let savedBacktestRuns = [];
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -1262,6 +1271,41 @@ function currentSimulationPayload() {
   };
 }
 
+function setSimulationField(id, value) {
+  const input = document.getElementById(id);
+  if (!input || value === undefined || value === null) {
+    return;
+  }
+  input.value = String(value);
+}
+
+function applySimulationPayload(payload) {
+  if (!payload) {
+    return;
+  }
+  setSimulationField("simulation-asset-input", payload.asset);
+  setSimulationField("simulation-years-input", payload.lookback_years);
+  setSimulationField("simulation-source-input", payload.history_source_mode);
+  setSimulationField("simulation-strategy-input", payload.strategy_id);
+  setSimulationField("simulation-capital-input", payload.starting_capital);
+  setSimulationField("simulation-fee-input", payload.fee_bps);
+  setSimulationField("simulation-fast-input", payload.fast_window);
+  setSimulationField("simulation-slow-input", payload.slow_window);
+  setSimulationField("simulation-mean-input", payload.mean_window);
+  setSimulationField("simulation-breakout-input", payload.breakout_window);
+  setSimulationField("simulation-custom-name-input", payload.custom_strategy_name);
+  setSimulationField("simulation-trend-weight-input", payload.creator_trend_weight);
+  setSimulationField("simulation-mean-weight-input", payload.creator_mean_reversion_weight);
+  setSimulationField("simulation-breakout-weight-input", payload.creator_breakout_weight);
+  setSimulationField("simulation-entry-score-input", payload.creator_entry_score);
+  setSimulationField("simulation-exit-score-input", payload.creator_exit_score);
+  setSimulationField("simulation-max-exposure-input", payload.creator_max_exposure);
+  setSimulationField("simulation-pullback-input", payload.creator_pullback_entry_pct);
+  setSimulationField("simulation-stop-loss-input", payload.creator_stop_loss_pct);
+  setSimulationField("simulation-take-profit-input", payload.creator_take_profit_pct);
+  syncStrategyCreatorPanel();
+}
+
 function syncStrategyCreatorPanel() {
   const strategySelect = document.getElementById("simulation-strategy-input");
   const panel = document.getElementById("strategy-creator-panel");
@@ -1414,6 +1458,200 @@ async function loadSimulationExports() {
   }
 }
 
+function renderSavedStrategies(strategies) {
+  const list = document.getElementById("saved-strategy-list");
+  if (!list) {
+    return;
+  }
+  if (!strategies?.length) {
+    list.innerHTML = `
+      <li>
+        <div>
+          <strong>No saved strategies yet</strong>
+          <p>Shape an algorithm above, then save it to build a reusable research vault.</p>
+        </div>
+      </li>
+    `;
+    return;
+  }
+
+  list.innerHTML = strategies.map((strategy) => {
+    const config = strategy.config || {};
+    const description = strategy.description || `${config.asset || "Asset"} ${config.strategy_id || "strategy"} research candidate`;
+    return `
+      <li class="strategy-vault-item">
+        <div>
+          <strong>${escapeHtml(strategy.name)}</strong>
+          <p>${escapeHtml(description)}</p>
+          <small>${escapeHtml(config.asset)} · ${config.lookback_years || "n/a"}y · ${escapeHtml(config.history_source_mode || "auto")} · updated ${fmtRelativeTime(strategy.updated_at)}</small>
+        </div>
+        <div class="workspace-actions strategy-vault-actions">
+          <button class="button secondary small-button" type="button" data-load-strategy-id="${strategy.id}">Load</button>
+          <button class="button primary small-button" type="button" data-run-strategy-id="${strategy.id}">Backtest</button>
+        </div>
+      </li>
+    `;
+  }).join("");
+}
+
+function renderSavedBacktests(runs) {
+  const list = document.getElementById("saved-backtest-list");
+  if (!list) {
+    return;
+  }
+  if (!runs?.length) {
+    list.innerHTML = `
+      <li>
+        <div>
+          <strong>No stored backtests</strong>
+          <p>Run a saved strategy to record performance, rank, and source provenance here.</p>
+        </div>
+      </li>
+    `;
+    return;
+  }
+
+  list.innerHTML = runs.map((run) => {
+    const summary = run.summary || {};
+    const returnValue = summary.total_return === undefined ? "n/a" : fmtSignedPercent(summary.total_return);
+    const sharpe = summary.sharpe_ratio === undefined ? "n/a" : Number(summary.sharpe_ratio).toFixed(2);
+    const rank = summary.rank ? `Rank #${summary.rank}` : run.status;
+    return `
+      <li class="strategy-backtest-item">
+        <div>
+          <strong>${escapeHtml(summary.strategy_name || `Strategy #${run.strategy_id}`)}</strong>
+          <p>${escapeHtml(run.asset)} · ${escapeHtml(run.strategy_key)} · ${returnValue}</p>
+          <small>${rank} · Sharpe ${sharpe} · ${fmtRelativeTime(run.completed_at || run.started_at)}</small>
+        </div>
+        <div class="workspace-actions">
+          <span>${escapeHtml(run.status)}</span>
+          <span>${run.lookback_years}y</span>
+        </div>
+      </li>
+    `;
+  }).join("");
+}
+
+async function loadSavedStrategies() {
+  const list = document.getElementById("saved-strategy-list");
+  if (list) {
+    list.innerHTML = `
+      <li>
+        <div>
+          <strong>Loading strategy vault</strong>
+          <p>Checking your authenticated workspace for saved algorithms.</p>
+        </div>
+      </li>
+    `;
+  }
+  try {
+    savedStrategies = await fetchJson("/api/v1/strategies");
+    renderSavedStrategies(savedStrategies);
+  } catch (error) {
+    if (list) {
+      list.innerHTML = `
+        <li>
+          <div>
+            <strong>Sign in to save strategies</strong>
+            <p>${escapeHtml(error.message)}</p>
+          </div>
+        </li>
+      `;
+    }
+  }
+}
+
+async function loadSavedBacktests() {
+  const list = document.getElementById("saved-backtest-list");
+  if (list) {
+    list.innerHTML = `
+      <li>
+        <div>
+          <strong>Loading backtest ledger</strong>
+          <p>Retrieving recent stored runs.</p>
+        </div>
+      </li>
+    `;
+  }
+  try {
+    savedBacktestRuns = await fetchJson("/api/v1/strategies/backtests?limit=8");
+    renderSavedBacktests(savedBacktestRuns);
+  } catch (error) {
+    if (list) {
+      list.innerHTML = `
+        <li>
+          <div>
+            <strong>Backtest ledger unavailable</strong>
+            <p>${escapeHtml(error.message)}</p>
+          </div>
+        </li>
+      `;
+    }
+  }
+}
+
+async function saveCurrentStrategy() {
+  const button = document.getElementById("save-current-strategy-button");
+  if (button) {
+    button.disabled = true;
+  }
+  const config = currentSimulationPayload();
+  const name = (config.custom_strategy_name || `${config.asset} Strategy`).trim();
+  try {
+    const strategy = await fetchJson("/api/v1/strategies", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        description: `${config.asset} ${config.lookback_years}y ${config.strategy_id} candidate saved from Strategy Lab.`,
+        config,
+      }),
+    });
+    await loadSavedStrategies();
+    setStatus(`Saved strategy "${strategy.name}" to your vault.`);
+  } catch (error) {
+    setStatus(`Strategy save failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function runSavedStrategyBacktest(strategyId) {
+  const button = document.querySelector(`[data-run-strategy-id="${strategyId}"]`);
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const run = await fetchJson(`/api/v1/strategies/${strategyId}/backtest`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    if (run.result) {
+      renderSimulationResult(run.result);
+      await refreshSimulationContext(run.result.asset);
+    }
+    await loadSavedBacktests();
+    setStatus(`Stored backtest #${run.id} completed for ${run.asset}: ${run.summary?.total_return === undefined ? "n/a" : fmtSignedPercent(run.summary.total_return)}.`);
+  } catch (error) {
+    setStatus(`Saved strategy backtest failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function loadSavedStrategyIntoForm(strategyId) {
+  const strategy = savedStrategies.find((item) => String(item.id) === String(strategyId));
+  if (!strategy) {
+    setStatus("Saved strategy not found in the current vault. Refresh and try again.");
+    return;
+  }
+  applySimulationPayload(strategy.config);
+  setStatus(`Loaded "${strategy.name}" into the Strategy Lab controls.`);
+}
+
 async function generateAdvancedExport() {
   const button = document.getElementById("generate-advanced-export-button");
   if (button) {
@@ -1462,7 +1700,7 @@ async function loadSimulationPage() {
   simulationConfig = await fetchJson("/api/simulation/config");
   populateSimulationForm(simulationConfig);
   renderAdvancedExport(null);
-  await Promise.all([loadSimulationExports(), runSimulation()]);
+  await Promise.all([loadSimulationExports(), loadSavedStrategies(), loadSavedBacktests(), runSimulation()]);
 }
 
 function renderPulseMetrics(systemPulse, targetId) {
@@ -2856,6 +3094,33 @@ function bindForms() {
     simulationForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await runSimulation();
+    });
+  }
+  const saveStrategyButton = document.getElementById("save-current-strategy-button");
+  if (saveStrategyButton) {
+    saveStrategyButton.addEventListener("click", saveCurrentStrategy);
+  }
+  const refreshStrategiesButton = document.getElementById("refresh-strategies-button");
+  if (refreshStrategiesButton) {
+    refreshStrategiesButton.addEventListener("click", async () => {
+      await Promise.all([loadSavedStrategies(), loadSavedBacktests()]);
+      setStatus("Strategy vault refreshed.");
+    });
+  }
+  const savedStrategyList = document.getElementById("saved-strategy-list");
+  if (savedStrategyList) {
+    savedStrategyList.addEventListener("click", async (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      const loadButton = event.target.closest("[data-load-strategy-id]");
+      const runButton = event.target.closest("[data-run-strategy-id]");
+      if (loadButton) {
+        loadSavedStrategyIntoForm(loadButton.dataset.loadStrategyId);
+      }
+      if (runButton) {
+        await runSavedStrategyBacktest(runButton.dataset.runStrategyId);
+      }
     });
   }
   const simulationStrategyInput = document.getElementById("simulation-strategy-input");

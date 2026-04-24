@@ -517,6 +517,68 @@ class SimulationRunResult(BaseModel):
     leaderboard: list[SimulationLeaderboardEntry] = Field(default_factory=list)
 
 
+class StrategyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+    config: SimulationRequest
+
+    @model_validator(mode="after")
+    def normalize_strategy_create(self) -> "StrategyCreateRequest":
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("Strategy name is required")
+        if self.description is not None:
+            self.description = self.description.strip() or None
+        return self
+
+
+class StrategyUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+    config: SimulationRequest | None = None
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def normalize_strategy_update(self) -> "StrategyUpdateRequest":
+        if self.name is not None:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValueError("Strategy name is required")
+        if self.description is not None:
+            self.description = self.description.strip() or None
+        return self
+
+
+class StrategyBacktestRequest(BaseModel):
+    config_override: SimulationRequest | None = None
+
+
+class StrategyView(BaseModel):
+    id: int
+    user_slug: str
+    name: str
+    description: str | None = None
+    config: SimulationRequest
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class BacktestRunView(BaseModel):
+    id: int
+    strategy_id: int
+    user_slug: str
+    asset: str
+    strategy_key: str
+    lookback_years: int = Field(ge=1, le=10)
+    status: str
+    started_at: str
+    completed_at: str | None = None
+    summary: dict[str, object]
+    result: SimulationRunResult | None = None
+    error_message: str | None = None
+
+
 class NotificationChannel(BaseModel):
     id: int
     user_slug: str

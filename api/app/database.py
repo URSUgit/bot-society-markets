@@ -326,6 +326,36 @@ audit_logs_table = Table(
     Column("created_at", String(64), nullable=False),
 )
 
+strategies_table = Table(
+    "strategies",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("name", String(160), nullable=False),
+    Column("description", Text),
+    Column("config_json", Text, nullable=False),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
+backtest_runs_table = Table(
+    "backtest_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("strategy_id", Integer, ForeignKey("strategies.id", ondelete="CASCADE"), nullable=False),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("asset", String(16), nullable=False),
+    Column("strategy_key", String(64), nullable=False),
+    Column("lookback_years", Integer, nullable=False),
+    Column("status", String(32), nullable=False, default="complete", server_default="complete"),
+    Column("started_at", String(64), nullable=False),
+    Column("completed_at", String(64)),
+    Column("summary_json", Text, nullable=False),
+    Column("result_json", Text),
+    Column("error_message", Text),
+)
+
 Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
 Index("idx_macro_snapshots_series_date", macro_snapshots_table.c.series_id, macro_snapshots_table.c.observation_date.desc())
 Index("idx_signals_source_type_observed_at", signals_table.c.source_type, signals_table.c.observed_at.desc())
@@ -363,6 +393,9 @@ Index(
 Index("idx_audit_logs_actor_created", audit_logs_table.c.actor_user_slug, audit_logs_table.c.created_at.desc())
 Index("idx_audit_logs_resource_created", audit_logs_table.c.resource_type, audit_logs_table.c.resource_id, audit_logs_table.c.created_at.desc())
 Index("idx_audit_logs_action_created", audit_logs_table.c.action, audit_logs_table.c.created_at.desc())
+Index("idx_strategies_user_updated", strategies_table.c.user_slug, strategies_table.c.updated_at.desc())
+Index("idx_backtest_runs_user_completed", backtest_runs_table.c.user_slug, backtest_runs_table.c.completed_at.desc())
+Index("idx_backtest_runs_strategy_completed", backtest_runs_table.c.strategy_id, backtest_runs_table.c.completed_at.desc())
 
 
 def _sqlite_url_for_path(path: Path) -> str:

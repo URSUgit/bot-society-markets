@@ -88,6 +88,11 @@ from .models import (
     SimulationStrategyPreset,
     SimulationStrategyResult,
     SimulationTradeView,
+    BacktestRunView,
+    StrategyBacktestRequest,
+    StrategyCreateRequest,
+    StrategyUpdateRequest,
+    StrategyView,
     Summary,
     SystemPulseSnapshot,
     UserIdentity,
@@ -340,6 +345,189 @@ class BotSocietyService:
                 limit=limit,
             )
         ]
+
+    def create_strategy(self, user_slug: str, payload: StrategyCreateRequest) -> StrategyView:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+
+        now = self._now()
+        strategy_id = repository.create_strategy(
+            {
+                "user_slug": user_slug,
+                "name": payload.name,
+                "description": payload.description,
+                "config_json": self._encode_json_payload(payload.config.model_dump(mode="json")),
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        row = repository.get_strategy(user_slug, strategy_id)
+        if not row:
+            raise ValueError("Unable to create strategy")
+        return self._strategy_view_from_row(row)
+
+    def list_strategies(self, user_slug: str) -> list[StrategyView]:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        return [self._strategy_view_from_row(row) for row in repository.list_strategies(user_slug)]
+
+    def get_strategy(self, user_slug: str, strategy_id: int) -> StrategyView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_strategy(user_slug, strategy_id)
+        if not row:
+            raise ValueError("Strategy not found")
+        return self._strategy_view_from_row(row)
+
+    def update_strategy(self, user_slug: str, strategy_id: int, payload: StrategyUpdateRequest) -> StrategyView:
+        repository = BotSocietyRepository(self.database)
+        existing = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not existing:
+            raise ValueError("Strategy not found")
+
+        updates: dict[str, object | None] = {}
+        if "name" in payload.model_fields_set and payload.name is not None:
+            updates["name"] = payload.name
+        if "description" in payload.model_fields_set:
+            updates["description"] = payload.description
+        if payload.config is not None:
+            updates["config_json"] = self._encode_json_payload(payload.config.model_dump(mode="json"))
+        if payload.is_active is not None:
+            updates["is_active"] = payload.is_active
+
+        if updates:
+            updates["updated_at"] = self._now()
+            repository.update_strategy(user_slug, strategy_id, updates)
+
+        row = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not row:
+            raise ValueError("Strategy not found")
+        return self._strategy_view_from_row(row)
+
+    def delete_strategy(self, user_slug: str, strategy_id: int) -> StrategyView:
+        repository = BotSocietyRepository(self.database)
+        existing = repository.get_strategy(user_slug, strategy_id)
+        if not existing:
+            raise ValueError("Strategy not found")
+        repository.update_strategy(user_slug, strategy_id, {"is_active": False, "updated_at": self._now()})
+        row = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not row:
+            raise ValueError("Strategy not found")
+        return self._strategy_view_from_row(row)
+
+    def run_strategy_backtest(
+        self,
+        user_slug: str,
+        strategy_id: int,
+        payload: StrategyBacktestRequest | None = None,
+    ) -> BacktestRunView:
+        repository = BotSocietyRepository(self.database)
+        strategy = repository.get_strategy(user_slug, strategy_id)
+        if not strategy:
+            raise ValueError("Strategy not found")
+
+        config_payload = self._decode_json_payload(strategy.get("config_json"))
+        if not isinstance(config_payload, dict):
+            raise ValueError("Saved strategy config is invalid")
+        simulation_payload = payload.config_override if payload and payload.config_override else SimulationRequest(**config_payload)
+        started_at = self._now()
+        try:
+            result = self.run_simulation(simulation_payload)
+            completed_at = self._now()
+            selected = result.selected_result
+            rank = next(
+                (index + 1 for index, item in enumerate(result.leaderboard) if item.strategy_id == selected.strategy_id),
+                None,
+            )
+            summary: dict[str, object] = {
+                "strategy_name": strategy["name"],
+                "asset": result.asset,
+                "strategy_id": selected.strategy_id,
+                "selected_label": selected.label,
+                "lookback_years": result.requested_lookback_years,
+                "actual_years_covered": result.actual_years_covered,
+                "data_source": result.data_source,
+                "history_points": result.history_points,
+                "rank": rank,
+                "total_return": selected.total_return,
+                "benchmark_total_return": result.benchmark_total_return,
+                "cagr": selected.cagr,
+                "max_drawdown": selected.max_drawdown,
+                "sharpe_ratio": selected.sharpe_ratio,
+                "win_rate": selected.win_rate,
+                "trade_count": selected.trade_count,
+                "final_equity": selected.final_equity,
+                "beat_benchmark": selected.total_return > result.benchmark_total_return,
+            }
+            run_id = repository.create_backtest_run(
+                {
+                    "strategy_id": strategy_id,
+                    "user_slug": user_slug,
+                    "asset": result.asset,
+                    "strategy_key": selected.strategy_id,
+                    "lookback_years": result.requested_lookback_years,
+                    "status": "complete",
+                    "started_at": started_at,
+                    "completed_at": completed_at,
+                    "summary_json": self._encode_json_payload(summary),
+                    "result_json": self._encode_json_payload(result.model_dump(mode="json")),
+                    "error_message": None,
+                }
+            )
+        except Exception as exc:
+            completed_at = self._now()
+            run_id = repository.create_backtest_run(
+                {
+                    "strategy_id": strategy_id,
+                    "user_slug": user_slug,
+                    "asset": simulation_payload.asset,
+                    "strategy_key": simulation_payload.strategy_id,
+                    "lookback_years": simulation_payload.lookback_years,
+                    "status": "failed",
+                    "started_at": started_at,
+                    "completed_at": completed_at,
+                    "summary_json": self._encode_json_payload(
+                        {
+                            "strategy_name": strategy["name"],
+                            "asset": simulation_payload.asset,
+                            "strategy_id": simulation_payload.strategy_id,
+                            "lookback_years": simulation_payload.lookback_years,
+                        }
+                    ),
+                    "result_json": None,
+                    "error_message": str(exc),
+                }
+            )
+            raise ValueError(f"Backtest failed and was recorded as run {run_id}: {exc}") from exc
+
+        row = repository.get_backtest_run(user_slug, run_id)
+        if not row:
+            raise ValueError("Unable to record backtest run")
+        return self._backtest_run_view_from_row(row)
+
+    def list_backtest_runs(
+        self,
+        user_slug: str,
+        *,
+        strategy_id: int | None = None,
+        limit: int = 20,
+    ) -> list[BacktestRunView]:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        return [
+            self._backtest_run_view_from_row(row)
+            for row in repository.list_backtest_runs(user_slug, strategy_id=strategy_id, limit=limit)
+        ]
+
+    def get_backtest_run(self, user_slug: str, run_id: int) -> BacktestRunView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_backtest_run(user_slug, run_id)
+        if not row:
+            raise ValueError("Backtest run not found")
+        return self._backtest_run_view_from_row(row)
 
     def get_billing_snapshot(self, user_slug: str, *, can_manage: bool | None = None) -> BillingSnapshot:
         repository = BotSocietyRepository(self.database)
@@ -4938,3 +5126,51 @@ class BotSocietyService:
         except json.JSONDecodeError:
             return {"raw": raw_state}
         return payload if isinstance(payload, dict) else {"value": payload}
+
+    @staticmethod
+    def _encode_json_payload(payload: object | None) -> str | None:
+        if payload is None:
+            return None
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
+
+    @staticmethod
+    def _decode_json_payload(raw_payload: str | None) -> object | None:
+        if not raw_payload:
+            return None
+        try:
+            return json.loads(raw_payload)
+        except json.JSONDecodeError:
+            return {"raw": raw_payload}
+
+    def _strategy_view_from_row(self, row: dict) -> StrategyView:
+        config_payload = self._decode_json_payload(row.get("config_json"))
+        if not isinstance(config_payload, dict):
+            config_payload = {"asset": "BTC"}
+        return StrategyView(
+            id=int(row["id"]),
+            user_slug=str(row["user_slug"]),
+            name=str(row["name"]),
+            description=row.get("description"),
+            config=SimulationRequest(**config_payload),
+            is_active=bool(row["is_active"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def _backtest_run_view_from_row(self, row: dict) -> BacktestRunView:
+        summary_payload = self._decode_json_payload(row.get("summary_json"))
+        result_payload = self._decode_json_payload(row.get("result_json"))
+        return BacktestRunView(
+            id=int(row["id"]),
+            strategy_id=int(row["strategy_id"]),
+            user_slug=str(row["user_slug"]),
+            asset=str(row["asset"]),
+            strategy_key=str(row["strategy_key"]),
+            lookback_years=int(row["lookback_years"]),
+            status=str(row["status"]),
+            started_at=str(row["started_at"]),
+            completed_at=row.get("completed_at"),
+            summary=summary_payload if isinstance(summary_payload, dict) else {},
+            result=SimulationRunResult(**result_payload) if isinstance(result_payload, dict) else None,
+            error_message=row.get("error_message"),
+        )

@@ -176,6 +176,35 @@
 
       <p class="notice" id="cycle-status"></p>
 
+      <section class="content-grid strategy-vault-grid">
+        <article class="card wide-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Strategy vault</p>
+              <h3>Save, reload, and rerun your strongest algorithm candidates</h3>
+            </div>
+            <span class="badge">Workspace memory</span>
+          </div>
+          <p class="panel-note">Persist promising settings as named strategies, then use stored backtests as the audit trail for what actually worked.</p>
+          <div class="advanced-export-actions">
+            <button class="button primary small-button" id="save-current-strategy-button" type="button">Save Current Strategy</button>
+            <button class="button secondary small-button" id="refresh-strategies-button" type="button">Refresh Vault</button>
+          </div>
+          <ul class="workspace-list strategy-vault-list" id="saved-strategy-list"></ul>
+        </article>
+
+        <article class="card side-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Backtest ledger</p>
+              <h3>Stored proof of recent runs</h3>
+            </div>
+            <span class="badge">Audit trail</span>
+          </div>
+          <ul class="workspace-list strategy-backtest-list" id="saved-backtest-list"></ul>
+        </article>
+      </section>
+
       <section class="content-grid strategy-chart-grid">
         <article class="card wide-card">
           <div class="section-head">

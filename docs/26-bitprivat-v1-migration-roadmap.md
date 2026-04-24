@@ -61,16 +61,16 @@ Exit criteria:
 
 ## Phase 2 - Data Hardening
 
-Status: started.
+Status: started, with audit logging plus Strategy Lab persistence now implemented in the monolith.
 
 Objective: prepare the database for real users, real paper trades, and later live trading.
 
 Work:
 
-- Add normalized `orders`, `positions`, `strategies`, `backtest_runs`, `wallets`, `traders`, and `audit_log` tables.
+- Add normalized `orders`, `positions`, `strategies`, `backtest_runs`, `wallets`, `traders`, and `audit_log` tables. `audit_logs`, `strategies`, and `backtest_runs` are implemented in the current MVP schema.
 - Keep existing MVP tables until migrated.
 - Add Alembic migrations for each new table.
-- Add append-only audit records for auth, settings, paper orders, alert rules, and provider changes. Started with authentication, workspace mutations, billing session launches, simulations, paper-trading simulation, admin jobs, and Stripe webhook processing.
+- Add append-only audit records for auth, settings, paper orders, alert rules, provider changes, and Strategy Lab actions. Started with authentication, workspace mutations, billing session launches, simulations, saved strategies, saved backtests, paper-trading simulation, admin jobs, and Stripe webhook processing.
 - Add retention policy for raw signal text.
 - Add database backup and restore verification.
 
@@ -107,8 +107,8 @@ Work:
 
 - Move long-running backtests to async jobs.
 - Store full backtest outputs in object storage.
-- Add backtest result history and comparison views.
-- Add strategy templates and user-saved strategies.
+- Add backtest result history and comparison views. Started with authenticated stored backtest ledgers.
+- Add strategy templates and user-saved strategies. User-saved Strategy Lab configurations are implemented.
 - Add walk-forward analysis, max drawdown, Sharpe, Sortino, CAGR, exposure, and turnover metrics.
 - Add historical data cache with provider source attribution.
 

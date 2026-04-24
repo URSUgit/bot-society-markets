@@ -829,6 +829,105 @@ def test_strategy_lab_config_and_run_support_local_backtests() -> None:
         assert any(entry["strategy_id"] == "custom_creator" for entry in run_payload["leaderboard"])
 
 
+def test_strategy_lab_persists_strategies_and_backtest_runs() -> None:
+    settings = Settings(simulation_live_history=False)
+    strategy_config = {
+        "asset": "BTC",
+        "history_source_mode": "local",
+        "lookback_years": 1,
+        "strategy_id": "custom_creator",
+        "custom_strategy_name": "Vault Builder",
+        "starting_capital": 12000,
+        "fee_bps": 8,
+        "fast_window": 2,
+        "slow_window": 4,
+        "mean_window": 3,
+        "breakout_window": 4,
+        "creator_trend_weight": 1.2,
+        "creator_mean_reversion_weight": 0.7,
+        "creator_breakout_weight": 1.0,
+        "creator_entry_score": 0.45,
+        "creator_exit_score": 0.25,
+        "creator_max_exposure": 0.75,
+        "creator_pullback_entry_pct": 0.02,
+        "creator_stop_loss_pct": 0.08,
+        "creator_take_profit_pct": 0.2,
+    }
+
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Strategy Owner",
+                "email": "strategy-owner@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        create_response = client.post(
+            "/api/v1/strategies",
+            json={
+                "name": "Vault Builder",
+                "description": "Persisted creator blend candidate.",
+                "config": strategy_config,
+            },
+        )
+        assert create_response.status_code == 200
+        strategy = create_response.json()
+        assert strategy["id"] >= 1
+        assert strategy["user_slug"] == user_slug
+        assert strategy["config"]["asset"] == "BTC"
+        assert strategy["config"]["custom_strategy_name"] == "Vault Builder"
+
+        list_response = client.get("/api/v1/strategies")
+        assert list_response.status_code == 200
+        assert [item["id"] for item in list_response.json()] == [strategy["id"]]
+
+        update_response = client.put(
+            f"/api/v1/strategies/{strategy['id']}",
+            json={"name": "Vault Builder Prime"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["name"] == "Vault Builder Prime"
+
+        run_response = client.post(f"/api/v1/strategies/{strategy['id']}/backtest", json={})
+        assert run_response.status_code == 200
+        run_payload = run_response.json()
+        assert run_payload["strategy_id"] == strategy["id"]
+        assert run_payload["status"] == "complete"
+        assert run_payload["summary"]["strategy_name"] == "Vault Builder Prime"
+        assert run_payload["summary"]["asset"] == "BTC"
+        assert run_payload["result"]["selected_result"]["strategy_id"] == "custom_creator"
+
+        runs_response = client.get("/api/v1/strategies/backtests")
+        assert runs_response.status_code == 200
+        assert runs_response.json()[0]["id"] == run_payload["id"]
+
+        run_detail_response = client.get(f"/api/v1/strategies/backtests/{run_payload['id']}")
+        assert run_detail_response.status_code == 200
+        assert run_detail_response.json()["summary"]["final_equity"] == run_payload["summary"]["final_equity"]
+
+        delete_response = client.delete(f"/api/v1/strategies/{strategy['id']}")
+        assert delete_response.status_code == 200
+        assert delete_response.json()["is_active"] is False
+
+        post_delete_list_response = client.get("/api/v1/strategies")
+        assert post_delete_list_response.status_code == 200
+        assert post_delete_list_response.json() == []
+
+        audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
+        assert audit_response.status_code == 200
+        actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
+        assert {
+            "strategy.create",
+            "strategy.update",
+            "strategy.backtest_run",
+            "strategy.delete",
+        }.issubset(actions)
+
+
 def test_hyperliquid_and_venue_provider_metadata() -> None:
     settings = Settings(
         market_provider_mode="hyperliquid",

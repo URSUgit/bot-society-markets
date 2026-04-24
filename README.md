@@ -86,6 +86,8 @@ Included today:
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
 - an Algorithm Creator inside Strategy Lab with editable signal weights, entry/exit thresholds, exposure limits, stop loss, take profit, and data-source selection
+- persisted Strategy Lab strategy vaults for authenticated users, including saved algorithm configs and reloadable research candidates
+- stored Strategy Lab backtest ledgers that preserve result summaries, full simulation payloads, and audit events per run
 - smart-wallet intelligence with demo mode or optional public Polymarket wallet tracking for selected addresses
 - fair-value edge scoring that compares modeled probabilities against live venue pricing surfaces
 - advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines
@@ -127,6 +129,12 @@ Key endpoints include:
 - `GET /api/simulation/exports`
 - `GET /api/simulation/exports/{filename}`
 - `GET /api/simulation/packages/{filename}`
+- `GET /api/strategies`
+- `POST /api/strategies`
+- `PUT /api/strategies/{strategy_id}`
+- `DELETE /api/strategies/{strategy_id}`
+- `GET /api/strategies/backtests`
+- `POST /api/strategies/{strategy_id}/backtest`
 - `GET /api/bots`
 - `GET /api/bots/{slug}`
 - `GET /api/predictions`
