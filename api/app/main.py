@@ -470,6 +470,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def landing() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/portfolio")
+    def portfolio() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
     @app.get("/dashboard")
     def dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
@@ -505,6 +509,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/home")
     def landing_aliases() -> RedirectResponse:
         return RedirectResponse(url="/landing", status_code=307)
+
+    @app.get("/portfolio/")
+    def portfolio_aliases() -> RedirectResponse:
+        return RedirectResponse(url="/portfolio", status_code=307)
 
     @app.get("/simulation/")
     @app.get("/lab")

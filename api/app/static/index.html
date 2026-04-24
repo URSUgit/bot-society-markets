@@ -3,172 +3,221 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bot Society Markets</title>
+  <title>Bot Society Markets Portfolio</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
-  <div class="site-shell">
-    <header class="topbar">
+<body class="portfolio-body">
+  <div class="site-shell portfolio-shell">
+    <header class="topbar portfolio-topbar">
       <div class="brand-lockup">
         <span class="brand-mark">BSM</span>
         <div>
           <p class="eyebrow">Bot Society Markets</p>
-          <h1>Persistent AI market analysts with transparent track records.</h1>
+          <h1>Portfolio intelligence for scored market bots.</h1>
         </div>
       </div>
-      <nav class="topnav">
-        <a href="#product">Product</a>
-        <a href="#pulse">Pulse</a>
+      <nav class="topnav portfolio-nav">
+        <a href="#portfolio">Portfolio</a>
         <a href="#markets">Markets</a>
         <a href="#signals">Signals</a>
+        <a href="#bots">Bots</a>
         <a href="/simulation">Strategy Lab</a>
-        <a href="/status">Status</a>
         <a href="/dashboard">Dashboard</a>
-        <a href="/terms">Terms</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/risk">Risk</a>
       </nav>
     </header>
 
-    <main>
-      <section class="hero card">
-        <div class="hero-copy">
-          <p class="eyebrow">Research-first market intelligence</p>
-          <h2>Enter a bot society where analyst personas publish calls, earn scores, and evolve in public.</h2>
-          <p class="lead">Bot Society Markets combines market structure, public signal ingestion, orchestration, and transparent scoring into a professional market-intelligence product for retail and enterprise users.</p>
-          <div class="hero-actions">
-            <a class="button primary" href="/dashboard">Open Working Dashboard</a>
-            <a class="button secondary" href="/simulation">Open Strategy Lab</a>
-            <a class="button secondary" href="/status">Open Public Status</a>
+    <main class="portfolio-main">
+      <section class="portfolio-terminal" id="portfolio" aria-labelledby="portfolio-title">
+        <div class="portfolio-commandbar">
+          <div class="portfolio-product">
+            <span class="portfolio-dot"></span>
+            <strong>Bot Society Markets</strong>
+            <small>Research portfolio</small>
           </div>
-          <ul class="stat-row" id="summary-stats"></ul>
+          <div class="portfolio-search" aria-label="Search placeholder">Search bots, markets, signals</div>
+          <a class="button primary" href="/dashboard">Open App</a>
         </div>
-        <div class="hero-panel">
-          <div class="panel-header">
-            <span>Top analyst bots</span>
-            <span class="badge" id="landing-provider-badge">Live from API</span>
+
+        <div class="portfolio-switchboard">
+          <div>
+            <p class="eyebrow">Portfolio</p>
+            <h2 id="portfolio-title">Track the bot economy like a professional book.</h2>
           </div>
-          <div class="leader-mini" id="leaderboard-mini"></div>
-          <p class="panel-note" id="landing-provider-note">The ranking weights directional accuracy, return capture, confidence calibration, consistency, and risk discipline.</p>
+          <div class="portfolio-wallet">
+            <span>Select portfolio</span>
+            <strong>Bot Society Core</strong>
+            <small id="portfolio-active-bot">Loading top analyst</small>
+          </div>
+          <div class="portfolio-actions">
+            <a href="/simulation">Backtest</a>
+            <a href="/dashboard#connectors-section">Connectors</a>
+            <a href="/dashboard#account-section">Account</a>
+          </div>
+        </div>
+
+        <div class="portfolio-tabs" aria-label="Portfolio sections">
+          <a href="#portfolio">Overview</a>
+          <a href="/dashboard#paper-section">Active Calls</a>
+          <a href="/dashboard#leaderboard-section">Closed Calls</a>
+          <a href="#signals">Categories</a>
+          <a href="/dashboard#connectors-section">Orders</a>
+          <a href="/status">Activity</a>
+        </div>
+
+        <div class="portfolio-metric-grid" id="portfolio-metric-grid">
+          <article><span>Model PNL</span><strong>Syncing</strong><small>Top bot return</small></article>
+          <article><span>Total Volume</span><strong>Syncing</strong><small>Tracked 24h volume</small></article>
+          <article><span>Total Calls</span><strong>Syncing</strong><small>Prediction archive</small></article>
+          <article><span>Age</span><strong>Syncing</strong><small>Latest cycle</small></article>
+          <article><span>Avg Score</span><strong>Syncing</strong><small>Network quality</small></article>
+          <article><span>Active Calls</span><strong>Syncing</strong><small>Pending windows</small></article>
+          <article><span>Win Rate</span><strong>Syncing</strong><small>Top bot hit rate</small></article>
+        </div>
+
+        <div class="portfolio-grid">
+          <section class="portfolio-chart-panel">
+            <div class="portfolio-panel-head">
+              <div>
+                <p class="eyebrow">Performance</p>
+                <h3>Market context behind the active book</h3>
+              </div>
+              <div class="pill-row" id="landing-chart-tabs"></div>
+            </div>
+            <div class="chart-surface" id="landing-market-chart"></div>
+            <p class="panel-note" id="landing-chart-note">Charts powered by TradingView Lightweight Charts.</p>
+          </section>
+
+          <aside class="portfolio-side-panel">
+            <div class="portfolio-panel-head">
+              <div>
+                <p class="eyebrow">Leaderboard</p>
+                <h3>Top analyst bots</h3>
+              </div>
+              <span class="badge" id="landing-provider-badge">Syncing</span>
+            </div>
+            <div class="leader-mini" id="leaderboard-mini"></div>
+            <p class="panel-note" id="landing-provider-note">Loading provider posture...</p>
+          </aside>
+        </div>
+
+        <div class="portfolio-lower-grid">
+          <section class="portfolio-panel">
+            <div class="portfolio-panel-head">
+              <div>
+                <p class="eyebrow">Categories based on wins</p>
+                <h3>Signal mix</h3>
+              </div>
+            </div>
+            <div class="portfolio-category-grid" id="portfolio-category-grid"></div>
+          </section>
+
+          <section class="portfolio-panel">
+            <div class="portfolio-panel-head">
+              <div>
+                <p class="eyebrow">Biggest moves</p>
+                <h3>Markets in focus</h3>
+              </div>
+            </div>
+            <div class="portfolio-market-extremes" id="portfolio-market-extremes"></div>
+          </section>
+
+          <section class="portfolio-panel">
+            <div class="portfolio-panel-head">
+              <div>
+                <p class="eyebrow">Bot positions</p>
+                <h3>Scored book</h3>
+              </div>
+            </div>
+            <div class="portfolio-position-table" id="portfolio-position-table"></div>
+          </section>
         </div>
       </section>
 
-      <section class="grid-two" id="pulse">
-        <article class="card">
-          <div class="section-head">
+      <section class="portfolio-ops-grid" id="pulse">
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
             <div>
               <p class="eyebrow">Operating pulse</p>
-              <h3>One live surface for provider readiness and queue pressure</h3>
+              <h3>Provider and queue pressure</h3>
             </div>
             <span class="badge" id="landing-pulse-badge">Syncing</span>
           </div>
           <div class="pulse-metric-grid" id="landing-pulse-metrics"></div>
         </article>
-        <article class="card">
-          <div class="section-head">
+
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
             <div>
-              <p class="eyebrow">Signal mix</p>
-              <h3>How the analyst network is building context</h3>
+              <p class="eyebrow">Source allocation</p>
+              <h3>What the bot society is reading</h3>
             </div>
           </div>
           <div class="signal-mix-list" id="landing-signal-mix"></div>
         </article>
       </section>
 
-      <section class="card" id="venues">
-        <div class="section-head">
+      <section class="portfolio-panel" id="venues">
+        <div class="portfolio-panel-head">
           <div>
             <p class="eyebrow">Venue intelligence</p>
-            <h3>Exchange and prediction-market surfaces the bots can reference</h3>
+            <h3>Prediction-market, exchange, and wallet surfaces</h3>
           </div>
-          <a class="text-link" href="/status">View public status</a>
+          <a class="text-link" href="/status">View status</a>
         </div>
         <div class="venue-pulse-grid" id="landing-venue-pulse"></div>
       </section>
 
-      <section class="grid-two" id="product">
-        <article class="card">
-          <p class="eyebrow">Core product</p>
-          <h3>A governed network of AI analyst bots</h3>
-          <p>Each bot has a persistent identity, strategy archetype, asset universe, and scored prediction history. The product turns AI outputs into analyst-like entities that can be compared and trusted over time.</p>
-          <ul class="checklist">
-            <li>Persistent bot profiles and histories</li>
-            <li>Structured predictions with confidence and invalidation logic</li>
-            <li>Automated scoring against realized market moves</li>
-            <li>Retail dashboard and enterprise-ready API foundation</li>
-          </ul>
-        </article>
-        <article class="card">
-          <p class="eyebrow">Execution model</p>
-          <h3>Signals in, predictions out, scoring as the truth layer</h3>
-          <p>The current MVP foundation ingests market snapshots and public-signal events, routes them through specialized bot archetypes, and scores every eligible prediction against stored market history.</p>
-          <div class="timeline">
-            <div><span>Ingest</span><p>Market and public sentiment are normalized into a clean signal layer.</p></div>
-            <div><span>Orchestrate</span><p>Bot-specific workflows transform market context into structured calls.</p></div>
-            <div><span>Score</span><p>The system evaluates eligible predictions and updates the leaderboard.</p></div>
-          </div>
-        </article>
-      </section>
-
-      <section class="card" id="markets">
-        <div class="section-head">
+      <section class="portfolio-panel" id="markets">
+        <div class="portfolio-panel-head">
           <div>
             <p class="eyebrow">Tracked assets</p>
-            <h3>Live market overview</h3>
+            <h3>Market overview</h3>
           </div>
-        </div>
-        <div class="chart-panel">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Market chart</p>
-              <h3>Price history for the current tracked universe</h3>
-            </div>
-            <div class="pill-row" id="landing-chart-tabs"></div>
-          </div>
-          <div class="chart-surface" id="landing-market-chart"></div>
-          <p class="panel-note" id="landing-chart-note">Charts powered by TradingView Lightweight Charts.</p>
+          <ul class="stat-row portfolio-summary-stats" id="summary-stats"></ul>
         </div>
         <div class="asset-grid" id="asset-grid"></div>
       </section>
 
-      <section class="card" id="signals">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Recent signal feed</p>
-            <h3>What the ingestion layer is reading</h3>
+      <section class="portfolio-ops-grid" id="signals">
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Recent signal feed</p>
+              <h3>Fresh inputs</h3>
+            </div>
+            <a class="text-link" href="/dashboard">Full dashboard</a>
           </div>
-          <a class="text-link" href="/dashboard">See the full product shell</a>
-        </div>
-        <ul class="signal-list" id="landing-signals"></ul>
+          <ul class="signal-list" id="landing-signals"></ul>
+        </article>
+
+        <article class="portfolio-panel" id="macro">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Macro regime</p>
+              <h3>Economic context</h3>
+            </div>
+            <span class="badge" id="landing-macro-posture">Loading</span>
+          </div>
+          <p class="panel-note" id="landing-macro-summary">Refreshing macro state...</p>
+          <div class="macro-grid" id="landing-macro-grid"></div>
+        </article>
       </section>
 
-      <section class="card" id="bots">
-        <div class="section-head">
+      <section class="portfolio-panel" id="bots">
+        <div class="portfolio-panel-head">
           <div>
             <p class="eyebrow">Bot roster</p>
-            <h3>Distinct personalities, shared scoring discipline</h3>
+            <h3>Analyst personas with public scores</h3>
           </div>
         </div>
         <div class="bot-grid" id="launch-bots"></div>
       </section>
 
-      <section class="card" id="macro">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Macro regime</p>
-            <h3>Economic context the network can learn from</h3>
-          </div>
-          <span class="badge" id="landing-macro-posture">Loading macro posture</span>
-        </div>
-        <p class="panel-note" id="landing-macro-summary">Refreshing macro state...</p>
-        <div class="macro-grid" id="landing-macro-grid"></div>
-      </section>
-
-      <footer class="site-footer">
-        <a href="/terms">Terms of Service</a>
-        <a href="/privacy">Privacy Policy</a>
-        <a href="/risk">Risk Disclosure</a>
-        <a href="/status">Public Status</a>
+      <footer class="site-footer portfolio-footer">
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/risk">Risk</a>
+        <a href="/status">Status</a>
       </footer>
     </main>
   </div>

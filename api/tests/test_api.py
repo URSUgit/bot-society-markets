@@ -144,6 +144,10 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
 
 def test_public_legal_pages_are_served() -> None:
     with build_client() as client:
+        portfolio_response = client.get("/portfolio")
+        assert portfolio_response.status_code == 200
+        assert "portfolio intelligence for scored market bots" in portfolio_response.text.lower()
+
         terms_response = client.get("/terms")
         assert terms_response.status_code == 200
         assert "research, analytics, simulations, and monitoring only" in terms_response.text.lower()
@@ -887,7 +891,7 @@ def test_home_route_can_open_dashboard_for_custom_domain() -> None:
 
         landing_response = client.get("/landing")
         assert landing_response.status_code == 200
-        assert "Enter a bot society" in landing_response.text
+        assert "Track the bot economy like a professional book" in landing_response.text
 
 
 def test_canonical_host_redirects_root_domain_to_https_app_domain() -> None:

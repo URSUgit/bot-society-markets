@@ -1583,6 +1583,78 @@ function renderDashboardPulse(snapshot) {
   renderVenuePulse(snapshot.system_pulse?.venue_pulse, "dashboard-venue-pulse");
 }
 
+function renderLandingPortfolio(snapshot) {
+  const metrics = document.getElementById("portfolio-metric-grid");
+  const categories = document.getElementById("portfolio-category-grid");
+  const markets = document.getElementById("portfolio-market-extremes");
+  const positions = document.getElementById("portfolio-position-table");
+  const activeBot = document.getElementById("portfolio-active-bot");
+  const topBot = snapshot.leaderboard?.[0];
+  const totalVolume = (snapshot.assets || []).reduce((sum, asset) => sum + Number(asset.volume_24h || 0), 0);
+  const bestMove = [...(snapshot.assets || [])].sort((a, b) => Number(b.change_24h) - Number(a.change_24h))[0];
+  const worstMove = [...(snapshot.assets || [])].sort((a, b) => Number(a.change_24h) - Number(b.change_24h))[0];
+  const mostActive = [...(snapshot.assets || [])].sort((a, b) => Number(b.volume_24h) - Number(a.volume_24h))[0];
+
+  if (activeBot) {
+    activeBot.textContent = topBot ? `${topBot.name} | ${fmtScore(topBot.score)} score` : "No analyst selected";
+  }
+
+  if (metrics) {
+    metrics.innerHTML = `
+      <article><span>Model PNL</span><strong>${fmtSignedPercent(topBot?.average_strategy_return || 0)}</strong><small>Top bot avg strategy return</small></article>
+      <article><span>Total Volume</span><strong>$${fmtCompactNumber(totalVolume)}</strong><small>Tracked 24h market volume</small></article>
+      <article><span>Total Calls</span><strong>${snapshot.summary.total_predictions}</strong><small>${snapshot.summary.scored_predictions} scored</small></article>
+      <article><span>Age</span><strong>${snapshot.summary.last_cycle_at ? fmtRelativeTime(snapshot.summary.last_cycle_at) : "Bootstrap"}</strong><small>Latest research cycle</small></article>
+      <article><span>Avg Score</span><strong>${fmtScore(snapshot.summary.average_bot_score)}</strong><small>Network composite</small></article>
+      <article><span>Active Calls</span><strong>${snapshot.summary.pending_predictions}</strong><small>Open scoring windows</small></article>
+      <article><span>Win Rate</span><strong>${fmtPercent(topBot?.hit_rate || 0)}</strong><small>Current leader</small></article>
+    `;
+  }
+
+  if (categories) {
+    const signalMix = snapshot.system_pulse?.signal_mix || [];
+    categories.innerHTML = signalMix.length ? signalMix.slice(0, 4).map((item) => `
+      <article>
+        <span>${item.label}</span>
+        <strong>${fmtPercent(item.share)}</strong>
+        <small>${item.count} signals | quality ${fmtPercent(item.average_quality)}</small>
+        <div class="mini-meter"><i style="width:${(clamp(item.average_quality, 0, 1) * 100).toFixed(2)}%"></i></div>
+      </article>
+    `).join("") : '<p class="panel-note">No category performance yet.</p>';
+  }
+
+  if (markets) {
+    const items = [
+      { label: "Best move", asset: bestMove, value: bestMove ? fmtSignedPercent(bestMove.change_24h) : "n/a" },
+      { label: "Worst move", asset: worstMove, value: worstMove ? fmtSignedPercent(worstMove.change_24h) : "n/a" },
+      { label: "Highest volume", asset: mostActive, value: mostActive ? `$${fmtCompactNumber(mostActive.volume_24h)}` : "n/a" },
+    ];
+    markets.innerHTML = items.map((item) => `
+      <article>
+        <span>${item.label}</span>
+        <strong>${item.asset?.asset || "n/a"}</strong>
+        <small>${item.value}</small>
+      </article>
+    `).join("");
+  }
+
+  if (positions) {
+    positions.innerHTML = `
+      <div class="portfolio-table-row portfolio-table-head">
+        <span>Bot</span><span>Score</span><span>Hit</span><span>Return</span>
+      </div>
+      ${(snapshot.leaderboard || []).slice(0, 6).map((bot) => `
+        <div class="portfolio-table-row">
+          <span>${bot.name}<small>${bot.latest_asset || "multi"} | ${bot.archetype}</small></span>
+          <strong>${fmtScore(bot.score)}</strong>
+          <strong>${fmtPercent(bot.hit_rate)}</strong>
+          <strong>${fmtSignedPercent(bot.average_strategy_return)}</strong>
+        </div>
+      `).join("")}
+    `;
+  }
+}
+
 function buildActivityItems(snapshot) {
   const latestPrediction = snapshot.recent_predictions?.[0];
   const latestSignal = snapshot.recent_signals?.[0];
@@ -1784,6 +1856,8 @@ function renderLanding(snapshot) {
   if (providerNote) {
     providerNote.textContent = `${snapshot.provider_status.environment_name} environment · ${snapshot.system_pulse.live_provider_count} live-capable providers · market ${snapshot.provider_status.market_provider_source} · signal ${snapshot.provider_status.signal_provider_source} · average quality ${fmtPercent(snapshot.system_pulse.average_signal_quality)}.`;
   }
+
+  renderLandingPortfolio(snapshot);
 
   if (botGrid) {
     const accents = ["accent-copper", "accent-teal", "accent-gold", "accent-ink"];
