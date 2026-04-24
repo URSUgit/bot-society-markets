@@ -739,6 +739,75 @@ class LaunchReadinessSnapshot(BaseModel):
     tracks: list[LaunchReadinessTrack] = Field(default_factory=list)
 
 
+class BusinessModelProduct(BaseModel):
+    key: str
+    name: str
+    segment: str
+    pricing_model: str
+    buyer: str
+    positioning: str
+    core_capabilities: list[str] = Field(default_factory=list)
+    expansion_paths: list[str] = Field(default_factory=list)
+    risk_controls: list[str] = Field(default_factory=list)
+
+
+class BusinessModelRevenueStream(BaseModel):
+    key: str
+    label: str
+    model: str
+    detail: str
+    priority: str
+
+
+class BusinessModelStrategyFamily(BaseModel):
+    key: str
+    label: str
+    description: str
+    monetization_role: str
+    required_data: list[str] = Field(default_factory=list)
+    enabled_by: list[str] = Field(default_factory=list)
+
+
+class BusinessModelMoatStep(BaseModel):
+    key: str
+    label: str
+    description: str
+    output: str
+
+
+class BusinessModelTeamRole(BaseModel):
+    key: str
+    label: str
+    responsibility: str
+    timing: str
+
+
+class BusinessModelMilestone(BaseModel):
+    horizon: str
+    label: str
+    target_metrics: list[str] = Field(default_factory=list)
+    capital_use: str
+
+
+class BusinessModelSnapshot(BaseModel):
+    generated_at: str
+    source_deck: str
+    thesis: str
+    wedge: str
+    engine_workflow: list[str] = Field(default_factory=list)
+    products: list[BusinessModelProduct] = Field(default_factory=list)
+    revenue_streams: list[BusinessModelRevenueStream] = Field(default_factory=list)
+    strategy_families: list[BusinessModelStrategyFamily] = Field(default_factory=list)
+    moat_loop: list[BusinessModelMoatStep] = Field(default_factory=list)
+    go_to_market: list[str] = Field(default_factory=list)
+    investor_model: list[str] = Field(default_factory=list)
+    team_plan: list[BusinessModelTeamRole] = Field(default_factory=list)
+    milestones: list[BusinessModelMilestone] = Field(default_factory=list)
+    seed_raise: str
+    compliance_guardrails: list[str] = Field(default_factory=list)
+    next_build_priorities: list[str] = Field(default_factory=list)
+
+
 class DashboardSnapshot(BaseModel):
     summary: Summary
     assets: list[AssetSnapshot]
@@ -760,6 +829,7 @@ class DashboardSnapshot(BaseModel):
     connector_control: ConnectorControlSnapshot
     infrastructure_readiness: InfrastructureReadinessSnapshot
     production_cutover: ProductionCutoverSnapshot
+    business_model: BusinessModelSnapshot
 
 
 class LandingSnapshot(BaseModel):
@@ -770,6 +840,7 @@ class LandingSnapshot(BaseModel):
     system_pulse: SystemPulseSnapshot
     macro_snapshot: MacroSnapshot
     provider_status: ProviderStatus
+    business_model: BusinessModelSnapshot
 
 
 class CycleResult(BaseModel):
@@ -902,3 +973,7 @@ class InfrastructureReadinessEnvelope(BaseModel):
 
 class ProductionCutoverEnvelope(BaseModel):
     production_cutover: ProductionCutoverSnapshot
+
+
+class BusinessModelEnvelope(BaseModel):
+    business_model: BusinessModelSnapshot

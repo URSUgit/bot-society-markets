@@ -30,6 +30,7 @@ This repository contains both the founder documentation package and a profession
 - [Payments and Onboarding Architecture](docs/21-payments-onboarding-architecture.md)
 - [Connectors, Dashboard, and Desktop Program](docs/22-connectors-dashboard-desktop-program.md)
 - [Legal and Compliance Readiness](docs/23-legal-and-compliance-readiness.md)
+- [BITprivat Business Model Strategy](docs/24-bitprivat-business-model-strategy.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -100,6 +101,7 @@ Included today:
 - a production cutover board with SQLite backup, Neon migration, Akash manifest generation, and verification guidance
 - public legal pages for Terms of Service, Privacy Policy, and Risk Disclosure inside the hosted product
 - Render blueprint environments for staging and production with managed Postgres, separate web and worker services, and secret prompts for provider credentials
+- an investor-deck-derived BITprivat business model layer with retail Autopilot, Enterprise OS, revenue architecture, strategy families, moat loop, and seed milestones exposed through the API and portfolio page
 
 ## Product Surface
 
@@ -107,6 +109,7 @@ Key endpoints include:
 
 - `GET /api/landing`
 - `GET /api/dashboard`
+- `GET /api/business-model`
 - `GET /api/summary`
 - `GET /api/assets`
 - `GET /api/assets/{asset}/history`

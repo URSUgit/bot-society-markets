@@ -27,6 +27,7 @@ from .models import (
     BillingWebhookAck,
     BotDetail,
     BotSummary,
+    BusinessModelEnvelope,
     ConnectorControlEnvelope,
     CycleResult,
     DashboardSnapshot,
@@ -235,6 +236,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/dashboard", response_model=DashboardSnapshot)
     def dashboard_snapshot(request: Request) -> DashboardSnapshot:
         return get_service(request).get_dashboard_snapshot(current_user_slug(request) or active_settings.default_user_slug)
+
+    @app.get("/api/business-model", response_model=BusinessModelEnvelope)
+    def business_model(request: Request) -> BusinessModelEnvelope:
+        return BusinessModelEnvelope(business_model=get_service(request).get_business_model_strategy())
 
     @app.get("/api/summary", response_model=Summary)
     def summary(request: Request) -> Summary:

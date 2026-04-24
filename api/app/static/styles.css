@@ -3128,6 +3128,284 @@ body.portfolio-body::after {
   background: rgba(255, 255, 255, 0.58);
 }
 
+.business-model-board {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(69, 178, 157, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(196, 106, 55, 0.12), transparent 32%),
+    rgba(255, 253, 248, 0.84);
+}
+
+.business-model-board::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(22, 33, 40, 0.07) 1px, transparent 1px),
+    linear-gradient(rgba(22, 33, 40, 0.05) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(120deg, rgba(0, 0, 0, 0.28), transparent 70%);
+  pointer-events: none;
+}
+
+.business-model-board > * {
+  position: relative;
+  z-index: 1;
+}
+
+.business-model-head h3 {
+  max-width: 820px;
+  font-size: clamp(1.7rem, 3vw, 3.4rem);
+  line-height: 1;
+}
+
+.business-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.business-thesis-card,
+.business-products-grid article,
+.business-model-card,
+.business-workflow-stack article,
+.business-revenue-grid article,
+.business-strategy-grid article,
+.business-milestone-grid article {
+  border: 1px solid rgba(22, 33, 40, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.business-thesis-card {
+  display: grid;
+  align-content: end;
+  gap: 16px;
+  min-height: 280px;
+  padding: 22px;
+  color: #f8f2e9;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(69, 178, 157, 0.26), transparent 32%),
+    linear-gradient(135deg, #162128, #244251 58%, #0f4f4d);
+}
+
+.business-thesis-card span,
+.business-products-grid span,
+.business-workflow-stack span,
+.business-revenue-grid span,
+.business-strategy-grid span,
+.business-milestone-grid span {
+  color: #6c7a80;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.business-thesis-card span {
+  color: rgba(248, 242, 233, 0.68);
+}
+
+.business-thesis-card strong {
+  max-width: 960px;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: clamp(1.6rem, 3vw, 3.1rem);
+  line-height: 1.05;
+}
+
+.business-thesis-card p {
+  max-width: 920px;
+  color: rgba(248, 242, 233, 0.76);
+}
+
+.business-workflow-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.business-workflow-stack article {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 14px;
+}
+
+.business-workflow-stack span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  color: #f8f2e9;
+  background: #162128;
+}
+
+.business-workflow-stack strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1rem;
+}
+
+.business-workflow-stack small {
+  grid-column: 2;
+}
+
+.business-workflow-stack small,
+.business-products-grid small,
+.business-revenue-grid small,
+.business-moat-loop small,
+.business-strategy-grid small,
+.business-milestone-grid small {
+  color: #6c7a80;
+  font-size: 0.78rem;
+}
+
+.business-products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.business-products-grid article {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.business-products-grid strong {
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+}
+
+.business-products-grid p {
+  color: #45545c;
+}
+
+.business-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.business-chip-row i {
+  padding: 7px 9px;
+  border: 1px solid rgba(22, 33, 40, 0.1);
+  border-radius: 999px;
+  color: #34424a;
+  background: rgba(255, 253, 248, 0.78);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.business-model-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.business-model-card {
+  padding: 16px;
+}
+
+.business-model-wide {
+  grid-column: span 2;
+}
+
+.business-revenue-grid,
+.business-strategy-grid,
+.business-milestone-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.business-revenue-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.business-strategy-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.business-revenue-grid article,
+.business-strategy-grid article,
+.business-milestone-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+}
+
+.business-revenue-grid strong,
+.business-strategy-grid strong,
+.business-milestone-grid strong {
+  font-size: 1.03rem;
+}
+
+.business-revenue-grid p,
+.business-strategy-grid p {
+  color: #45545c;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.business-moat-loop {
+  display: grid;
+  gap: 8px;
+}
+
+.business-moat-loop article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(22, 33, 40, 0.08);
+}
+
+.business-moat-loop article:last-child {
+  border-bottom: 0;
+}
+
+.business-moat-loop span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: #0f4f4d;
+  background: rgba(69, 178, 157, 0.14);
+}
+
+.business-moat-loop strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.business-moat-loop p {
+  margin-bottom: 5px;
+  color: #45545c;
+  line-height: 1.5;
+}
+
+.business-milestone-grid {
+  grid-template-columns: 1fr;
+}
+
+.business-milestone-grid ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 16px;
+  color: #45545c;
+  font-size: 0.9rem;
+  list-style: disc;
+}
+
 .portfolio-footer {
   margin-top: 0;
 }
@@ -3165,8 +3443,20 @@ body.portfolio-body::after {
 
   .portfolio-grid,
   .portfolio-lower-grid,
-  .portfolio-ops-grid {
+  .portfolio-ops-grid,
+  .business-hero-grid,
+  .business-products-grid,
+  .business-model-grid,
+  .business-revenue-grid {
     grid-template-columns: 1fr;
+  }
+
+  .business-model-wide {
+    grid-column: auto;
+  }
+
+  .business-strategy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .chart-grid {
@@ -3237,6 +3527,15 @@ body.portfolio-body::after {
   .portfolio-side-panel {
     min-height: 0;
     padding: 12px;
+  }
+
+  .business-strategy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-thesis-card {
+    min-height: 0;
+    padding: 18px;
   }
 
   .chart-panel {

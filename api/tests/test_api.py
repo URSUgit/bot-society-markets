@@ -90,6 +90,8 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["connector_control"]["connectors"]
         assert payload["infrastructure_readiness"]["tasks"]
         assert payload["production_cutover"]["steps"]
+        assert payload["business_model"]["products"]
+        assert any(product["key"] == "retail_autopilot" for product in payload["business_model"]["products"])
         assert "billing" in payload["user_profile"]
         assert payload["recent_signals"][0]["source_quality_score"] >= 0
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
@@ -142,11 +144,30 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert cutover_payload["verification_urls"]
 
 
+def test_business_model_strategy_endpoint_maps_investor_deck() -> None:
+    with build_client() as client:
+        response = client.get("/api/business-model")
+        assert response.status_code == 200
+        payload = response.json()["business_model"]
+        product_keys = {product["key"] for product in payload["products"]}
+        revenue_keys = {stream["key"] for stream in payload["revenue_streams"]}
+        strategy_keys = {family["key"] for family in payload["strategy_families"]}
+
+        assert payload["source_deck"] == "BITprivat_Investor_SaaS_Clean_v2.pptx"
+        assert {"retail_autopilot", "enterprise_os"}.issubset(product_keys)
+        assert {"retail_subscription", "enterprise_arr", "api_usage"}.issubset(revenue_keys)
+        assert {"event_dislocation_scanner", "advisor_follow_meta", "template_rotation"}.issubset(strategy_keys)
+        assert any(step["key"] == "dynatune_retune" for step in payload["moat_loop"])
+        assert payload["seed_raise"] == "$1.5M-2.0M seed for roughly 18 months of runway."
+        assert any("Do not promise guaranteed returns" in item for item in payload["compliance_guardrails"])
+
+
 def test_public_legal_pages_are_served() -> None:
     with build_client() as client:
         portfolio_response = client.get("/portfolio")
         assert portfolio_response.status_code == 200
         assert "portfolio intelligence for scored market bots" in portfolio_response.text.lower()
+        assert "business model strategy" in portfolio_response.text.lower()
 
         terms_response = client.get("/terms")
         assert terms_response.status_code == 200

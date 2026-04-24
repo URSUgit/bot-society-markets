@@ -33,6 +33,13 @@ from .models import (
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthSessionSnapshot,
+    BusinessModelMilestone,
+    BusinessModelMoatStep,
+    BusinessModelProduct,
+    BusinessModelRevenueStream,
+    BusinessModelSnapshot,
+    BusinessModelStrategyFamily,
+    BusinessModelTeamRole,
     BotDetail,
     BotSummary,
     CycleResult,
@@ -2402,6 +2409,326 @@ class BotSocietyService:
             tracks=tracks,
         )
 
+    def get_business_model_strategy(self) -> BusinessModelSnapshot:
+        return BusinessModelSnapshot(
+            generated_at=self._now(),
+            source_deck="BITprivat_Investor_SaaS_Clean_v2.pptx",
+            thesis=(
+                "BITprivat is an autonomous trading workflow SaaS for event markets and perpetuals: one shared intelligence engine, "
+                "two commercial products, and a constrained self-improvement loop that makes trading automation easier to install, "
+                "easier to trust, and more adaptive over time."
+            ),
+            wedge=(
+                "The wedge is setup friction and decision fatigue. Users connect venues and choose a risk profile; the engine selects "
+                "a pre-tested setup, monitors market and social inputs, and retunes only inside approved guardrails."
+            ),
+            engine_workflow=[
+                "Ingest market, wallet, social, macro, and venue data across Polymarket, Hyperliquid, Kalshi, and future connectors.",
+                "Score sources with AdvisorRank so creator, trader, and data-provider provenance affects signal confidence.",
+                "Simulate strategy templates and parameter ranges before any production deployment.",
+                "Deploy selected templates through retail or enterprise workflows with auto-pause and audit visibility.",
+                "Retune approved parameters with DynaTune using live execution, slippage, and signal feedback.",
+            ],
+            products=[
+                BusinessModelProduct(
+                    key="retail_autopilot",
+                    name="BITprivat Autopilot",
+                    segment="Retail SaaS",
+                    pricing_model="$79-299/month plus premium packs",
+                    buyer="Power retail traders, prediction-market communities, creator audiences, and advanced crypto users.",
+                    positioning=(
+                        "A one-click trading automation cockpit for users who want pre-tested strategy packs, live dashboards, "
+                        "paper/live separation, auto-pause controls, and clear model confidence."
+                    ),
+                    core_capabilities=[
+                        "Wallet/API connection onboarding",
+                        "Pre-tested strategy packs",
+                        "Live portfolio and prediction dashboards",
+                        "Auto-pause, risk profile, and paper-first controls",
+                        "Premium signal and advisor packs",
+                    ],
+                    expansion_paths=[
+                        "Community bundles",
+                        "Team seats for trading groups",
+                        "Creator-led distribution",
+                        "Premium simulations and export packs",
+                    ],
+                    risk_controls=[
+                        "No promised returns",
+                        "Paper-trading default for unverified users",
+                        "Risk disclosures and model confidence labels",
+                    ],
+                ),
+                BusinessModelProduct(
+                    key="enterprise_os",
+                    name="BITprivat Enterprise OS",
+                    segment="Enterprise SaaS",
+                    pricing_model="$40k-250k ARR plus usage/API modules",
+                    buyer="Funds, research teams, venues, brokers, market makers, and infrastructure partners.",
+                    positioning=(
+                        "A private automation and intelligence operating system with RBAC, approvals, audit logs, private deployment, "
+                        "strategy registry, white-label surfaces, and API access."
+                    ),
+                    core_capabilities=[
+                        "Role-based access control",
+                        "Approval workflows and audit logs",
+                        "Private cloud, VPC, or on-prem deployment path",
+                        "Strategy registry and versioned scorecards",
+                        "White-label dashboards and APIs",
+                    ],
+                    expansion_paths=[
+                        "Private data connectors",
+                        "Custom strategy review workflows",
+                        "Execution API usage",
+                        "Venue and broker distribution partnerships",
+                    ],
+                    risk_controls=[
+                        "Enterprise compliance review",
+                        "Approval gates before execution",
+                        "Auditability and exportable evidence trails",
+                    ],
+                ),
+            ],
+            revenue_streams=[
+                BusinessModelRevenueStream(
+                    key="retail_subscription",
+                    label="Retail subscriptions",
+                    model="Monthly SaaS",
+                    detail="Tiered access to Autopilot, dashboards, simulations, risk controls, and selected connectors.",
+                    priority="Launch wedge",
+                ),
+                BusinessModelRevenueStream(
+                    key="premium_signal_packs",
+                    label="Premium signal and advisor packs",
+                    model="Add-on subscription",
+                    detail="Paid access to higher-grade AdvisorRank lists, social signal bundles, and specialized market packs.",
+                    priority="Expansion",
+                ),
+                BusinessModelRevenueStream(
+                    key="team_community",
+                    label="Team seats and community bundles",
+                    model="Seat-based SaaS",
+                    detail="Multi-user workspaces for trading groups, creator communities, and research pods.",
+                    priority="Expansion",
+                ),
+                BusinessModelRevenueStream(
+                    key="enterprise_arr",
+                    label="Enterprise ARR",
+                    model="Annual contracts",
+                    detail="Private deployment, RBAC, audit logs, strategy registry, custom support, and governance workflows.",
+                    priority="Defensibility",
+                ),
+                BusinessModelRevenueStream(
+                    key="api_usage",
+                    label="White-label and API usage",
+                    model="Usage-based",
+                    detail="Usage fees for embedded intelligence, connector calls, scorecard APIs, and partner-branded dashboards.",
+                    priority="Platform scale",
+                ),
+                BusinessModelRevenueStream(
+                    key="performance_linked_modules",
+                    label="Selective performance-linked modules",
+                    model="Optional rev-share",
+                    detail="Only after legal review, proper disclosures, and customer-specific approvals; never positioned as fixed returns.",
+                    priority="Controlled upside",
+                ),
+            ],
+            strategy_families=[
+                BusinessModelStrategyFamily(
+                    key="event_dislocation_scanner",
+                    label="Event dislocation scanner",
+                    description="Find probability gaps between news, market pricing, macro context, and prediction-market order books.",
+                    monetization_role="Core retail/enterprise signal family",
+                    required_data=["Prediction-market order books", "News/social context", "Macro calendar", "Venue liquidity"],
+                    enabled_by=["Polymarket/Kalshi connectors", "Firecrawl/Tavily-style web ingestion", "Strategy Lab backtests"],
+                ),
+                BusinessModelStrategyFamily(
+                    key="social_momentum_fade",
+                    label="Social momentum and fade",
+                    description="Track viral narratives, creator velocity, and sentiment exhaustion to decide follow or fade posture.",
+                    monetization_role="Premium signal pack and creator distribution wedge",
+                    required_data=["X/Telegram/Discord/YouTube/Substack/news", "Creator history", "Market reaction windows"],
+                    enabled_by=["SocialPulse", "AdvisorRank", "Signal provenance scoring"],
+                ),
+                BusinessModelStrategyFamily(
+                    key="cross_venue_hedge",
+                    label="Cross-venue hedge sleeve",
+                    description="Use event markets, perpetuals, and spot context to reduce directional risk or express relative-value views.",
+                    monetization_role="Enterprise and advanced retail module",
+                    required_data=["Hyperliquid perps", "Prediction markets", "Reference spot markets", "Funding/liquidity data"],
+                    enabled_by=["Hyperliquid connector", "Paper execution venues", "Edge scoring"],
+                ),
+                BusinessModelStrategyFamily(
+                    key="spread_capture_micro_mm",
+                    label="Spread capture and micro market making",
+                    description="Target small spreads and depth imbalances with tight risk limits, inventory caps, and auto-pause logic.",
+                    monetization_role="Enterprise execution and API module",
+                    required_data=["Order book depth", "Fees", "Slippage", "Latency snapshots"],
+                    enabled_by=["Venue adapters", "Execution telemetry", "Approval gates"],
+                ),
+                BusinessModelStrategyFamily(
+                    key="advisor_follow_meta",
+                    label="Advisor-follow meta layer",
+                    description="Follow or fade ranked traders, wallets, and creators based on hit rate, timeliness, impact, and decay.",
+                    monetization_role="Moat data product and premium pack",
+                    required_data=["Wallet history", "Creator posts", "Prediction outcomes", "Timeliness metadata"],
+                    enabled_by=["AdvisorRank", "Wallet intelligence", "Leaderboard provenance"],
+                ),
+                BusinessModelStrategyFamily(
+                    key="template_rotation",
+                    label="Template rotation",
+                    description="Rotate among approved strategy templates when market regime, signal quality, or venue liquidity changes.",
+                    monetization_role="Retention driver and enterprise governance feature",
+                    required_data=["Backtest results", "Live scorecards", "Regime labels", "Risk-profile constraints"],
+                    enabled_by=["DynaTune", "Strategy Lab", "Strategy registry"],
+                ),
+            ],
+            moat_loop=[
+                BusinessModelMoatStep(
+                    key="socialpulse_ingest",
+                    label="SocialPulse ingestion",
+                    description="Monitor social, creator, news, and venue signals across fragmented information sources.",
+                    output="Fresh signal graph with provenance and timeliness metadata.",
+                ),
+                BusinessModelMoatStep(
+                    key="advisor_rank",
+                    label="AdvisorRank scoring",
+                    description="Score traders, creators, wallets, and advisors by hit rate, timeliness, impact, and decay.",
+                    output="Trusted source weights that affect leaderboard and strategy confidence.",
+                ),
+                BusinessModelMoatStep(
+                    key="template_matching",
+                    label="Template matching",
+                    description="Match signals and market regimes to approved strategy templates instead of free-form execution.",
+                    output="Safer strategy selection with explainable playbooks.",
+                ),
+                BusinessModelMoatStep(
+                    key="execution_feedback",
+                    label="Execution feedback",
+                    description="Measure fills, slippage, volatility, and market response after paper or live deployment.",
+                    output="Evidence trail for promotion, demotion, or pause decisions.",
+                ),
+                BusinessModelMoatStep(
+                    key="dynatune_retune",
+                    label="DynaTune retuning",
+                    description="Adjust only approved parameters inside governance limits using live signal and execution outcomes.",
+                    output="Constrained improvement loop that compounds data advantage without uncontrolled behavior.",
+                ),
+            ],
+            go_to_market=[
+                "Retail starts with power users, prediction-market communities, creators, referrals, and a paper-first trust funnel.",
+                "Enterprise starts with data, alerting, and scorecards, then expands into execution, white-label, and API workflows.",
+                "Distribution partnerships can come from funds, research shops, brokers, venues, and infrastructure providers.",
+                "Retail creates velocity, usage data, and market feedback; enterprise creates higher ACV, lower churn, and defensibility.",
+            ],
+            investor_model=[
+                "One engine supports two products, reducing duplicate engineering and increasing reuse of connectors, scoring, and simulations.",
+                "Gross margin should improve as reusable data pipelines, scorecards, and templates scale across both segments.",
+                "Capital is directed into engineering, signal stack, enterprise readiness, security, and compliance rather than return guarantees.",
+                "The investor story is retention, expansion, trusted automation, and platform data advantage, not fixed monthly performance claims.",
+            ],
+            team_plan=[
+                BusinessModelTeamRole(
+                    key="ceo_product",
+                    label="CEO/Product",
+                    responsibility="Own narrative, product direction, customer discovery, fundraising, and roadmap tradeoffs.",
+                    timing="Now",
+                ),
+                BusinessModelTeamRole(
+                    key="quant_strategy",
+                    label="Quant/Strategy Lead",
+                    responsibility="Design templates, backtests, risk rules, and promotion/demotion scorecards.",
+                    timing="Months 0-6",
+                ),
+                BusinessModelTeamRole(
+                    key="ml_data",
+                    label="ML/Data Lead",
+                    responsibility="Build SocialPulse, AdvisorRank, feature pipelines, and signal quality evaluation.",
+                    timing="Months 0-9",
+                ),
+                BusinessModelTeamRole(
+                    key="backend_integrations",
+                    label="Backend/Integrations",
+                    responsibility="Own venue connectors, APIs, execution telemetry, auth, billing, and enterprise surfaces.",
+                    timing="Months 0-12",
+                ),
+                BusinessModelTeamRole(
+                    key="infra_security",
+                    label="Infra/Security",
+                    responsibility="Harden deployment, secrets, observability, data retention, backups, and customer isolation.",
+                    timing="Months 3-12",
+                ),
+                BusinessModelTeamRole(
+                    key="frontend_ux",
+                    label="Frontend/UX",
+                    responsibility="Make dashboard, Strategy Lab, onboarding, and enterprise review flows intuitive and credible.",
+                    timing="Months 0-12",
+                ),
+                BusinessModelTeamRole(
+                    key="growth_community",
+                    label="Growth/Community",
+                    responsibility="Run retail waitlist, creator partnerships, education, referrals, and feedback loops.",
+                    timing="Months 6-18",
+                ),
+                BusinessModelTeamRole(
+                    key="legal_compliance",
+                    label="Legal/Compliance Advisor",
+                    responsibility="Review disclosures, execution boundaries, marketing claims, KYC/AML touchpoints, and enterprise terms.",
+                    timing="Always-on advisor",
+                ),
+            ],
+            milestones=[
+                BusinessModelMilestone(
+                    horizon="0-6 months",
+                    label="Trusted MVP and paper-first launch",
+                    target_metrics=[
+                        "Autopilot onboarding flow live",
+                        "Strategy Lab exports working",
+                        "Polymarket, Kalshi, and Hyperliquid connectors visible",
+                        "First creator/community pilot cohort",
+                    ],
+                    capital_use="Engineering, UX, signal ingestion, and legal-safe onboarding.",
+                ),
+                BusinessModelMilestone(
+                    horizon="6-12 months",
+                    label="Retention and enterprise pilots",
+                    target_metrics=[
+                        "Retail subscription launch",
+                        "5-10 enterprise pilots",
+                        "AdvisorRank scorecards trusted by users",
+                        "DynaTune parameter governance live",
+                    ],
+                    capital_use="Data/ML, enterprise readiness, security, and customer success.",
+                ),
+                BusinessModelMilestone(
+                    horizon="12-18 months",
+                    label="Scale proof and fundable expansion",
+                    target_metrics=[
+                        "Repeatable retail activation channel",
+                        "Enterprise conversion path from alerting to execution/API",
+                        "Improving gross margin from shared engine reuse",
+                        "Auditable model scorecards and compliance artifacts",
+                    ],
+                    capital_use="Connector depth, reliability, infrastructure, and go-to-market experiments.",
+                ),
+            ],
+            seed_raise="$1.5M-2.0M seed for roughly 18 months of runway.",
+            compliance_guardrails=[
+                "Position the product as research, analytics, automation tooling, simulations, and optional execution infrastructure.",
+                "Do not promise guaranteed returns or fixed monthly profits.",
+                "Separate paper trading, signal research, and live execution clearly in UI and legal pages.",
+                "Use approvals, audit logs, risk disclosures, and auto-pause controls before performance-linked modules.",
+                "Review payment, KYC/AML, investment-advice, and jurisdiction rules with counsel before live-money expansion.",
+            ],
+            next_build_priorities=[
+                "Make business model and investor strategy visible on the public product page.",
+                "Expose structured business-model data through the API for pitch, dashboard, and partner surfaces.",
+                "Tie Strategy Lab outputs to strategy-family scorecards.",
+                "Add enterprise pilot packaging: RBAC, audit exports, private connector setup, and review checklists.",
+                "Keep compliance wording strict: software value, trust, transparency, and adaptive workflows instead of return promises.",
+            ],
+        )
+
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
         macro_snapshot = self.get_macro_snapshot(repository)
@@ -2429,6 +2756,7 @@ class BotSocietyService:
             connector_control=self.get_connector_control(),
             infrastructure_readiness=self.get_infrastructure_readiness(),
             production_cutover=self.get_production_cutover(),
+            business_model=self.get_business_model_strategy(),
         )
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
@@ -2441,6 +2769,7 @@ class BotSocietyService:
             system_pulse=self.get_system_pulse(repository),
             macro_snapshot=self.get_macro_snapshot(repository),
             provider_status=self.get_provider_status(),
+            business_model=self.get_business_model_strategy(),
         )
 
     def get_system_pulse(self, repository: BotSocietyRepository | None = None) -> SystemPulseSnapshot:

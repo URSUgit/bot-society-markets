@@ -1655,6 +1655,107 @@ function renderLandingPortfolio(snapshot) {
   }
 }
 
+function renderBusinessModel(strategy) {
+  if (!strategy) {
+    return;
+  }
+
+  const source = document.getElementById("business-model-source");
+  const summary = document.getElementById("business-model-summary");
+  const wedge = document.getElementById("business-model-wedge");
+  const workflow = document.getElementById("business-model-workflow");
+  const products = document.getElementById("business-products-grid");
+  const revenue = document.getElementById("business-revenue-grid");
+  const moat = document.getElementById("business-moat-loop");
+  const strategies = document.getElementById("business-strategy-grid");
+  const milestones = document.getElementById("business-milestone-grid");
+
+  if (source) {
+    source.textContent = strategy.source_deck || "Investor strategy";
+  }
+
+  if (summary) {
+    summary.textContent = strategy.thesis;
+  }
+
+  if (wedge) {
+    wedge.textContent = strategy.wedge;
+  }
+
+  if (workflow) {
+    const labels = ["Ingest", "Score", "Simulate", "Deploy", "Retune"];
+    workflow.innerHTML = (strategy.engine_workflow || []).map((step, index) => `
+      <article>
+        <span>${index + 1}</span>
+        <strong>${labels[index] || "Loop"}</strong>
+        <small>${step}</small>
+      </article>
+    `).join("");
+  }
+
+  if (products) {
+    products.innerHTML = (strategy.products || []).map((product) => `
+      <article>
+        <span>${product.segment}</span>
+        <strong>${product.name}</strong>
+        <small>${product.pricing_model}</small>
+        <p>${product.positioning}</p>
+        <div class="business-chip-row">
+          ${(product.core_capabilities || []).slice(0, 5).map((item) => `<i>${item}</i>`).join("")}
+        </div>
+      </article>
+    `).join("");
+  }
+
+  if (revenue) {
+    revenue.innerHTML = (strategy.revenue_streams || []).map((stream) => `
+      <article>
+        <span>${stream.priority}</span>
+        <strong>${stream.label}</strong>
+        <small>${stream.model}</small>
+        <p>${stream.detail}</p>
+      </article>
+    `).join("");
+  }
+
+  if (moat) {
+    moat.innerHTML = (strategy.moat_loop || []).map((step, index) => `
+      <article>
+        <span>${String(index + 1).padStart(2, "0")}</span>
+        <div>
+          <strong>${step.label}</strong>
+          <p>${step.description}</p>
+          <small>${step.output}</small>
+        </div>
+      </article>
+    `).join("");
+  }
+
+  if (strategies) {
+    strategies.innerHTML = (strategy.strategy_families || []).map((family) => `
+      <article>
+        <span>${family.monetization_role}</span>
+        <strong>${family.label}</strong>
+        <p>${family.description}</p>
+        <small>Data: ${(family.required_data || []).slice(0, 3).join(" | ")}</small>
+      </article>
+    `).join("");
+  }
+
+  if (milestones) {
+    milestones.innerHTML = (strategy.milestones || []).map((milestone) => `
+      <article>
+        <span>${milestone.horizon}</span>
+        <strong>${milestone.label}</strong>
+        <ul>
+          ${(milestone.target_metrics || []).slice(0, 4).map((item) => `<li>${item}</li>`).join("")}
+        </ul>
+        <small>${milestone.capital_use}</small>
+      </article>
+    `).join("");
+  }
+}
+
 function buildActivityItems(snapshot) {
   const latestPrediction = snapshot.recent_predictions?.[0];
   const latestSignal = snapshot.recent_signals?.[0];
@@ -1858,6 +1959,7 @@ function renderLanding(snapshot) {
   }
 
   renderLandingPortfolio(snapshot);
+  renderBusinessModel(snapshot.business_model);
 
   if (botGrid) {
     const accents = ["accent-copper", "accent-teal", "accent-gold", "accent-ink"];
