@@ -849,7 +849,7 @@ class BotSocietyService:
 
     def get_predictions(self, limit: int = 20, status: str | None = None) -> list[PredictionView]:
         repository = BotSocietyRepository(self.database)
-        return [self._to_prediction_model(row) for row in repository.list_predictions(limit=limit, status=status)]
+        return self._build_prediction_views(repository, repository.list_predictions(limit=limit, status=status))
 
     def get_leaderboard(self, user_slug: str | None = None) -> list[BotSummary]:
         repository = BotSocietyRepository(self.database)
@@ -861,7 +861,7 @@ class BotSocietyService:
         summary = next((bot for bot in summaries if bot.slug == slug), None)
         if not summary:
             return None
-        recent_predictions = [self._to_prediction_model(row) for row in repository.list_predictions(bot_slug=slug, limit=8)]
+        recent_predictions = self._build_prediction_views(repository, repository.list_predictions(bot_slug=slug, limit=8))
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
 
     def get_paper_trading_snapshot(self, user_slug: str) -> PaperTradingSnapshot:
@@ -3102,11 +3102,12 @@ class BotSocietyService:
         wallet_snapshot = self.get_wallet_intelligence()
         edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
         system_pulse = self.get_system_pulse(repository)
+        recent_prediction_rows = repository.list_predictions(limit=10)
         return DashboardSnapshot(
             summary=self.get_summary(user_slug),
             assets=self.get_assets(),
             leaderboard=self._build_bot_summaries(repository, user_slug),
-            recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
+            recent_predictions=self._build_prediction_views(repository, recent_prediction_rows),
             recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
             system_pulse=system_pulse,
             macro_snapshot=macro_snapshot,
@@ -3281,7 +3282,7 @@ class BotSocietyService:
         return CycleResult(
             operation=self._to_operation_model(operation),
             leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
-            recent_predictions=[self._to_prediction_model(row) for row in repository.list_predictions(limit=10)],
+            recent_predictions=self._build_prediction_views(repository, repository.list_predictions(limit=10)),
             provider_status=self.get_provider_status(),
             alert_inbox=self.get_alert_inbox(self.settings.default_user_slug),
             notification_health=self.get_notification_health(self.settings.default_user_slug),
@@ -3445,6 +3446,17 @@ class BotSocietyService:
             )
         return sorted(summaries, key=lambda bot: bot.score, reverse=True)
 
+    def _build_prediction_views(self, repository: BotSocietyRepository, rows: list[dict]) -> list[PredictionView]:
+        prediction_rows = list(rows)
+        signal_lookup = self._load_prediction_signal_lookup(repository, prediction_rows)
+        return [
+            self._to_prediction_model(
+                row,
+                provenance=self._prediction_provenance_metadata(row, signal_lookup),
+            )
+            for row in prediction_rows
+        ]
+
     @staticmethod
     def _extract_source_signal_ids(prediction: dict) -> list[int]:
         raw_ids = prediction.get("source_signal_ids")
@@ -3497,6 +3509,50 @@ class BotSocietyService:
             0.0,
             1.0,
         )
+
+    def _prediction_provenance_metadata(self, prediction: dict, signal_lookup: dict[int, dict]) -> dict[str, object]:
+        linked_signals = self._linked_prediction_signals(prediction, signal_lookup)
+        if not linked_signals:
+            return {
+                "provenance_score": None,
+                "source_signal_count": 0,
+                "provider_mix": [],
+                "source_mix": [],
+                "top_signal_quality": None,
+                "venue_support_share": None,
+            }
+
+        provider_counts: dict[str, int] = defaultdict(int)
+        source_counts: dict[str, int] = defaultdict(int)
+        venue_count = 0
+        strongest_quality = 0.0
+
+        for signal in linked_signals:
+            provider_name = str(signal.get("provider_name") or signal.get("source") or "unknown")
+            source_type = str(signal.get("source_type") or signal.get("channel") or "unknown")
+            provider_counts[provider_name] += 1
+            source_counts[source_type] += 1
+            strongest_quality = max(strongest_quality, float(signal.get("source_quality_score") or 0.0))
+            if source_type == "prediction-market" or str(signal.get("channel") or "") == "venue":
+                venue_count += 1
+
+        provider_mix = [
+            name
+            for name, _count in sorted(provider_counts.items(), key=lambda item: (-item[1], item[0]))
+        ][:3]
+        source_mix = [
+            name
+            for name, _count in sorted(source_counts.items(), key=lambda item: (-item[1], item[0]))
+        ][:3]
+
+        return {
+            "provenance_score": self._prediction_provenance_score(prediction, signal_lookup),
+            "source_signal_count": len(linked_signals),
+            "provider_mix": provider_mix,
+            "source_mix": source_mix,
+            "top_signal_quality": round(strongest_quality, 6),
+            "venue_support_share": round(clamp(venue_count / len(linked_signals), 0.0, 1.0), 6),
+        }
 
     def _linked_prediction_signals(self, prediction: dict, signal_lookup: dict[int, dict]) -> list[dict]:
         return [signal_lookup[signal_id] for signal_id in self._extract_source_signal_ids(prediction) if signal_id in signal_lookup]
@@ -4722,10 +4778,11 @@ class BotSocietyService:
         return SignalView(**row)
 
     @staticmethod
-    def _to_prediction_model(row: dict) -> PredictionView:
+    def _to_prediction_model(row: dict, provenance: dict[str, object] | None = None) -> PredictionView:
         payload = {
             **row,
             "directional_success": bool(row["directional_success"]) if row["directional_success"] is not None else None,
+            **(provenance or {}),
         }
         return PredictionView(**payload)
 

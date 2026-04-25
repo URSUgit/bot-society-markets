@@ -1214,6 +1214,21 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .prediction-list li {
+    flex-direction: column;
+  }
+
+  .prediction-side {
+    width: 100%;
+    min-width: 0;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .detail-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+
   .topbar h1 {
     font-size: 1.35rem;
   }
@@ -1296,6 +1311,34 @@ th {
   color: var(--text);
 }
 
+.detail-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.detail-evidence-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(16, 38, 54, 0.08);
+}
+
+.detail-evidence-card span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.detail-evidence-card strong {
+  font-size: 1rem;
+}
+
 .signal-list,
 .prediction-list {
   display: grid;
@@ -1327,6 +1370,68 @@ th {
 .prediction-list strong {
   display: block;
   margin-bottom: 6px;
+}
+
+.prediction-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.prediction-side {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 160px;
+  text-align: right;
+  color: var(--text-soft);
+}
+
+.prediction-side small {
+  color: var(--text-soft);
+}
+
+.prediction-provenance,
+.prediction-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prediction-pill,
+.provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 38, 54, 0.08);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.prediction-pill.tone-high {
+  background: rgba(87, 199, 184, 0.14);
+  border-color: rgba(31, 122, 120, 0.18);
+  box-shadow: none;
+}
+
+.prediction-pill.tone-mid {
+  background: rgba(240, 180, 98, 0.16);
+  border-color: rgba(178, 139, 44, 0.18);
+  box-shadow: none;
+}
+
+.prediction-pill.tone-low {
+  background: rgba(196, 106, 55, 0.12);
+  border-color: rgba(196, 106, 55, 0.2);
+  box-shadow: none;
+}
+
+.provider-chip-muted {
+  background: rgba(20, 42, 60, 0.06);
 }
 
 .signal-list p,
@@ -2276,6 +2381,17 @@ form:has(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+}
+
+.leaderboard-label {
+  display: grid;
+  gap: 4px;
+}
+
+.leaderboard-meta {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .leaderboard-rank {

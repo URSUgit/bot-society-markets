@@ -107,6 +107,37 @@ function freshnessLabel(score) {
   return "Stale";
 }
 
+function provenanceLabel(score) {
+  const numeric = Number(score);
+  if (numeric >= 0.82) {
+    return "Evidence strong";
+  }
+  if (numeric >= 0.68) {
+    return "Evidence good";
+  }
+  if (numeric >= 0.52) {
+    return "Evidence mixed";
+  }
+  return "Evidence thin";
+}
+
+function humanizeKey(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function sourceTypeLabel(value) {
+  const labels = {
+    "prediction-market": "Venue",
+    social: "Social",
+    news: "News",
+    macro: "Macro",
+    venue: "Venue",
+  };
+  return labels[value] || humanizeKey(value);
+}
+
 function sentimentLabel(value) {
   const numeric = Number(value);
   if (numeric >= 0.18) {
@@ -2674,6 +2705,7 @@ function renderStatusPage(landing, systemPulse, providerStatus, operation) {
 function renderLeaderboard(leaderboard, profile) {
   const body = document.getElementById("leaderboard-body");
   const spotlight = document.getElementById("alert-spotlight");
+  const summary = document.getElementById("leaderboard-summary");
   if (!body) {
     return;
   }
@@ -2683,7 +2715,10 @@ function renderLeaderboard(leaderboard, profile) {
       <td>
         <button class="text-button leaderboard-button" type="button" data-bot-slug="${bot.slug}">
           <span class="leaderboard-rank">${index + 1}</span>
-          <span>${bot.name}${bot.is_followed ? " · Following" : ""}</span>
+          <span class="leaderboard-label">
+            <span>${bot.name}${bot.is_followed ? " · Following" : ""}</span>
+            <small class="leaderboard-meta">${escapeHtml(bot.focus)} · ${provenanceLabel(bot.provenance_score)}</small>
+          </span>
         </button>
       </td>
       <td>${fmtScore(bot.score)}</td>
@@ -2699,6 +2734,17 @@ function renderLeaderboard(leaderboard, profile) {
     scoreSnapshot.set(bot.slug, bot.score);
   });
   previousLeaderboardScores = scoreSnapshot;
+
+  if (summary) {
+    const leader = leaderboard[0];
+    const averageProvenance = leaderboard.length
+      ? leaderboard.reduce((total, bot) => total + Number(bot.provenance_score || 0), 0) / leaderboard.length
+      : 0;
+    const strongEvidenceCount = leaderboard.filter((bot) => Number(bot.provenance_score || 0) >= 0.68).length;
+    summary.textContent = leader
+      ? `${leader.name} leads with ${fmtScore(leader.score)} composite and ${fmtPercent(leader.provenance_score)} provenance. ${strongEvidenceCount} ranked bots currently sit above the strong-evidence threshold, with board-wide provenance averaging ${fmtPercent(averageProvenance)}.`
+      : "No leaderboard data is available yet.";
+  }
 
   if (spotlight) {
     const unreadCount = profile?.unread_alert_count || 0;
@@ -2729,13 +2775,27 @@ function renderPredictions(predictions, targetId = "prediction-list") {
     return;
   }
   container.innerHTML = predictions.map((prediction) => `
-    <li>
-      <div>
+    <li class="${qualityCardClass(prediction.provenance_score ?? prediction.top_signal_quality ?? 0.55)}">
+      <div class="prediction-main">
         <strong>${prediction.bot_name} · ${prediction.asset} · ${prediction.direction}</strong>
         <p>${prediction.thesis}</p>
         <p class="panel-note">${fmtRelativeTime(prediction.published_at)} · ${fmtPercent(prediction.confidence)} confidence</p>
+        <div class="prediction-provenance">
+          ${prediction.provenance_score !== null ? `<span class="prediction-pill ${qualityCardClass(prediction.provenance_score)}">${provenanceLabel(prediction.provenance_score)} · ${fmtPercent(prediction.provenance_score)}</span>` : '<span class="prediction-pill tone-low">Evidence pending</span>'}
+          ${prediction.top_signal_quality !== null ? `<span class="prediction-pill">${qualityLabel(prediction.top_signal_quality)}</span>` : ""}
+          ${prediction.venue_support_share !== null ? `<span class="prediction-pill">${fmtPercent(prediction.venue_support_share)} venue-backed</span>` : ""}
+        </div>
+        ${(prediction.provider_mix?.length || prediction.source_mix?.length) ? `
+          <div class="prediction-chip-row">
+            ${(prediction.provider_mix || []).map((provider) => `<span class="provider-chip">${escapeHtml(humanizeKey(provider))}</span>`).join("")}
+            ${(prediction.source_mix || []).map((source) => `<span class="provider-chip provider-chip-muted">${escapeHtml(sourceTypeLabel(source))}</span>`).join("")}
+          </div>
+        ` : ""}
       </div>
-      <span>${prediction.horizon_label} · ${prediction.status}${prediction.score !== null ? ` · ${fmtScore(prediction.score)}` : ""}</span>
+      <div class="prediction-side">
+        <span>${prediction.horizon_label} · ${prediction.status}${prediction.score !== null ? ` · ${fmtScore(prediction.score)}` : ""}</span>
+        <small>${prediction.source_signal_count ? `${prediction.source_signal_count} linked signals` : "No linked signals"}${prediction.calibration_score !== null ? ` · calibration ${prediction.calibration_score.toFixed(2)}` : ""}</small>
+      </div>
     </li>
   `).join("");
 }
@@ -3016,6 +3076,9 @@ async function renderBotDetail(slug) {
   }
   const bot = await fetchJson(`/api/bots/${slug}`);
   const canEdit = workspaceEditable();
+  const latestPrediction = bot.recent_predictions?.[0];
+  const evidenceProviders = (latestPrediction?.provider_mix || []).map((provider) => humanizeKey(provider)).join(", ") || "Awaiting linked sources";
+  const evidenceSources = (latestPrediction?.source_mix || []).map((source) => sourceTypeLabel(source)).join(", ") || "No source mix yet";
   selectedBotSlug = slug;
   detail.innerHTML = `
     <p class="eyebrow">${bot.archetype}</p>
@@ -3037,6 +3100,23 @@ async function renderBotDetail(slug) {
       <div><dt>Risk style</dt><dd>${bot.risk_style}</dd></div>
       <div><dt>Universe</dt><dd>${bot.asset_universe.join(", ")}</dd></div>
     </dl>
+    <div class="detail-evidence-grid">
+      <article class="detail-evidence-card ${qualityCardClass(bot.provenance_score)}">
+        <span>Evidence posture</span>
+        <strong>${provenanceLabel(bot.provenance_score)}</strong>
+        <p>${bot.name} is currently ranking on ${fmtPercent(bot.provenance_score)} provenance across its tracked archive.</p>
+      </article>
+      <article class="detail-evidence-card">
+        <span>Latest source stack</span>
+        <strong>${evidenceProviders}</strong>
+        <p>${latestPrediction?.source_signal_count ? `${latestPrediction.source_signal_count} linked signals across ${evidenceSources}.` : "Recent calls have not been linked to source signals yet."}</p>
+      </article>
+      <article class="detail-evidence-card">
+        <span>Latest call quality</span>
+        <strong>${latestPrediction?.top_signal_quality !== null && latestPrediction?.top_signal_quality !== undefined ? qualityLabel(latestPrediction.top_signal_quality) : "Pending"}</strong>
+        <p>${latestPrediction?.top_signal_quality !== null && latestPrediction?.top_signal_quality !== undefined ? `Strongest linked source scored ${fmtPercent(latestPrediction.top_signal_quality)} with ${latestPrediction.venue_support_share !== null && latestPrediction.venue_support_share !== undefined ? `${fmtPercent(latestPrediction.venue_support_share)} venue backing.` : "no venue backing yet."}` : "Run more linked signal intake to strengthen this bot's evidence trail."}</p>
+      </article>
+    </div>
   `;
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }

@@ -120,6 +120,12 @@ class PredictionView(BaseModel):
     score: float | None = None
     calibration_score: float | None = None
     directional_success: bool | None = None
+    provenance_score: float | None = Field(default=None, ge=0, le=1)
+    source_signal_count: int = Field(default=0, ge=0)
+    provider_mix: list[str] = Field(default_factory=list)
+    source_mix: list[str] = Field(default_factory=list)
+    top_signal_quality: float | None = Field(default=None, ge=0, le=1)
+    venue_support_share: float | None = Field(default=None, ge=0, le=1)
 
 
 class BotDetail(BotSummary):

@@ -97,6 +97,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["recent_signals"][0]["provider_trust_score"] >= 0
         assert payload["recent_signals"][0]["freshness_score"] >= 0
         assert payload["leaderboard"][0]["provenance_score"] >= 0
+        assert payload["recent_predictions"][0]["source_signal_count"] >= 0
+        assert isinstance(payload["recent_predictions"][0]["provider_mix"], list)
+        assert isinstance(payload["recent_predictions"][0]["source_mix"], list)
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -106,6 +109,8 @@ def test_bot_detail_and_cycle_flow() -> None:
         detail_payload = detail_response.json()
         assert detail_payload["name"] == "Macro Narrative Bot"
         assert detail_payload["recent_predictions"]
+        assert "provenance_score" in detail_payload["recent_predictions"][0]
+        assert "source_signal_count" in detail_payload["recent_predictions"][0]
 
         cycle_response = client.post("/api/admin/run-cycle")
         assert cycle_response.status_code == 200
@@ -188,6 +193,7 @@ def test_professional_console_pages_are_served() -> None:
         assert dashboard_response.status_code == 200
         assert 'id="market-console-section"' in dashboard_response.text
         assert 'id="market-console-decisions"' in dashboard_response.text
+        assert 'id="leaderboard-summary"' in dashboard_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
