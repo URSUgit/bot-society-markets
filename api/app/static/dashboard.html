@@ -53,6 +53,50 @@
         </div>
       </section>
 
+      <section class="market-console card" id="market-console-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Market console</p>
+            <h3>Clean operating view for market data, bot intent, and execution safety</h3>
+          </div>
+          <span class="status-pill" id="market-console-badge">Syncing</span>
+        </div>
+        <div class="market-console-grid">
+          <article class="console-panel console-panel-primary">
+            <div class="console-panel-head">
+              <span class="live-dot"></span>
+              <div>
+                <p class="eyebrow">Live stack</p>
+                <h4>Provider posture</h4>
+              </div>
+            </div>
+            <div class="console-stack" id="market-console-stack"></div>
+          </article>
+
+          <article class="console-panel">
+            <div class="console-panel-head">
+              <span class="live-dot live-dot-warm"></span>
+              <div>
+                <p class="eyebrow">Decision queue</p>
+                <h4>What the bots are reading now</h4>
+              </div>
+            </div>
+            <div class="console-decision-list" id="market-console-decisions"></div>
+          </article>
+
+          <article class="console-panel">
+            <div class="console-panel-head">
+              <span class="live-dot live-dot-safe"></span>
+              <div>
+                <p class="eyebrow">Risk boundary</p>
+                <h4>Paper execution guardrails</h4>
+              </div>
+            </div>
+            <div class="console-risk-grid" id="market-console-risk"></div>
+          </article>
+        </div>
+      </section>
+
       <section class="dashboard-ribbon card">
         <div class="section-head">
           <div>
@@ -475,10 +519,11 @@
           <div class="section-head">
             <div>
               <p class="eyebrow">Leaderboard</p>
-              <h3>Bot performance over the current archive</h3>
+              <h3>Bot performance with provenance-aware scorecards</h3>
             </div>
             <span class="badge">API-backed</span>
           </div>
+          <p class="panel-note" id="leaderboard-summary">Loading composite score, source quality, and evidence mix...</p>
           <div class="table-wrap">
             <table>
               <thead>
