@@ -3142,6 +3142,10 @@ body.portfolio-body::after {
 }
 
 .portfolio-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -3168,6 +3172,9 @@ body.portfolio-body::after {
 }
 
 .portfolio-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -3269,15 +3276,30 @@ body.portfolio-body::after {
 }
 
 .portfolio-switchboard {
+  display: flex;
   align-items: stretch;
   justify-content: space-between;
   padding: 22px 10px 16px;
+}
+
+.portfolio-intro {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
 }
 
 .portfolio-switchboard h2 {
   max-width: 760px;
   font-size: clamp(2rem, 4vw, 4.8rem);
   line-height: 0.98;
+}
+
+.portfolio-subtitle {
+  max-width: 760px;
+  color: #45545c;
+  font-size: 1.02rem;
+  line-height: 1.65;
 }
 
 .portfolio-wallet {
@@ -3304,6 +3326,10 @@ body.portfolio-body::after {
 
 .portfolio-wallet strong {
   font-size: 1.08rem;
+}
+
+.portfolio-terminal .strategy-disclaimer {
+  max-width: 760px;
 }
 
 .portfolio-actions {
@@ -3420,6 +3446,10 @@ body.portfolio-body::after {
   gap: 10px;
 }
 
+.portfolio-market-extremes {
+  margin-top: 10px;
+}
+
 .portfolio-category-grid article,
 .portfolio-market-extremes article {
   display: grid;
@@ -3438,6 +3468,16 @@ body.portfolio-body::after {
 .portfolio-position-table {
   display: grid;
   gap: 6px;
+  margin-top: 8px;
+}
+
+.portfolio-panel .leader-mini,
+.portfolio-panel .asset-grid,
+.portfolio-panel .signal-list,
+.portfolio-panel .venue-pulse-grid,
+.portfolio-panel .pulse-metric-grid,
+.portfolio-panel .macro-grid {
+  margin-top: 10px;
 }
 
 .portfolio-table-row {
