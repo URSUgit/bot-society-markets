@@ -171,8 +171,10 @@ def test_public_legal_pages_are_served() -> None:
     with build_client() as client:
         portfolio_response = client.get("/portfolio")
         assert portfolio_response.status_code == 200
-        assert "autonomous market intelligence" in portfolio_response.text.lower()
+        assert "market intelligence os" in portfolio_response.text.lower()
         assert "business model strategy" in portfolio_response.text.lower()
+        assert 'id="portfolio-position-table"' in portfolio_response.text
+        assert 'id="portfolio-category-grid"' in portfolio_response.text
 
         terms_response = client.get("/terms")
         assert terms_response.status_code == 200
@@ -1136,7 +1138,7 @@ def test_home_route_can_open_dashboard_for_custom_domain() -> None:
 
         landing_response = client.get("/landing")
         assert landing_response.status_code == 200
-        assert "Connect real markets, test strategy logic" in landing_response.text
+        assert "Research, simulate, and rank autonomous trading systems" in landing_response.text
 
 
 def test_canonical_host_redirects_root_domain_to_https_app_domain() -> None:

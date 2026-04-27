@@ -6,101 +6,184 @@
   <title>BITprivat Market Intelligence OS</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body class="portfolio-body strategy-site">
-  <div class="site-shell strategy-shell">
-    <header class="strategy-topbar">
-      <a class="strategy-brand" href="#top" aria-label="BITprivat home">
+<body class="portfolio-body">
+  <div class="site-shell portfolio-shell">
+    <header class="portfolio-topbar">
+      <div class="brand-lockup">
         <span class="brand-mark">BP</span>
-        <span>
-          <strong>BITprivat</strong>
-          <small>Autonomous market intelligence</small>
-        </span>
-      </a>
-      <nav class="strategy-nav" aria-label="Primary navigation">
-        <a href="#product">Product</a>
+        <div>
+          <p class="eyebrow">BITprivat</p>
+          <h1>Market Intelligence OS</h1>
+        </div>
+      </div>
+      <nav class="portfolio-nav" aria-label="Primary navigation">
+        <a href="#product">Overview</a>
         <a href="#markets">Live markets</a>
-        <a href="#business-model">Business model</a>
         <a href="#proof">Proof layer</a>
+        <a href="#business-model">Business model</a>
         <a href="/simulation">Strategy Lab</a>
       </nav>
-      <a class="strategy-login" href="/dashboard">Open dashboard</a>
+      <div class="portfolio-actions">
+        <a href="/status">Status</a>
+        <a href="/dashboard">Open Dashboard</a>
+      </div>
     </header>
 
-    <main class="strategy-main" id="top">
-      <section class="strategy-hero" id="product">
-        <div class="strategy-hero-copy">
-          <p class="eyebrow">Retail Autopilot + Enterprise OS</p>
-          <h1>Connect real markets, test strategy logic, and improve trading bots with transparent scorecards.</h1>
-          <p class="hero-submeta">
-            BITprivat turns market data, prediction-market narratives, social signals, and bot performance into a controlled operating layer for research, paper trading, and enterprise automation workflows.
-          </p>
-          <div class="strategy-hero-actions">
-            <a class="button primary" href="/dashboard">Open live dashboard</a>
-            <a class="button secondary" href="/simulation">Test an algorithm</a>
-          </div>
-          <p class="strategy-disclaimer">Research and simulation software only. No guaranteed returns, no fixed-profit claims, no live execution without explicit controls.</p>
-        </div>
-
-        <aside class="strategy-command-card" aria-label="Operating status">
-          <div class="strategy-status-line">
+    <main class="portfolio-main" id="top">
+      <section class="portfolio-terminal" id="product">
+        <div class="portfolio-commandbar">
+          <div class="portfolio-product">
             <span class="portfolio-dot"></span>
-            <strong id="landing-provider-badge">Syncing providers</strong>
+            <div>
+              <strong id="landing-provider-badge">Syncing providers</strong>
+              <small id="landing-provider-note">Loading live provider posture...</small>
+            </div>
           </div>
-          <p id="landing-provider-note">Loading live provider posture...</p>
-          <div class="strategy-command-steps">
-            <article><span>01</span><strong>Connect</strong><small>Venue data, wallet/API, risk profile</small></article>
-            <article><span>02</span><strong>Simulate</strong><small>Backtest templates before promotion</small></article>
-            <article><span>03</span><strong>Retune</strong><small>DynaTune inside approved guardrails</small></article>
+          <div class="portfolio-actions">
+            <a href="/dashboard">Open live dashboard</a>
+            <a href="/simulation">Test strategies</a>
+            <a href="/status">Review status</a>
           </div>
-          <ul class="stat-row strategy-summary-stats" id="summary-stats"></ul>
-        </aside>
-      </section>
-
-      <section class="strategy-metrics-card" id="portfolio">
-        <div class="strategy-section-head">
-          <div>
-            <p class="eyebrow">Operating book</p>
-            <h2>What the bot economy is doing now</h2>
-          </div>
-          <small id="portfolio-active-bot">Loading top analyst bot</small>
         </div>
-        <div class="portfolio-metric-grid strategy-metric-grid" id="portfolio-metric-grid">
-          <article><span>Model PNL</span><strong>Syncing</strong><small>Top bot return</small></article>
-          <article><span>Total Volume</span><strong>Syncing</strong><small>Tracked 24h volume</small></article>
+
+        <div class="portfolio-switchboard">
+          <div class="portfolio-intro">
+            <p class="eyebrow">Retail Autopilot + Enterprise OS</p>
+            <h2>Research, simulate, and rank autonomous trading systems on one premium operating surface.</h2>
+            <p class="portfolio-subtitle">
+              BITprivat combines market data, prediction-market narratives, social signal scoring, and rapid strategy workflows into a controlled intelligence layer for traders, analysts, and enterprise research teams.
+            </p>
+            <div class="hero-actions compact-actions">
+              <a class="button primary" href="/dashboard">Open live dashboard</a>
+              <a class="button secondary" href="/simulation">Test an algorithm</a>
+            </div>
+            <p class="strategy-disclaimer">Research and simulation software only. No guaranteed returns, no fixed-profit claims, and no live execution without explicit controls.</p>
+          </div>
+
+          <aside class="portfolio-wallet" aria-label="Operating profile">
+            <span>Launch profile</span>
+            <strong>Connect public feeds, test in paper, promote with proof.</strong>
+            <small>Built to show what the system knows now, where that intelligence comes from, and what still requires human approval.</small>
+            <dl class="detail-stats compact-detail-stats">
+              <div><dt>Core wedge</dt><dd>Signals + ranking</dd></div>
+              <div><dt>Execution mode</dt><dd>Paper-first</dd></div>
+              <div><dt>Audience</dt><dd>Retail + enterprise</dd></div>
+            </dl>
+          </aside>
+        </div>
+
+        <nav class="portfolio-tabs" aria-label="Section navigation">
+          <a href="#markets">Live markets</a>
+          <a href="#proof">Proof layer</a>
+          <a href="#macro">Macro regime</a>
+          <a href="#business-model">Business model</a>
+        </nav>
+
+        <ul class="stat-row strategy-summary-stats portfolio-summary-stats" id="summary-stats"></ul>
+
+        <div class="portfolio-metric-grid" id="portfolio-metric-grid">
+          <article><span>Model PNL</span><strong>Syncing</strong><small>Top bot avg return</small></article>
+          <article><span>Total Volume</span><strong>Syncing</strong><small>Tracked 24h market volume</small></article>
           <article><span>Total Calls</span><strong>Syncing</strong><small>Prediction archive</small></article>
+          <article><span>Archive Age</span><strong>Syncing</strong><small>Latest research cycle</small></article>
+          <article><span>Avg Score</span><strong>Syncing</strong><small>Composite network score</small></article>
+          <article><span>Active Calls</span><strong>Syncing</strong><small>Open scoring windows</small></article>
           <article><span>Win Rate</span><strong>Syncing</strong><small>Current leader</small></article>
         </div>
       </section>
 
-      <section class="strategy-live-grid" id="markets">
-        <article class="strategy-panel strategy-chart-panel">
-          <div class="strategy-section-head">
+      <section class="portfolio-grid" id="markets">
+        <article class="portfolio-panel portfolio-chart-panel">
+          <div class="portfolio-panel-head">
             <div>
-              <p class="eyebrow">Live market layer</p>
-              <h2>Market context from connected public sources</h2>
+              <p class="eyebrow">Market layer</p>
+              <h3>Connected market history and venue context</h3>
             </div>
             <div class="pill-row" id="landing-chart-tabs"></div>
           </div>
-          <div class="chart-surface" id="landing-market-chart"></div>
-          <p class="panel-note" id="landing-chart-note">The production config now targets public market data plus Polymarket and Kalshi venue signals where available.</p>
+          <div class="chart-surface chart-surface-large" id="landing-market-chart"></div>
+          <p class="panel-note" id="landing-chart-note">Loading market history and chart surface...</p>
+          <div class="venue-pulse-grid strategy-venue-grid" id="landing-venue-pulse"></div>
         </article>
 
-        <aside class="strategy-panel">
-          <div class="strategy-section-head">
+        <aside class="portfolio-panel portfolio-side-panel">
+          <div class="portfolio-panel-head">
             <div>
-              <p class="eyebrow">Tracked assets</p>
-              <h2>Clean market watchlist</h2>
+              <p class="eyebrow">Asset watch</p>
+              <h3>Tracked markets</h3>
             </div>
+            <small id="portfolio-active-bot">Loading top analyst bot</small>
           </div>
           <div class="asset-grid strategy-asset-grid" id="asset-grid"></div>
         </aside>
       </section>
 
-      <section class="strategy-panel business-model-board strategy-business" id="business-model">
-        <div class="strategy-section-head">
+      <section class="portfolio-lower-grid" id="proof">
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Advisor board</p>
+              <h3>Ranked bots with public scorecards</h3>
+            </div>
+          </div>
+          <div class="leader-mini" id="leaderboard-mini"></div>
+          <div class="bot-grid strategy-bot-grid" id="launch-bots"></div>
+        </article>
+
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Signal flow</p>
+              <h3>Fresh inputs and provenance</h3>
+            </div>
+            <span class="status-pill" id="landing-pulse-badge">Syncing</span>
+          </div>
+          <ul class="signal-list strategy-signal-list" id="landing-signals"></ul>
+        </article>
+
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Market intelligence</p>
+              <h3>Source mix and market extremes</h3>
+            </div>
+          </div>
+          <div class="portfolio-category-grid" id="portfolio-category-grid"></div>
+          <div class="portfolio-market-extremes" id="portfolio-market-extremes"></div>
+        </article>
+      </section>
+
+      <section class="portfolio-ops-grid">
+        <article class="portfolio-panel">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">Bot archive</p>
+              <h3>Fast view of the live ranking table</h3>
+            </div>
+          </div>
+          <div class="portfolio-position-table" id="portfolio-position-table"></div>
+        </article>
+
+        <article class="portfolio-panel" id="macro">
+          <div class="portfolio-panel-head">
+            <div>
+              <p class="eyebrow">System pulse</p>
+              <h3>Macro regime, freshness, and quality</h3>
+            </div>
+            <span class="status-pill" id="landing-macro-posture">Loading</span>
+          </div>
+          <div class="pulse-metric-grid" id="landing-pulse-metrics"></div>
+          <p class="panel-note" id="landing-macro-summary">Refreshing macro state...</p>
+          <div class="macro-grid" id="landing-macro-grid"></div>
+          <div class="signal-mix-list visually-quiet" id="landing-signal-mix"></div>
+        </article>
+      </section>
+
+      <section class="portfolio-panel business-model-board" id="business-model">
+        <div class="portfolio-panel-head">
           <div>
             <p class="eyebrow">Business model strategy</p>
-            <h2>One engine, two SaaS products, controlled improvement loop.</h2>
+            <h3>One engine, two SaaS products, controlled improvement loop.</h3>
           </div>
           <span class="badge" id="business-model-source">Investor deck sync</span>
         </div>
@@ -149,57 +232,7 @@
         </div>
       </section>
 
-      <section class="strategy-proof-grid" id="proof">
-        <article class="strategy-panel">
-          <div class="strategy-section-head">
-            <div>
-              <p class="eyebrow">Advisor bots</p>
-              <h2>Ranked personas with public records</h2>
-            </div>
-          </div>
-          <div class="leader-mini" id="leaderboard-mini"></div>
-          <div class="bot-grid strategy-bot-grid" id="launch-bots"></div>
-        </article>
-
-        <article class="strategy-panel">
-          <div class="strategy-section-head">
-            <div>
-              <p class="eyebrow">Signal provenance</p>
-              <h2>Fresh inputs and venue pulse</h2>
-            </div>
-            <span class="badge" id="landing-pulse-badge">Syncing</span>
-          </div>
-          <ul class="signal-list strategy-signal-list" id="landing-signals"></ul>
-          <div class="venue-pulse-grid strategy-venue-grid" id="landing-venue-pulse"></div>
-        </article>
-      </section>
-
-      <section class="strategy-proof-grid">
-        <article class="strategy-panel">
-          <div class="strategy-section-head">
-            <div>
-              <p class="eyebrow">System pulse</p>
-              <h2>Quality, freshness, queue health</h2>
-            </div>
-          </div>
-          <div class="pulse-metric-grid" id="landing-pulse-metrics"></div>
-        </article>
-
-        <article class="strategy-panel" id="macro">
-          <div class="strategy-section-head">
-            <div>
-              <p class="eyebrow">Macro regime</p>
-              <h2>Economic context</h2>
-            </div>
-            <span class="badge" id="landing-macro-posture">Loading</span>
-          </div>
-          <p class="panel-note" id="landing-macro-summary">Refreshing macro state...</p>
-          <div class="macro-grid" id="landing-macro-grid"></div>
-          <div class="signal-mix-list visually-quiet" id="landing-signal-mix"></div>
-        </article>
-      </section>
-
-      <footer class="site-footer portfolio-footer strategy-footer">
+      <footer class="site-footer portfolio-footer">
         <span>BITprivat Market Intelligence OS</span>
         <a href="/terms">Terms</a>
         <a href="/privacy">Privacy</a>
