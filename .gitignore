@@ -29,3 +29,7 @@ build/
 *.egg-info/
 deploy/akash/*.generated.yaml
 .wrangler/
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
