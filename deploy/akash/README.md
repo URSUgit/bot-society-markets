@@ -43,6 +43,17 @@ ghcr.io/ursugit/bot-society-markets:sha-<commit>
 
 This avoids stale-node behavior where `latest` can resolve to an older cached image during a redeploy.
 
+To get the current production candidate from this local repository:
+
+```powershell
+git fetch origin main
+$shortSha = git rev-parse --short=7 origin/main
+"ghcr.io/ursugit/bot-society-markets:sha-$shortSha"
+```
+
+Use that tag in Akash Console to make the live dashboard pick up the latest
+merged app code without relying on cached `latest` pulls.
+
 If the GHCR package remains private:
 
 - either make the package public in GitHub package settings
@@ -147,6 +158,15 @@ Generated manifests are intentionally ignored by Git because they can contain re
 ## Redeploy Reminder
 
 Akash redeploys may create a new ingress hostname. When that happens, update the Cloudflare `app` CNAME target to the current deployment hostname so `app.bitprivat.com` continues routing to the live deployment.
+
+After every Akash redeploy, run this from the repository root:
+
+```powershell
+.\deploy\verify-production.ps1 -ExpectOperatorStrip
+```
+
+If the operator strip check fails but the dashboard shell passes, the Akash
+deployment is still on an older image.
 
 ## Windows Note
 
