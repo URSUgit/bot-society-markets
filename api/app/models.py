@@ -790,6 +790,10 @@ class ConnectorStatusItem(BaseModel):
     source: str
     configured: bool = False
     live_capable: bool = False
+    readiness_score: float = Field(default=0.0, ge=0, le=1)
+    activation_phase: str = "Selected"
+    owner: str = "Platform"
+    risk_level: str = "medium"
     summary: str
     target_surface: str
     env_keys: list[str] = Field(default_factory=list)

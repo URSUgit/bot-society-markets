@@ -585,10 +585,11 @@ function renderConnectorControl(connectorControl) {
   }
 
   summary.textContent = connectorControl.summary;
-  badge.textContent = `${connectorControl.live_or_ready_count} ready`;
+  badge.textContent = `${connectorControl.live_or_ready_count}/${(connectorControl.connectors || []).length} ready`;
   badge.dataset.variant = connectorControl.live_or_ready_count >= 4 ? "positive" : "warning";
 
   grid.innerHTML = (connectorControl.connectors || []).map((connector) => {
+    const readinessPercent = Math.round((connector.readiness_score || 0) * 100);
     const envKeys = (connector.env_keys || []).length
       ? connector.env_keys.map((envKey) => `<span>${envKey}</span>`).join("")
       : "<span>No extra secrets listed</span>";
@@ -609,10 +610,19 @@ function renderConnectorControl(connectorControl) {
           <span class="status-pill" data-variant="${connectorStateVariant(connector.state)}">${connectorStateLabel(connector.state)}</span>
         </div>
         <p class="connector-summary">${connector.summary}</p>
+        <div class="connector-readiness-row">
+          <span>${connector.activation_phase || "Activation"} readiness</span>
+          <strong>${readinessPercent}%</strong>
+        </div>
+        <div class="connector-progress-rail" aria-hidden="true">
+          <span style="width: ${readinessPercent}%"></span>
+        </div>
         <div class="connector-meta">
           <span><strong>Mode:</strong> ${connector.mode}</span>
           <span><strong>Source:</strong> ${connector.source}</span>
           <span><strong>Target:</strong> ${connector.target_surface}</span>
+          <span><strong>Owner:</strong> ${connector.owner || "Platform"}</span>
+          <span><strong>Risk:</strong> ${connector.risk_level || "medium"}</span>
         </div>
         <div class="connector-key-row">${envKeys}</div>
         <div class="connector-actions">
