@@ -1,4 +1,6 @@
 const RESERVED_ROOT_REWRITES = {
+  "bitprivat.com": "/landing",
+  "www.bitprivat.com": "/landing",
   "api.bitprivat.com": "/health",
   "status.bitprivat.com": "/status",
 };
@@ -45,14 +47,15 @@ export default {
     headers.set("x-forwarded-host", incomingUrl.host);
     headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
 
+    const upstreamMethod = request.method === "HEAD" ? "GET" : request.method;
     const upstreamResponse = await fetch(upstreamUrl, {
-      method: request.method,
+      method: upstreamMethod,
       headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      body: upstreamMethod === "GET" ? undefined : request.body,
       redirect: "manual",
     });
 
-    const response = new Response(upstreamResponse.body, {
+    const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {
       status: upstreamResponse.status,
       statusText: upstreamResponse.statusText,
       headers: upstreamResponse.headers,
