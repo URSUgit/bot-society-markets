@@ -40,6 +40,38 @@
     </aside>
 
     <main class="dashboard-main">
+      <section class="operator-strip" id="operator-strip" aria-label="Live operator overview">
+        <div class="operator-state">
+          <span class="operator-state-dot" id="operator-state-dot"></span>
+          <div>
+            <strong id="operator-state-label">Syncing workspace</strong>
+            <small id="operator-state-detail">Waiting for the first dashboard snapshot...</small>
+          </div>
+        </div>
+        <div class="operator-strip-metrics">
+          <a class="operator-metric" href="#market-console-section">
+            <span>Active View</span>
+            <strong id="operator-active-section">Overview</strong>
+            <small id="operator-active-section-detail">Scroll the console</small>
+          </a>
+          <a class="operator-metric" href="#leaderboard-section">
+            <span>Top Bot</span>
+            <strong id="operator-top-bot">Loading</strong>
+            <small id="operator-top-bot-detail">Composite rank</small>
+          </a>
+          <a class="operator-metric" href="#paper-section">
+            <span>Paper Equity</span>
+            <strong id="operator-paper-equity">--</strong>
+            <small id="operator-paper-detail">Simulated account</small>
+          </a>
+          <a class="operator-metric" href="#connectors-section">
+            <span>Providers</span>
+            <strong id="operator-provider-count">--</strong>
+            <small id="operator-provider-detail">Readiness posture</small>
+          </a>
+        </div>
+      </section>
+
       <section class="dashboard-hero card">
         <div>
           <p class="eyebrow">Professional market intelligence control room</p>

@@ -4550,6 +4550,111 @@ body.command-os {
   margin-bottom: 0;
 }
 
+.command-os .operator-strip {
+  position: sticky;
+  top: 0;
+  z-index: 18;
+  order: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(0, 2fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 10px;
+  border: 1px solid var(--dash-line);
+  border-radius: 18px;
+  background: rgba(255, 253, 247, 0.92);
+  box-shadow: 0 16px 46px rgba(17, 24, 28, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.operator-state,
+.operator-metric {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--dash-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.operator-state {
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.operator-state-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #94a3a0;
+  box-shadow: 0 0 0 5px rgba(148, 163, 160, 0.16);
+}
+
+.operator-state-dot[data-variant="positive"] {
+  background: #0f766e;
+  box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.14);
+}
+
+.operator-state-dot[data-variant="warning"] {
+  background: #b45309;
+  box-shadow: 0 0 0 5px rgba(180, 83, 9, 0.14);
+}
+
+.operator-state strong,
+.operator-metric strong {
+  display: block;
+  overflow: hidden;
+  color: var(--dash-ink);
+  font-size: 0.98rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-state small,
+.operator-metric small {
+  display: block;
+  overflow: hidden;
+  color: var(--dash-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-strip-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.operator-metric {
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 70px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.operator-metric:hover {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(239, 247, 241, 0.9);
+  transform: translateY(-1px);
+}
+
+.operator-metric span {
+  color: var(--dash-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .command-os .card {
   border: 1px solid var(--dash-line);
   border-radius: 24px;
@@ -4716,6 +4821,15 @@ body.command-os {
     height: auto;
     max-height: none;
   }
+
+  .command-os .operator-strip {
+    position: static;
+    grid-template-columns: 1fr;
+  }
+
+  .operator-strip-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -4730,5 +4844,9 @@ body.command-os {
 
   .command-os .hero-actions.compact-actions {
     max-width: none;
+  }
+
+  .operator-strip-metrics {
+    grid-template-columns: 1fr;
   }
 }
