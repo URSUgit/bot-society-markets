@@ -2135,6 +2135,21 @@ class BotSocietyService:
         if provider_status.venue_signal_providers:
             signal_source = f"{signal_source} + venue adapters"
 
+        stripe_configured = self.settings.fiat_billing_provider == "stripe"
+        stripe_ready = stripe_configured and all(
+            (
+                self.settings.stripe_publishable_key,
+                self.settings.stripe_secret_key,
+                self.settings.stripe_webhook_secret,
+                self.settings.stripe_basic_price_id,
+            )
+        )
+        coinbase_onramp_configured = bool(self.settings.coinbase_onramp_api_key or self.settings.coinbase_onramp_app_id)
+        coinbase_onramp_ready = bool(self.settings.coinbase_onramp_api_key and self.settings.coinbase_onramp_app_id)
+        edge_router_ready = bool(self.settings.canonical_host and self.settings.force_https)
+        desktop_configured = self.settings.desktop_app_framework != "none" or bool(self.settings.desktop_bundle_id)
+        desktop_ready = self.settings.desktop_app_framework != "none" and bool(self.settings.desktop_bundle_id)
+
         connectors = [
             self._connector_item(
                 connector_id="coingecko-market-data",
@@ -2146,6 +2161,9 @@ class BotSocietyService:
                 live_capable=provider_status.market_provider_live_capable,
                 ready=provider_status.market_provider_ready,
                 fallback_active=provider_status.market_fallback_active,
+                activation_phase="Market data cutover",
+                owner="Data Integrations",
+                risk_level="low",
                 target_surface="Spot market tracking and historical archive hydration",
                 env_keys=["BSM_COINGECKO_API_KEY"],
                 next_actions=[
@@ -2163,6 +2181,9 @@ class BotSocietyService:
                 live_capable=True,
                 ready=self.settings.market_provider_mode == "hyperliquid" and bool(self.settings.hyperliquid_dex),
                 fallback_active=self.settings.market_provider_mode != "hyperliquid",
+                activation_phase="Perps data activation",
+                owner="Trading Integrations",
+                risk_level="high",
                 target_surface="Perpetuals monitoring, momentum context, and future execution adapters",
                 env_keys=["BSM_HYPERLIQUID_DEX"],
                 next_actions=[
@@ -2181,6 +2202,9 @@ class BotSocietyService:
                 live_capable=provider_status.signal_provider_live_capable,
                 ready=provider_status.signal_provider_ready,
                 fallback_active=provider_status.signal_fallback_active,
+                activation_phase="Signal intake expansion",
+                owner="Signal Intelligence",
+                risk_level="medium",
                 target_surface="News, social, and venue context feeding the bot network",
                 env_keys=["BSM_RSS_FEED_URLS", "BSM_REDDIT_CLIENT_ID", "BSM_REDDIT_CLIENT_SECRET"],
                 next_actions=[
@@ -2198,6 +2222,9 @@ class BotSocietyService:
                 live_capable=provider_status.macro_provider_live_capable,
                 ready=provider_status.macro_provider_ready,
                 fallback_active=provider_status.macro_fallback_active,
+                activation_phase="Macro regime feed",
+                owner="Research Data",
+                risk_level="low",
                 target_surface="Regime detection and macro overlays inside the dashboard and Strategy Lab",
                 env_keys=["BSM_FRED_API_KEY", "BSM_FRED_SERIES_IDS"],
                 next_actions=[
@@ -2215,6 +2242,9 @@ class BotSocietyService:
                 live_capable=True,
                 ready=any(component.source == "polymarket" and component.ready for component in provider_status.venue_signal_providers) or self.settings.wallet_provider_mode == "polymarket",
                 fallback_active=False,
+                activation_phase="Prediction-market intelligence",
+                owner="Venue Integrations",
+                risk_level="medium",
                 target_surface="Venue pulse, smart-money tracking, and probability edge analysis",
                 env_keys=["BSM_VENUE_SIGNAL_PROVIDERS", "BSM_WALLET_PROVIDER", "BSM_TRACKED_WALLETS"],
                 next_actions=[
@@ -2233,6 +2263,9 @@ class BotSocietyService:
                 live_capable=("kalshi_demo" in venue_lookup and venue_lookup["kalshi_demo"].live_capable),
                 ready=("kalshi_demo" in venue_lookup and venue_lookup["kalshi_demo"].status == "ready"),
                 fallback_active=False,
+                activation_phase="Regulated venue review",
+                owner="Venue Integrations",
+                risk_level="high",
                 target_surface="Event market monitoring and future paper-execution routing",
                 env_keys=["BSM_VENUE_SIGNAL_PROVIDERS", "BSM_KALSHI_DEMO_KEY_ID", "BSM_KALSHI_DEMO_PRIVATE_KEY_PATH"],
                 next_actions=[
@@ -2251,11 +2284,112 @@ class BotSocietyService:
                 live_capable=provider_status.wallet_provider_live_capable,
                 ready=provider_status.wallet_provider_ready,
                 fallback_active=provider_status.wallet_fallback_active,
+                activation_phase="Smart-money provenance",
+                owner="Signal Intelligence",
+                risk_level="medium",
                 target_surface="Tracked public trader personas and conviction ranking",
                 env_keys=["BSM_WALLET_PROVIDER", "BSM_TRACKED_WALLETS"],
                 next_actions=[
                     "Curate a first production wallet list instead of relying on generic demo traffic.",
                     "Keep provenance weighting visible as smart-money surfaces expand.",
+                ],
+            ),
+            self._connector_item(
+                connector_id="stripe-billing-rail",
+                label="Stripe Billing Rail",
+                category="Revenue",
+                mode=self.settings.fiat_billing_provider,
+                source="Stripe Checkout, Billing, Portal, and webhooks",
+                configured=stripe_configured,
+                live_capable=stripe_configured,
+                ready=stripe_ready,
+                fallback_active=stripe_configured and not stripe_ready,
+                activation_phase="Fiat card onboarding",
+                owner="Commercial Ops",
+                risk_level="medium",
+                target_surface="Paid SaaS onboarding, subscription state, and entitlement gates",
+                env_keys=[
+                    "BSM_FIAT_BILLING_PROVIDER",
+                    "BSM_STRIPE_PUBLISHABLE_KEY",
+                    "BSM_STRIPE_SECRET_KEY",
+                    "BSM_STRIPE_WEBHOOK_SECRET",
+                    "BSM_STRIPE_BASIC_PRICE_ID",
+                ],
+                next_actions=[
+                    "Keep card entry inside hosted Stripe Checkout and Customer Portal.",
+                    "Set Stripe webhook secrets before enabling paid plan transitions.",
+                ],
+                app_url="https://dashboard.stripe.com/",
+            ),
+            self._connector_item(
+                connector_id="coinbase-onramp-rail",
+                label="Coinbase Onramp Rail",
+                category="Crypto Payments",
+                mode="coinbase_onramp" if coinbase_onramp_configured else "planned",
+                source="Coinbase Onramp with Coinbase Commerce or MoonPay as optional backup rails",
+                configured=coinbase_onramp_configured,
+                live_capable=True,
+                ready=coinbase_onramp_ready,
+                fallback_active=coinbase_onramp_configured and not coinbase_onramp_ready,
+                activation_phase="Crypto funding onboarding",
+                owner="Commercial Ops",
+                risk_level="high",
+                target_surface="Hosted wallet funding and optional crypto-denominated account credits",
+                env_keys=[
+                    "BSM_COINBASE_ONRAMP_API_KEY",
+                    "BSM_COINBASE_ONRAMP_APP_ID",
+                    "BSM_COINBASE_COMMERCE_API_KEY",
+                    "BSM_MOONPAY_API_KEY",
+                ],
+                next_actions=[
+                    "Keep KYC and payment collection inside the hosted onramp provider.",
+                    "Ledger completions as credits only after webhook verification is in place.",
+                ],
+                app_url="https://www.coinbase.com/onramp",
+            ),
+            self._connector_item(
+                connector_id="cloudflare-edge-router",
+                label="Cloudflare Edge Router",
+                category="Infrastructure",
+                mode="cloudflare-worker",
+                source="Cloudflare Worker routes for root, app, API, and status surfaces",
+                configured=bool(self.settings.canonical_host),
+                live_capable=True,
+                ready=edge_router_ready,
+                fallback_active=False,
+                activation_phase="Public routing hardening",
+                owner="Platform Ops",
+                risk_level="low",
+                target_surface="bitprivat.com, app.bitprivat.com, api.bitprivat.com, and status.bitprivat.com",
+                env_keys=["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "BSM_CANONICAL_HOST", "BSM_FORCE_HTTPS"],
+                next_actions=[
+                    "Add Cloudflare GitHub secrets so edge deploys are automatic.",
+                    "Run production verification after each Akash redeploy.",
+                ],
+            ),
+            self._connector_item(
+                connector_id="desktop-shell",
+                label="Windows and macOS Shell",
+                category="Distribution",
+                mode=self.settings.desktop_app_framework,
+                source="Tauri-style signed shell around the hosted dashboard",
+                configured=desktop_configured,
+                live_capable=False,
+                ready=desktop_ready,
+                fallback_active=False,
+                activation_phase="Installable app packaging",
+                owner="Product Platform",
+                risk_level="medium",
+                target_surface="Installable Windows and macOS application wrapper",
+                env_keys=[
+                    "BSM_DESKTOP_APP_FRAMEWORK",
+                    "BSM_DESKTOP_BUNDLE_ID",
+                    "BSM_APPLE_DEVELOPER_TEAM_ID",
+                    "BSM_WINDOWS_DISTRIBUTION_CHANNEL",
+                ],
+                next_actions=[
+                    "Wrap the hosted dashboard first; keep payments in the system browser.",
+                    "Add signing and notarization only after the web app routing is stable.",
                 ],
             ),
         ]
@@ -2488,6 +2622,9 @@ class BotSocietyService:
         live_capable: bool,
         ready: bool,
         fallback_active: bool,
+        activation_phase: str = "Selected",
+        owner: str = "Platform",
+        risk_level: str = "medium",
         target_surface: str,
         env_keys: list[str],
         next_actions: list[str],
@@ -2510,6 +2647,12 @@ class BotSocietyService:
         posture = "Fallback guardrails are active." if fallback_active else ("Credentials are configured." if configured else "Credentials are still missing.")
         readiness_note = "Live-capable connector." if live_capable else "Demo-safe or manually promoted connector."
         summary = f"{normalized_source} feeds {target_surface}. {posture} {readiness_note}"
+        readiness_score = self._connector_readiness_score(
+            configured=configured,
+            live_capable=live_capable,
+            ready=ready,
+            fallback_active=fallback_active,
+        )
 
         return ConnectorStatusItem(
             id=connector_id,
@@ -2520,12 +2663,35 @@ class BotSocietyService:
             source=source,
             configured=configured,
             live_capable=live_capable,
+            readiness_score=readiness_score,
+            activation_phase=activation_phase,
+            owner=owner,
+            risk_level=risk_level,
             summary=summary,
             target_surface=target_surface,
             env_keys=env_keys,
             next_actions=next_actions,
             app_url=app_url,
         )
+
+    @staticmethod
+    def _connector_readiness_score(
+        *,
+        configured: bool,
+        live_capable: bool,
+        ready: bool,
+        fallback_active: bool,
+    ) -> float:
+        score = 0.18
+        if configured:
+            score += 0.28
+        if live_capable:
+            score += 0.18
+        if ready:
+            score += 0.28
+        if fallback_active:
+            score -= 0.18
+        return round(max(0.0, min(1.0, score)), 2)
 
     @staticmethod
     def _readiness_level_from_counts(completed: int, total: int, *, live: bool = False) -> str:

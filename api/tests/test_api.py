@@ -133,6 +133,12 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         connector_ids = {item["id"] for item in connectors_payload["connectors"]}
         assert "coingecko-market-data" in connector_ids
         assert "polymarket-intel" in connector_ids
+        assert "stripe-billing-rail" in connector_ids
+        assert "coinbase-onramp-rail" in connector_ids
+        assert "cloudflare-edge-router" in connector_ids
+        assert all(0 <= item["readiness_score"] <= 1 for item in connectors_payload["connectors"])
+        assert all(item["activation_phase"] for item in connectors_payload["connectors"])
+        assert all(item["owner"] for item in connectors_payload["connectors"])
 
         infrastructure_response = client.get("/api/system/infrastructure")
         assert infrastructure_response.status_code == 200
