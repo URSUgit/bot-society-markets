@@ -113,6 +113,15 @@ def _request_origin(request: Request, settings: Settings) -> str:
     return f"{scheme}://{host}"
 
 
+def _marketing_hosts(settings: Settings) -> set[str]:
+    reserved_prefixes = ("app.", "api.", "status.")
+    return {
+        host
+        for host in (settings.canonical_host, *settings.canonical_redirect_hosts)
+        if host and not host.startswith(reserved_prefixes)
+    }
+
+
 def _redirect_target(request: Request, *, scheme: str, host: str) -> str:
     path = request.url.path or "/"
     query = request.url.query
@@ -961,8 +970,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/")
     def home(request: Request) -> FileResponse:
-        if _request_host(request) == "status.bitprivat.com":
+        request_host = _request_host(request)
+        if request_host == "status.bitprivat.com":
             return FileResponse(STATIC_DIR / "status.html")
+        if request_host in _marketing_hosts(active_settings):
+            return FileResponse(STATIC_DIR / "index.html")
         if active_settings.site_home_page == "dashboard":
             return FileResponse(STATIC_DIR / "dashboard.html")
         return FileResponse(STATIC_DIR / "index.html")
