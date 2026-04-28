@@ -28,6 +28,16 @@ Or use the helper script:
 .\deploy\cloudflare\deploy-edge-router.ps1
 ```
 
+GitHub Actions can also deploy the router automatically from
+[cloudflare-worker.yml](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\cloudflare-worker.yml).
+Add these repository secrets to enable it:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+The workflow intentionally skips deployment instead of failing CI when those
+secrets are not present.
+
 ## Verify
 
 After deploy, confirm:
