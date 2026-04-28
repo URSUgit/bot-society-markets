@@ -1,5 +1,5 @@
 param(
-    [string]$ConfigPath = "deploy/cloudflare/edge-router/wrangler.jsonc"
+    [string]$ConfigPath = "wrangler.jsonc"
 )
 
 npx wrangler@latest deploy --config $ConfigPath

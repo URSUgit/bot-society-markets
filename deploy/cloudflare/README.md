@@ -11,14 +11,15 @@ This deployment updates the existing `bot-society-markets` Worker and bridges th
 
 ## Files
 
-- `edge-router/wrangler.jsonc`: Wrangler configuration with the production routes
+- `../../wrangler.jsonc`: root Wrangler configuration used by Cloudflare Git builds
+- `edge-router/wrangler.jsonc`: equivalent nested configuration for manual deploys from this folder
 - `edge-router/src/index.js`: Worker that forwards each public hostname to the correct app route
 
 ## Deploy
 
 ```powershell
 npx wrangler@latest login
-npx wrangler@latest deploy --config deploy/cloudflare/edge-router/wrangler.jsonc
+npx wrangler@latest deploy --config wrangler.jsonc
 ```
 
 Or use the helper script:
@@ -44,3 +45,4 @@ curl.exe https://status.bitprivat.com/
 - API and HTML responses are marked `no-store` to avoid Cloudflare serving stale control-plane pages.
 - Static assets are allowed a short cache window to keep the public site fast without pinning old HTML.
 - The Worker name intentionally matches the route owner already configured in Cloudflare.
+- The root `wrangler.jsonc` is intentional, so Cloudflare's Git build deploys the same Worker as manual Wrangler deploys.
