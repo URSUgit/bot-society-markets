@@ -216,6 +216,7 @@ let latestSimulationResult = null;
 let latestAdvancedExport = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
+let sectionObserverInitialized = false;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -319,6 +320,119 @@ function setLiveBadge(label, variant = "neutral") {
   }
   badge.textContent = label;
   badge.dataset.variant = variant;
+}
+
+function sectionTitleFromHash(hash) {
+  if (!hash) {
+    return "Overview";
+  }
+  const navLink = document.querySelector(`.sidebar-nav a[href="${hash}"]`);
+  return navLink?.textContent?.trim() || humanizeKey(hash.replace("#", "").replace("-section", ""));
+}
+
+function setActiveDashboardSection(hash) {
+  const activeHash = hash || "#market-console-section";
+  document.querySelectorAll(".sidebar-nav a[href^='#']").forEach((link) => {
+    link.classList.toggle("active", link.getAttribute("href") === activeHash);
+  });
+
+  const activeSection = document.getElementById("operator-active-section");
+  const activeDetail = document.getElementById("operator-active-section-detail");
+  if (activeSection) {
+    activeSection.textContent = sectionTitleFromHash(activeHash);
+  }
+  if (activeDetail) {
+    activeDetail.textContent = "Current scroll position";
+  }
+}
+
+function initDashboardSectionObserver() {
+  if (sectionObserverInitialized || !document.getElementById("operator-strip")) {
+    return;
+  }
+  sectionObserverInitialized = true;
+  const links = [...document.querySelectorAll(".sidebar-nav a[href^='#']")];
+  const targets = links
+    .map((link) => document.querySelector(link.getAttribute("href")))
+    .filter(Boolean);
+  if (!targets.length) {
+    return;
+  }
+
+  if (!("IntersectionObserver" in window)) {
+    setActiveDashboardSection(links[0].getAttribute("href"));
+    return;
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible?.target?.id) {
+      setActiveDashboardSection(`#${visible.target.id}`);
+    }
+  }, {
+    rootMargin: "-18% 0px -62% 0px",
+    threshold: [0.1, 0.35, 0.6],
+  });
+
+  targets.forEach((target) => observer.observe(target));
+  setActiveDashboardSection(window.location.hash || links[0].getAttribute("href"));
+}
+
+function renderOperatorStrip(snapshot) {
+  const strip = document.getElementById("operator-strip");
+  if (!strip || !snapshot) {
+    return;
+  }
+
+  const stateLabel = document.getElementById("operator-state-label");
+  const stateDetail = document.getElementById("operator-state-detail");
+  const stateDot = document.getElementById("operator-state-dot");
+  const topBot = document.getElementById("operator-top-bot");
+  const topBotDetail = document.getElementById("operator-top-bot-detail");
+  const paperEquity = document.getElementById("operator-paper-equity");
+  const paperDetail = document.getElementById("operator-paper-detail");
+  const providerCount = document.getElementById("operator-provider-count");
+  const providerDetail = document.getElementById("operator-provider-detail");
+
+  const provider = snapshot.provider_status || {};
+  const state = providerState(provider);
+  const leader = snapshot.leaderboard?.[0];
+  const paperSummary = snapshot.paper_trading?.summary || {};
+  const readyConnectors = snapshot.connector_control?.live_or_ready_count ?? 0;
+  const connectorTotal = snapshot.connector_control?.connectors?.length ?? 0;
+  const latestOperation = snapshot.latest_operation;
+
+  if (stateLabel) {
+    stateLabel.textContent = state.label;
+  }
+  if (stateDetail) {
+    stateDetail.textContent = `${snapshot.summary.pending_predictions} pending calls · ${snapshot.system_pulse?.total_recent_signals ?? 0} recent signals · cycle ${latestOperation ? fmtRelativeTime(latestOperation.completed_at || latestOperation.started_at) : "idle"}`;
+  }
+  if (stateDot) {
+    stateDot.dataset.variant = state.variant;
+  }
+  if (topBot) {
+    topBot.textContent = leader?.name || "Waiting";
+  }
+  if (topBotDetail) {
+    topBotDetail.textContent = leader
+      ? `${fmtScore(leader.composite_score)} score · ${fmtPercent(leader.hit_rate)} hit rate`
+      : "No ranked bot yet";
+  }
+  if (paperEquity) {
+    paperEquity.textContent = fmtUsd(paperSummary.equity || 0);
+  }
+  if (paperDetail) {
+    paperDetail.textContent = `${fmtSignedPercent(paperSummary.total_return || 0)} total · ${paperSummary.open_positions || 0} open`;
+  }
+  if (providerCount) {
+    providerCount.textContent = `${readyConnectors}/${connectorTotal}`;
+  }
+  if (providerDetail) {
+    providerDetail.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${state.label}`;
+  }
 }
 
 function renderHeroMeta(snapshot) {
@@ -3131,6 +3245,7 @@ async function loadDashboard(options = {}) {
     latestSnapshot = snapshot;
     lastDashboardRefreshAt = new Date();
     nextDashboardRefreshAt = autoRefreshEnabled ? Date.now() + AUTO_REFRESH_MS : null;
+    renderOperatorStrip(snapshot);
     renderHeroMeta(snapshot);
     renderRibbon(snapshot);
     renderLaunchReadiness(snapshot.launch_readiness);
@@ -3682,6 +3797,7 @@ function bindInteractions() {
 async function boot() {
   bindInteractions();
   bindForms();
+  initDashboardSectionObserver();
   window.addEventListener("beforeunload", clearRefreshTimers);
   window.addEventListener("resize", () => {
     if (chartResizeFrame) {

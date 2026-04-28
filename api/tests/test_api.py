@@ -193,6 +193,8 @@ def test_professional_console_pages_are_served() -> None:
     with build_client() as client:
         dashboard_response = client.get("/dashboard")
         assert dashboard_response.status_code == 200
+        assert 'id="operator-strip"' in dashboard_response.text
+        assert 'id="operator-active-section"' in dashboard_response.text
         assert 'id="market-console-section"' in dashboard_response.text
         assert 'id="market-console-decisions"' in dashboard_response.text
         assert 'id="leaderboard-summary"' in dashboard_response.text
