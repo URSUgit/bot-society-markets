@@ -1,0 +1,27 @@
+{
+  "name": "bitprivat-edge-router",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-28",
+  "workers_dev": false,
+  "vars": {
+    "ORIGIN_BASE_URL": "https://app.bitprivat.com"
+  },
+  "routes": [
+    {
+      "pattern": "bitprivat.com/*",
+      "zone_name": "bitprivat.com"
+    },
+    {
+      "pattern": "www.bitprivat.com/*",
+      "zone_name": "bitprivat.com"
+    },
+    {
+      "pattern": "api.bitprivat.com/*",
+      "zone_name": "bitprivat.com"
+    },
+    {
+      "pattern": "status.bitprivat.com/*",
+      "zone_name": "bitprivat.com"
+    }
+  ]
+}

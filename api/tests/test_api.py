@@ -1141,6 +1141,31 @@ def test_home_route_can_open_dashboard_for_custom_domain() -> None:
         assert "Research, simulate, and rank autonomous trading systems" in landing_response.text
 
 
+def test_public_marketing_host_prefers_landing_even_when_dashboard_is_default() -> None:
+    settings = Settings(
+        site_home_page="dashboard",
+        canonical_host="bitprivat.com",
+        canonical_redirect_hosts=("www.bitprivat.com", "app.bitprivat.com"),
+        force_https=True,
+    )
+    with build_client(settings) as client:
+        apex_response = client.get(
+            "/",
+            headers={"host": "bitprivat.com", "x-forwarded-proto": "https"},
+        )
+        assert apex_response.status_code == 200
+        assert "Market Intelligence OS" in apex_response.text
+        assert "Command Center" not in apex_response.text
+
+        www_response = client.get(
+            "/",
+            headers={"host": "www.bitprivat.com", "x-forwarded-proto": "https"},
+            follow_redirects=False,
+        )
+        assert www_response.status_code == 308
+        assert www_response.headers["location"] == "https://bitprivat.com/"
+
+
 def test_canonical_host_redirects_root_domain_to_https_app_domain() -> None:
     settings = Settings(
         site_home_page="dashboard",
