@@ -1,11 +1,11 @@
 # Cloudflare Edge Router
 
-This deployment bridges the public BITprivat domains to the live app origin at `https://app.bitprivat.com`.
+This deployment updates the existing `bot-society-markets` Worker and bridges the public BITprivat domains to the live app origin at `https://app.bitprivat.com`.
 
 ## What it fixes
 
-- `bitprivat.com` serves the premium landing page
-- `www.bitprivat.com` mirrors the public website
+- `bitprivat.com` serves the premium landing page from `/landing`
+- `www.bitprivat.com` mirrors the public website from `/landing`
 - `api.bitprivat.com` proxies API traffic to the app origin
 - `status.bitprivat.com` resolves to the hosted status page
 
@@ -43,3 +43,4 @@ curl.exe https://status.bitprivat.com/
 - The Worker preserves `x-forwarded-host`, so the FastAPI app can render the correct landing or status surface.
 - API and HTML responses are marked `no-store` to avoid Cloudflare serving stale control-plane pages.
 - Static assets are allowed a short cache window to keep the public site fast without pinning old HTML.
+- The Worker name intentionally matches the route owner already configured in Cloudflare.
