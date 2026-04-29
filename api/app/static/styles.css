@@ -1205,6 +1205,7 @@ th {
   .launch-readiness-grid,
   .launch-track-columns,
   .connector-grid,
+  .connector-diagnostic-grid,
   .console-risk-grid,
   .cutover-step-grid {
     grid-template-columns: 1fr;
@@ -1746,6 +1747,60 @@ form:has(:disabled) {
   background: rgba(16, 38, 54, 0.06);
   border: 1px solid rgba(16, 38, 54, 0.08);
   font-size: 0.82rem;
+}
+
+.connector-diagnostic-panel {
+  margin-top: 18px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(18, 48, 71, 0.12);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.76), rgba(244, 249, 250, 0.66)),
+    radial-gradient(circle at 14% 0%, rgba(87, 199, 184, 0.16), transparent 34%),
+    radial-gradient(circle at 100% 12%, rgba(196, 106, 55, 0.12), transparent 32%);
+  box-shadow: 0 22px 52px rgba(14, 33, 45, 0.1);
+}
+
+.connector-diagnostic-panel[hidden] {
+  display: none;
+}
+
+.connector-diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.connector-diagnostic-card {
+  display: grid;
+  gap: 12px;
+  min-height: 150px;
+  padding: 17px;
+  border-radius: 19px;
+  border: 1px solid rgba(24, 53, 74, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.connector-diagnostic-card.diagnostic-pass {
+  border-color: rgba(87, 199, 184, 0.24);
+  background: linear-gradient(160deg, rgba(247, 255, 252, 0.74), rgba(237, 250, 247, 0.5));
+}
+
+.connector-diagnostic-card.diagnostic-warn,
+.connector-diagnostic-card.diagnostic-fail,
+.connector-diagnostic-card.diagnostic-blocked {
+  border-color: rgba(196, 106, 55, 0.2);
+  background: linear-gradient(160deg, rgba(255, 251, 246, 0.76), rgba(255, 244, 231, 0.54));
+}
+
+.connector-diagnostic-card p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.connector-diagnostic-actions {
+  margin-top: 16px;
 }
 
 .infrastructure-task-grid {
