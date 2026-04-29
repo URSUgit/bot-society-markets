@@ -228,11 +228,14 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="leaderboard-summary"' in dashboard_response.text
         assert 'id="run-all-connector-checks-button"' in dashboard_response.text
         assert 'id="connector-diagnostic-panel"' in dashboard_response.text
+        assert 'class="sidebar-brand"' in dashboard_response.text
+        assert "bit-engine-mark" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
         assert 'id="simulation-optimization-panel"' in simulation_response.text
         assert 'id="simulation-optimization-list"' in simulation_response.text
+        assert 'class="strategy-lab-body bit-engine-lab"' in simulation_response.text
 
 
 def test_sqlite_backup_helper_creates_portable_copy() -> None:
