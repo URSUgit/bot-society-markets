@@ -729,6 +729,72 @@ function renderConnectorDiagnostic(diagnostic) {
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+async function runAllConnectorDiagnostics(button = null) {
+  if (button) {
+    button.disabled = true;
+  }
+  setStatus("Running activation checks across all connectors...");
+  try {
+    const payload = await fetchJson("/api/system/connectors/diagnostics");
+    renderConnectorDiagnostics(payload.connector_diagnostics || []);
+    const blockedCount = (payload.connector_diagnostics || []).filter((item) => item.blockers?.length).length;
+    setStatus(`Connector sweep finished. ${blockedCount} connector${blockedCount === 1 ? "" : "s"} still blocked.`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function renderConnectorDiagnostics(diagnostics) {
+  const panel = document.getElementById("connector-diagnostic-panel");
+  const title = document.getElementById("connector-diagnostic-title");
+  const badge = document.getElementById("connector-diagnostic-badge");
+  const summary = document.getElementById("connector-diagnostic-summary");
+  const grid = document.getElementById("connector-diagnostic-grid");
+  const actions = document.getElementById("connector-diagnostic-actions");
+  if (!panel || !title || !badge || !summary || !grid || !actions) {
+    return;
+  }
+
+  const blocked = diagnostics.filter((item) => item.blockers?.length);
+  const promotable = diagnostics.filter((item) => item.safe_to_promote);
+  panel.hidden = false;
+  title.textContent = "All connector activation checks";
+  badge.textContent = blocked.length ? `${blocked.length} blocked` : "Clear";
+  badge.dataset.variant = blocked.length ? "warning" : "positive";
+  summary.textContent = blocked.length
+    ? `${promotable.length}/${diagnostics.length} connectors are safe to promote. Clear the blockers below before activating payments, live data, or venue rails.`
+    : `${promotable.length}/${diagnostics.length} connectors are safe to promote. Advisory warnings may still need review.`;
+
+  grid.innerHTML = diagnostics.map((diagnostic) => {
+    const blockerSummary = diagnostic.blockers?.length
+      ? diagnostic.blockers.slice(0, 2).map((blocker) => `<li>${escapeHtml(blocker)}</li>`).join("")
+      : "<li>No hard blockers reported.</li>";
+    return `
+      <article class="connector-diagnostic-card diagnostic-${escapeHtml(diagnostic.overall_status)}">
+        <div class="connector-head">
+          <div>
+            <p class="eyebrow">${diagnostic.safe_to_promote ? "Promotable" : "Needs work"}</p>
+            <h4>${escapeHtml(diagnostic.label)}</h4>
+          </div>
+          <span class="status-pill" data-variant="${connectorDiagnosticVariant(diagnostic.overall_status)}">${connectorDiagnosticLabel(diagnostic.overall_status)}</span>
+        </div>
+        <p>${diagnostic.ready_to_activate ? "Ready to activate." : "Not ready for activation yet."}</p>
+        <ul class="launch-track-list">${blockerSummary}</ul>
+        <button class="text-button" type="button" data-action="run-connector-check" data-connector-id="${escapeHtml(diagnostic.connector_id)}">Open detailed check</button>
+      </article>
+    `;
+  }).join("");
+
+  actions.innerHTML = blocked
+    .slice(0, 5)
+    .map((diagnostic) => `<li>${escapeHtml(diagnostic.label)}: ${escapeHtml(diagnostic.next_actions?.[0] || "Review connector configuration.")}</li>`)
+    .join("");
+
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function renderInfrastructureReadiness(infrastructureReadiness) {
   const summary = document.getElementById("infrastructure-summary");
   const badge = document.getElementById("infrastructure-badge");
@@ -3781,6 +3847,12 @@ function bindInteractions() {
       autoRefreshEnabled = !autoRefreshEnabled;
       startAutoRefresh();
       setStatus(autoRefreshEnabled ? "Auto-refresh resumed." : "Auto-refresh paused. Manual refresh remains available.");
+      return;
+    }
+
+    if (target.id === "run-all-connector-checks-button") {
+      event.preventDefault();
+      await runAllConnectorDiagnostics(target);
       return;
     }
 

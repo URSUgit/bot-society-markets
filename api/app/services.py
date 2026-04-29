@@ -2407,6 +2407,12 @@ class BotSocietyService:
             connectors=connectors,
         )
 
+    def get_connector_diagnostics(self) -> list[ConnectorDiagnosticResult]:
+        return [
+            self.get_connector_diagnostic(connector.id)
+            for connector in self.get_connector_control().connectors
+        ]
+
     def get_connector_diagnostic(self, connector_id: str) -> ConnectorDiagnosticResult:
         normalized_id = connector_id.strip().lower()
         connector = next(
