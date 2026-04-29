@@ -4933,3 +4933,605 @@ body.command-os {
     grid-template-columns: 1fr;
   }
 }
+
+/* Bit-engine visual migration: dark trading terminal skin over the working FastAPI app. */
+body.command-os,
+body.portfolio-body,
+body.bit-engine-lab {
+  --engine-bg: #020617;
+  --engine-panel: rgba(15, 23, 42, 0.72);
+  --engine-panel-strong: rgba(15, 23, 42, 0.94);
+  --engine-panel-soft: rgba(30, 41, 59, 0.58);
+  --engine-line: rgba(148, 163, 184, 0.14);
+  --engine-line-strong: rgba(34, 211, 238, 0.28);
+  --engine-text: #f8fafc;
+  --engine-muted: #94a3b8;
+  --engine-dim: #64748b;
+  --engine-cyan: #22d3ee;
+  --engine-blue: #3b82f6;
+  --engine-emerald: #34d399;
+  --engine-red: #f87171;
+  --engine-card-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  --engine-glow: 0 0 34px rgba(34, 211, 238, 0.15);
+  color: var(--engine-text);
+  background:
+    radial-gradient(ellipse 80% 46% at 50% -18%, rgba(34, 211, 238, 0.14), transparent 60%),
+    radial-gradient(ellipse 54% 46% at 82% 102%, rgba(59, 130, 246, 0.13), transparent 64%),
+    linear-gradient(180deg, #020617 0%, #070c17 44%, #0f172a 100%);
+  font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+body.command-os::before,
+body.portfolio-body::before,
+body.bit-engine-lab::before {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.62), transparent 86%);
+  opacity: 1;
+}
+
+body.command-os::after,
+body.portfolio-body::after,
+body.bit-engine-lab::after {
+  background:
+    radial-gradient(circle at 30% 24%, rgba(34, 211, 238, 0.22), transparent 34%),
+    radial-gradient(circle at 70% 64%, rgba(59, 130, 246, 0.18), transparent 32%),
+    conic-gradient(from 140deg, transparent, rgba(34, 211, 238, 0.12), transparent, rgba(59, 130, 246, 0.1), transparent);
+  opacity: 0.52;
+}
+
+body.command-os h1,
+body.command-os h2,
+body.command-os h3,
+body.command-os h4,
+body.portfolio-body h1,
+body.portfolio-body h2,
+body.portfolio-body h3,
+body.portfolio-body h4,
+body.bit-engine-lab h1,
+body.bit-engine-lab h2,
+body.bit-engine-lab h3,
+body.bit-engine-lab h4 {
+  color: var(--engine-text);
+  font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", sans-serif;
+  letter-spacing: -0.045em;
+}
+
+body.command-os p,
+body.command-os small,
+body.command-os span,
+body.portfolio-body p,
+body.portfolio-body small,
+body.portfolio-body span,
+body.bit-engine-lab p,
+body.bit-engine-lab small,
+body.bit-engine-lab span {
+  color: inherit;
+}
+
+body.command-os ::-webkit-scrollbar,
+body.portfolio-body ::-webkit-scrollbar,
+body.bit-engine-lab ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+body.command-os ::-webkit-scrollbar-track,
+body.portfolio-body ::-webkit-scrollbar-track,
+body.bit-engine-lab ::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+body.command-os ::-webkit-scrollbar-thumb,
+body.portfolio-body ::-webkit-scrollbar-thumb,
+body.bit-engine-lab ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.72);
+}
+
+body.command-os .eyebrow,
+body.portfolio-body .eyebrow,
+body.bit-engine-lab .eyebrow {
+  color: var(--engine-cyan);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.command-os .dashboard-shell {
+  grid-template-columns: 244px minmax(0, 1fr);
+  background: transparent;
+}
+
+.command-os .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  max-height: 100vh;
+  padding: 18px 12px;
+  gap: 18px;
+  overflow-y: auto;
+  background: rgba(2, 6, 23, 0.96);
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.command-os .sidebar::before {
+  display: none;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 4px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.brand-mark.bit-engine-mark {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: #020617;
+  font-size: 0.78rem;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, var(--engine-cyan), var(--engine-blue));
+  box-shadow: 0 0 28px rgba(34, 211, 238, 0.28);
+}
+
+.brand-mark.bit-engine-mark::after {
+  display: none;
+}
+
+.command-os .sidebar-title {
+  margin-top: 2px;
+  color: var(--engine-text);
+  font-size: 1.12rem;
+  line-height: 1.1;
+}
+
+.command-os .sidebar-subtitle {
+  margin-top: 6px;
+  color: var(--engine-muted);
+  font-size: 0.77rem;
+  line-height: 1.4;
+}
+
+.command-os .sidebar-nav-label {
+  margin: 14px 8px 4px;
+  color: #475569;
+  font-size: 0.62rem;
+}
+
+.command-os .sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--engine-muted);
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
+.command-os .sidebar-nav a::before {
+  content: "";
+  position: static;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.8);
+  opacity: 1;
+  transform: none;
+}
+
+.command-os .sidebar-nav a.active,
+.command-os .sidebar-nav a:hover {
+  padding-left: 10px;
+  color: #cffafe;
+  background: rgba(34, 211, 238, 0.1);
+  border-color: rgba(34, 211, 238, 0.18);
+}
+
+.command-os .sidebar-nav a.active::before,
+.command-os .sidebar-nav a:hover::before {
+  background: var(--engine-cyan);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.55);
+}
+
+.command-os .sidebar-card {
+  color: var(--engine-muted);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.11), rgba(59, 130, 246, 0.06));
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 14px;
+}
+
+.command-os .dashboard-main {
+  max-width: 1600px;
+  gap: 18px;
+  padding: 24px;
+}
+
+.command-os .operator-strip,
+.command-os .card,
+.command-os .market-console,
+.command-os .console-panel,
+.command-os .ribbon-stat,
+.command-os .metric-card,
+.command-os .pulse-metric-card,
+.command-os .signal-mix-card,
+.command-os .venue-card,
+.command-os .workspace-card,
+.command-os .asset-card,
+.command-os .operation-card,
+.command-os .bot-detail-card,
+.command-os .macro-card,
+.command-os .paper-venue-card,
+.command-os .wallet-watch-card,
+.command-os .edge-card,
+.command-os .context-card,
+.command-os .advanced-export-card,
+.command-os .connector-card,
+.command-os .connector-diagnostic-panel,
+.command-os .connector-diagnostic-card,
+.command-os .infrastructure-task-card,
+.command-os .cutover-step-card,
+.command-os .billing-plan-card,
+.command-os .auth-session-card {
+  color: var(--engine-text);
+  border: 1px solid var(--engine-line);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.58)),
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.08), transparent 34%);
+  box-shadow: var(--engine-card-shadow);
+  backdrop-filter: blur(18px);
+}
+
+.command-os .card::before,
+.command-os .bot-card::before,
+.command-os .pulse-metric-card::before,
+.command-os .signal-mix-card::before,
+.command-os .venue-card::before {
+  opacity: 0;
+}
+
+.command-os .dashboard-hero {
+  min-height: 270px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.18), transparent 28%),
+    radial-gradient(circle at 88% 18%, rgba(59, 130, 246, 0.16), transparent 34%),
+    linear-gradient(135deg, #020617 0%, #0f172a 55%, #111827 100%);
+  border-color: rgba(34, 211, 238, 0.22);
+}
+
+.command-os .dashboard-hero h2 {
+  max-width: 980px;
+  color: var(--engine-text);
+  font-size: clamp(2.3rem, 5vw, 5.8rem);
+  line-height: 0.92;
+}
+
+.command-os .dashboard-hero h2::after,
+.portfolio-body .portfolio-intro h2::after,
+.bit-engine-lab .hero h2::after {
+  content: "";
+  display: block;
+  width: min(480px, 100%);
+  height: 2px;
+  margin-top: 20px;
+  background: linear-gradient(90deg, var(--engine-cyan), var(--engine-blue), transparent);
+}
+
+.command-os .hero-submeta,
+.command-os .panel-note,
+.command-os .connector-summary,
+.command-os .connector-meta,
+.command-os .connector-actions,
+.command-os .launch-track-list,
+.command-os .workspace-subtitle,
+.command-os .activity-feed,
+.command-os .signal-list,
+.command-os .prediction-list {
+  color: var(--engine-muted);
+}
+
+.command-os .section-head h3,
+.command-os .connector-head h4,
+.command-os .console-panel h4,
+.command-os .venue-card h4,
+.command-os .bot-detail-card h4 {
+  color: var(--engine-text);
+}
+
+.command-os .operator-strip {
+  background: rgba(2, 6, 23, 0.82);
+  border-color: rgba(34, 211, 238, 0.18);
+}
+
+.command-os .operator-state,
+.command-os .operator-metric {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.13);
+}
+
+.command-os .operator-state strong,
+.command-os .operator-metric strong {
+  color: var(--engine-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.command-os .operator-state small,
+.command-os .operator-metric small,
+.command-os .operator-metric span {
+  color: var(--engine-muted);
+}
+
+.command-os .operator-state-dot[data-variant="positive"],
+.command-os .live-dot,
+.command-os .status-pill[data-variant="positive"]::before {
+  background: var(--engine-emerald);
+  box-shadow: 0 0 0 5px rgba(52, 211, 153, 0.12), 0 0 20px rgba(52, 211, 153, 0.34);
+}
+
+.command-os .button.primary,
+.portfolio-body .button.primary,
+.bit-engine-lab .button.primary {
+  color: #020617;
+  background: linear-gradient(135deg, var(--engine-cyan), var(--engine-blue));
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.22);
+}
+
+.command-os .button.secondary,
+.command-os .button.tertiary,
+.portfolio-body .button.secondary,
+.bit-engine-lab .button.secondary,
+.bit-engine-lab .button.tertiary {
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.command-os .button:hover,
+.portfolio-body .button:hover,
+.bit-engine-lab .button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 34px rgba(34, 211, 238, 0.18);
+}
+
+.command-os .status-pill,
+.command-os .badge,
+.portfolio-body .status-pill,
+.portfolio-body .badge,
+.bit-engine-lab .status-pill,
+.bit-engine-lab .badge {
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.command-os .chart-surface,
+.command-os .chart-card,
+.command-os .market-chart-card,
+.portfolio-body .chart-surface,
+.bit-engine-lab .chart-surface {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.8), rgba(15, 23, 42, 0.72)),
+    linear-gradient(to right, rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: auto, 42px 42px, 42px 42px;
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.command-os table,
+.command-os .portfolio-table,
+.portfolio-body table,
+.bit-engine-lab table {
+  color: var(--engine-text);
+  background: rgba(2, 6, 23, 0.38);
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.command-os th,
+.portfolio-body th,
+.bit-engine-lab th {
+  color: var(--engine-dim);
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.12);
+}
+
+.command-os td,
+.portfolio-body td,
+.bit-engine-lab td {
+  color: #dbeafe;
+  border-color: rgba(148, 163, 184, 0.1);
+}
+
+.command-os input,
+.command-os select,
+.command-os textarea,
+.bit-engine-lab input,
+.bit-engine-lab select,
+.bit-engine-lab textarea {
+  color: var(--engine-text);
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.command-os input:focus,
+.command-os select:focus,
+.command-os textarea:focus,
+.bit-engine-lab input:focus,
+.bit-engine-lab select:focus,
+.bit-engine-lab textarea:focus {
+  border-color: rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.09);
+  outline: none;
+}
+
+.command-os .connector-progress-rail,
+.command-os .progress-rail {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.command-os .connector-progress-rail span,
+.command-os .progress-rail span {
+  background: linear-gradient(90deg, var(--engine-cyan), var(--engine-blue));
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.32);
+}
+
+.command-os .connector-key-row span,
+.command-os .connector-actions span,
+.command-os .pill-button,
+.portfolio-body .portfolio-tabs a {
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.78);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.command-os .text-link,
+.command-os .text-button,
+.portfolio-body a,
+.bit-engine-lab a {
+  color: var(--engine-cyan);
+}
+
+.portfolio-body .portfolio-shell,
+.bit-engine-lab .site-shell {
+  max-width: 1320px;
+}
+
+.portfolio-body .portfolio-topbar,
+.bit-engine-lab .topbar {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.portfolio-body .brand-mark,
+.bit-engine-lab .brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #020617;
+  background: linear-gradient(135deg, var(--engine-cyan), var(--engine-blue));
+  box-shadow: 0 0 28px rgba(34, 211, 238, 0.24);
+}
+
+.portfolio-body .portfolio-nav a,
+.portfolio-body .portfolio-actions a,
+.bit-engine-lab .topnav a {
+  color: var(--engine-muted);
+}
+
+.portfolio-body .portfolio-nav a:hover,
+.portfolio-body .portfolio-actions a:hover,
+.bit-engine-lab .topnav a:hover {
+  color: var(--engine-cyan);
+}
+
+.portfolio-body .portfolio-terminal,
+.portfolio-body .portfolio-panel,
+.portfolio-body .portfolio-wallet,
+.portfolio-body .portfolio-metric-grid article,
+.portfolio-body .stat-row li,
+.bit-engine-lab .card,
+.bit-engine-lab .hero-panel,
+.bit-engine-lab .leader-mini div,
+.bit-engine-lab .strategy-metrics-card,
+.bit-engine-lab .strategy-panel {
+  color: var(--engine-text);
+  border: 1px solid var(--engine-line);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.58)),
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.08), transparent 34%);
+  box-shadow: var(--engine-card-shadow);
+}
+
+.portfolio-body .portfolio-terminal {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(34, 211, 238, 0.18), transparent 30%),
+    radial-gradient(circle at 82% 12%, rgba(59, 130, 246, 0.15), transparent 36%),
+    linear-gradient(135deg, rgba(2, 6, 23, 0.94), rgba(15, 23, 42, 0.82));
+}
+
+.portfolio-body .portfolio-commandbar,
+.portfolio-body .portfolio-tabs {
+  border-color: rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.52);
+}
+
+.portfolio-body .portfolio-intro h2,
+.bit-engine-lab .hero h2 {
+  color: var(--engine-text);
+  font-size: clamp(2.6rem, 6vw, 6.8rem);
+  line-height: 0.92;
+}
+
+.portfolio-body .portfolio-subtitle,
+.portfolio-body .strategy-disclaimer,
+.portfolio-body .panel-note,
+.portfolio-body .portfolio-wallet small,
+.portfolio-body .portfolio-wallet span,
+.bit-engine-lab .lead,
+.bit-engine-lab .panel-note,
+.bit-engine-lab .notice,
+.bit-engine-lab .leader-mini span {
+  color: var(--engine-muted);
+}
+
+.portfolio-body .portfolio-metric-grid article strong,
+.portfolio-body .stat-row strong,
+.bit-engine-lab strong,
+.command-os strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.bit-engine-lab .hero {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.15), transparent 32%),
+    linear-gradient(135deg, rgba(2, 6, 23, 0.95), rgba(15, 23, 42, 0.78));
+}
+
+.bit-engine-lab .stack-form label span {
+  color: var(--engine-muted);
+}
+
+@media (max-width: 1080px) {
+  .command-os .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .command-os .sidebar {
+    position: static;
+    height: auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  }
+}
+
+@media (max-width: 720px) {
+  .command-os .dashboard-main,
+  .portfolio-body .site-shell,
+  .bit-engine-lab .site-shell {
+    padding: 16px;
+  }
+
+  .portfolio-body .portfolio-intro h2,
+  .bit-engine-lab .hero h2 {
+    font-size: clamp(2.25rem, 13vw, 4rem);
+  }
+}
