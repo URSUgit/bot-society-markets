@@ -5535,3 +5535,618 @@ body.bit-engine-lab .eyebrow {
     font-size: clamp(2.25rem, 13vw, 4rem);
   }
 }
+
+/* Bit-engine product UI refinement: a lighter, task-first workspace over the full feature set. */
+body.bit-engine-product-ui {
+  --product-bg: #f4f7fb;
+  --product-bg-strong: #eaf2f8;
+  --product-sidebar: #0f172a;
+  --product-sidebar-soft: #111c31;
+  --product-card: rgba(255, 255, 255, 0.92);
+  --product-card-soft: rgba(248, 250, 252, 0.92);
+  --product-line: #dbe5ef;
+  --product-line-strong: #b9d9e6;
+  --product-ink: #0f172a;
+  --product-muted: #64748b;
+  --product-dim: #94a3b8;
+  --product-cyan: #0891b2;
+  --product-blue: #2563eb;
+  --product-emerald: #059669;
+  --product-amber: #b45309;
+  --product-shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+  --product-soft-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  color: var(--product-ink);
+  background:
+    radial-gradient(circle at 22% -8%, rgba(34, 211, 238, 0.18), transparent 36%),
+    radial-gradient(circle at 90% 12%, rgba(37, 99, 235, 0.12), transparent 34%),
+    linear-gradient(180deg, var(--product-bg) 0%, #f8fbff 45%, #eef5f9 100%);
+  font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+body.bit-engine-product-ui::before {
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.32), transparent 76%);
+  opacity: 1;
+}
+
+body.bit-engine-product-ui::after {
+  background:
+    radial-gradient(circle at 72% 18%, rgba(14, 165, 233, 0.16), transparent 26%),
+    radial-gradient(circle at 18% 72%, rgba(16, 185, 129, 0.1), transparent 30%);
+  opacity: 0.75;
+}
+
+body.bit-engine-product-ui h1,
+body.bit-engine-product-ui h2,
+body.bit-engine-product-ui h3,
+body.bit-engine-product-ui h4 {
+  color: var(--product-ink);
+  letter-spacing: -0.04em;
+}
+
+body.bit-engine-product-ui p,
+body.bit-engine-product-ui small,
+body.bit-engine-product-ui span {
+  color: inherit;
+}
+
+body.bit-engine-product-ui .eyebrow {
+  color: var(--product-cyan);
+  letter-spacing: 0.14em;
+}
+
+.bit-engine-product-ui.command-os .dashboard-shell {
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+  background: transparent;
+}
+
+.bit-engine-product-ui.command-os .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  max-height: 100vh;
+  padding: 18px 12px;
+  gap: 16px;
+  overflow-y: auto;
+  color: #e2e8f0;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.13), transparent 30%),
+    linear-gradient(180deg, var(--product-sidebar) 0%, #111827 100%);
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.command-os .sidebar::before {
+  display: none;
+}
+
+.bit-engine-product-ui.command-os .sidebar-brand {
+  align-items: center;
+  padding: 0 4px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.bit-engine-product-ui.command-os .brand-mark.bit-engine-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #082f49;
+  background: linear-gradient(135deg, #67e8f9, #60a5fa);
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.command-os .sidebar-title {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.bit-engine-product-ui.command-os .sidebar-subtitle {
+  max-width: 170px;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav {
+  gap: 4px;
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav-label {
+  margin: 14px 8px 4px;
+  color: #64748b;
+  font-size: 0.61rem;
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav a {
+  min-height: 33px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav a::before {
+  width: 6px;
+  height: 6px;
+  background: #475569;
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav a.active,
+.bit-engine-product-ui.command-os .sidebar-nav a:hover {
+  color: #e0f2fe;
+  background: rgba(8, 145, 178, 0.16);
+  border-color: rgba(34, 211, 238, 0.18);
+}
+
+.bit-engine-product-ui.command-os .sidebar-nav a.active::before,
+.bit-engine-product-ui.command-os .sidebar-nav a:hover::before {
+  background: #22d3ee;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.46);
+}
+
+.bit-engine-product-ui.command-os .sidebar-card {
+  color: #cbd5e1;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+}
+
+.bit-engine-product-ui.command-os .dashboard-main {
+  max-width: 1400px;
+  gap: 16px;
+  padding: 22px;
+}
+
+.bit-engine-product-ui.command-os .dashboard-main::before {
+  opacity: 0;
+}
+
+.bit-engine-product-ui.command-os .operator-strip {
+  position: sticky;
+  top: 12px;
+  z-index: 18;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1.8fr);
+  gap: 12px;
+  padding: 10px;
+  color: var(--product-ink);
+  border: 1px solid var(--product-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--product-soft-shadow);
+  backdrop-filter: blur(18px);
+}
+
+.bit-engine-product-ui.command-os .operator-state,
+.bit-engine-product-ui.command-os .operator-metric {
+  min-height: 58px;
+  color: var(--product-ink);
+  background: #f8fafc;
+  border: 1px solid var(--product-line);
+  border-radius: 12px;
+}
+
+.bit-engine-product-ui.command-os .operator-state strong,
+.bit-engine-product-ui.command-os .operator-metric strong {
+  color: var(--product-ink);
+  font-size: 0.98rem;
+}
+
+.bit-engine-product-ui.command-os .operator-state small,
+.bit-engine-product-ui.command-os .operator-metric small,
+.bit-engine-product-ui.command-os .operator-metric span {
+  color: var(--product-muted);
+}
+
+.bit-engine-product-ui.command-os .dashboard-hero {
+  min-height: 210px;
+  padding: 24px;
+  color: var(--product-ink);
+  border: 1px solid var(--product-line);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(239, 249, 255, 0.88)),
+    radial-gradient(circle at 92% 16%, rgba(34, 211, 238, 0.16), transparent 30%);
+  box-shadow: var(--product-shadow);
+}
+
+.bit-engine-product-ui.command-os .dashboard-hero h2 {
+  max-width: 790px;
+  color: var(--product-ink);
+  font-size: clamp(2rem, 3.2vw, 3.55rem);
+  line-height: 0.98;
+}
+
+.bit-engine-product-ui.command-os .dashboard-hero h2::after,
+.bit-engine-product-ui.bit-engine-lab .hero h2::after,
+.bit-engine-product-ui.portfolio-body .portfolio-intro h2::after {
+  display: none;
+}
+
+.bit-engine-product-ui.command-os .dashboard-hero .eyebrow,
+.bit-engine-product-ui.command-os .dashboard-hero .hero-submeta {
+  color: var(--product-muted);
+}
+
+.bit-engine-product-ui.command-os .hero-actions.compact-actions {
+  width: min(100%, 360px);
+  max-width: none;
+}
+
+.bit-engine-product-ui.command-os .card,
+.bit-engine-product-ui.command-os .market-console,
+.bit-engine-product-ui.command-os .console-panel,
+.bit-engine-product-ui.command-os .ribbon-stat,
+.bit-engine-product-ui.command-os .metric-card,
+.bit-engine-product-ui.command-os .pulse-metric-card,
+.bit-engine-product-ui.command-os .signal-mix-card,
+.bit-engine-product-ui.command-os .venue-card,
+.bit-engine-product-ui.command-os .workspace-card,
+.bit-engine-product-ui.command-os .asset-card,
+.bit-engine-product-ui.command-os .operation-card,
+.bit-engine-product-ui.command-os .bot-detail-card,
+.bit-engine-product-ui.command-os .macro-card,
+.bit-engine-product-ui.command-os .paper-venue-card,
+.bit-engine-product-ui.command-os .wallet-watch-card,
+.bit-engine-product-ui.command-os .edge-card,
+.bit-engine-product-ui.command-os .context-card,
+.bit-engine-product-ui.command-os .advanced-export-card,
+.bit-engine-product-ui.command-os .connector-card,
+.bit-engine-product-ui.command-os .connector-diagnostic-panel,
+.bit-engine-product-ui.command-os .connector-diagnostic-card,
+.bit-engine-product-ui.command-os .infrastructure-task-card,
+.bit-engine-product-ui.command-os .cutover-step-card,
+.bit-engine-product-ui.command-os .billing-plan-card,
+.bit-engine-product-ui.command-os .auth-session-card,
+.bit-engine-product-ui.bit-engine-lab .card,
+.bit-engine-product-ui.bit-engine-lab .hero-panel,
+.bit-engine-product-ui.bit-engine-lab .leader-mini div,
+.bit-engine-product-ui.bit-engine-lab .strategy-metrics-card,
+.bit-engine-product-ui.bit-engine-lab .strategy-panel {
+  color: var(--product-ink);
+  border: 1px solid var(--product-line);
+  background: var(--product-card);
+  box-shadow: var(--product-soft-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.bit-engine-product-ui.command-os .card::before,
+.bit-engine-product-ui.command-os .bot-card::before,
+.bit-engine-product-ui.command-os .pulse-metric-card::before,
+.bit-engine-product-ui.command-os .signal-mix-card::before,
+.bit-engine-product-ui.command-os .venue-card::before,
+.bit-engine-product-ui.bit-engine-lab .card::before {
+  opacity: 0;
+}
+
+.bit-engine-product-ui.command-os .market-console {
+  order: 2;
+  padding: 22px;
+}
+
+.bit-engine-product-ui.command-os .market-console-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 14px;
+}
+
+.bit-engine-product-ui.command-os .market-console-grid .console-panel:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.bit-engine-product-ui.command-os .console-panel {
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.bit-engine-product-ui.command-os #dashboard-metrics {
+  order: 3;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.bit-engine-product-ui.command-os #intelligence-section {
+  order: 4;
+}
+
+.bit-engine-product-ui.command-os #paper-section {
+  order: 5;
+}
+
+.bit-engine-product-ui.command-os #leaderboard-section {
+  order: 6;
+}
+
+.bit-engine-product-ui.command-os #connectors-section {
+  order: 7;
+}
+
+.bit-engine-product-ui.command-os #account-section {
+  order: 8;
+}
+
+.bit-engine-product-ui.command-os #workspace-section {
+  order: 9;
+}
+
+.bit-engine-product-ui.command-os #launch-section,
+.bit-engine-product-ui.command-os #cutover-section,
+.bit-engine-product-ui.command-os #pulse-section,
+.bit-engine-product-ui.command-os .dashboard-stack-section,
+.bit-engine-product-ui.command-os #smart-money-section,
+.bit-engine-product-ui.command-os .live-grid,
+.bit-engine-product-ui.command-os #assets-section,
+.bit-engine-product-ui.command-os #predictions-section,
+.bit-engine-product-ui.command-os #detail-section {
+  display: none;
+}
+
+.bit-engine-product-ui.command-os .content-grid {
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
+  gap: 16px;
+}
+
+.bit-engine-product-ui.command-os .wide-card,
+.bit-engine-product-ui.command-os .side-card {
+  padding: 20px;
+}
+
+.bit-engine-product-ui.command-os .section-head {
+  margin-bottom: 12px;
+}
+
+.bit-engine-product-ui.command-os .section-head h3,
+.bit-engine-product-ui.command-os .connector-head h4,
+.bit-engine-product-ui.command-os .console-panel h4,
+.bit-engine-product-ui.command-os .venue-card h4,
+.bit-engine-product-ui.command-os .bot-detail-card h4,
+.bit-engine-product-ui.bit-engine-lab .section-head h3 {
+  color: var(--product-ink);
+  font-size: clamp(1.1rem, 1.35vw, 1.55rem);
+  line-height: 1.08;
+}
+
+.bit-engine-product-ui.command-os .hero-submeta,
+.bit-engine-product-ui.command-os .panel-note,
+.bit-engine-product-ui.command-os .connector-summary,
+.bit-engine-product-ui.command-os .connector-meta,
+.bit-engine-product-ui.command-os .connector-actions,
+.bit-engine-product-ui.command-os .launch-track-list,
+.bit-engine-product-ui.command-os .workspace-subtitle,
+.bit-engine-product-ui.command-os .activity-feed,
+.bit-engine-product-ui.command-os .signal-list,
+.bit-engine-product-ui.command-os .prediction-list,
+.bit-engine-product-ui.bit-engine-lab .lead,
+.bit-engine-product-ui.bit-engine-lab .panel-note,
+.bit-engine-product-ui.bit-engine-lab .notice,
+.bit-engine-product-ui.bit-engine-lab .leader-mini span {
+  color: var(--product-muted);
+}
+
+.bit-engine-product-ui.command-os .status-pill,
+.bit-engine-product-ui.command-os .badge,
+.bit-engine-product-ui.bit-engine-lab .status-pill,
+.bit-engine-product-ui.bit-engine-lab .badge {
+  color: #075985;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+}
+
+.bit-engine-product-ui.command-os .button.primary,
+.bit-engine-product-ui.bit-engine-lab .button.primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--product-cyan), var(--product-blue));
+  border: 1px solid rgba(8, 145, 178, 0.24);
+  box-shadow: 0 12px 26px rgba(8, 145, 178, 0.18);
+}
+
+.bit-engine-product-ui.command-os .button.secondary,
+.bit-engine-product-ui.command-os .button.tertiary,
+.bit-engine-product-ui.bit-engine-lab .button.secondary,
+.bit-engine-product-ui.bit-engine-lab .button.tertiary {
+  color: var(--product-ink);
+  background: #ffffff;
+  border: 1px solid var(--product-line);
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.command-os .button:hover,
+.bit-engine-product-ui.bit-engine-lab .button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+
+.bit-engine-product-ui.command-os .chart-surface,
+.bit-engine-product-ui.command-os .chart-card,
+.bit-engine-product-ui.command-os .market-chart-card,
+.bit-engine-product-ui.bit-engine-lab .chart-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.92)),
+    linear-gradient(to right, rgba(15, 23, 42, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+  background-size: auto, 42px 42px, 42px 42px;
+  border-color: var(--product-line);
+}
+
+.bit-engine-product-ui.command-os table,
+.bit-engine-product-ui.command-os .portfolio-table,
+.bit-engine-product-ui.bit-engine-lab table {
+  color: var(--product-ink);
+  background: #ffffff;
+  border-color: var(--product-line);
+}
+
+.bit-engine-product-ui.command-os th,
+.bit-engine-product-ui.bit-engine-lab th {
+  color: var(--product-muted);
+  background: #f8fafc;
+  border-color: var(--product-line);
+}
+
+.bit-engine-product-ui.command-os td,
+.bit-engine-product-ui.bit-engine-lab td {
+  color: var(--product-ink);
+  border-color: #edf2f7;
+}
+
+.bit-engine-product-ui.command-os input,
+.bit-engine-product-ui.command-os select,
+.bit-engine-product-ui.command-os textarea,
+.bit-engine-product-ui.bit-engine-lab input,
+.bit-engine-product-ui.bit-engine-lab select,
+.bit-engine-product-ui.bit-engine-lab textarea {
+  color: var(--product-ink);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+}
+
+.bit-engine-product-ui.command-os input:focus,
+.bit-engine-product-ui.command-os select:focus,
+.bit-engine-product-ui.command-os textarea:focus,
+.bit-engine-product-ui.bit-engine-lab input:focus,
+.bit-engine-product-ui.bit-engine-lab select:focus,
+.bit-engine-product-ui.bit-engine-lab textarea:focus {
+  border-color: var(--product-cyan);
+  box-shadow: 0 0 0 4px rgba(8, 145, 178, 0.12);
+  outline: none;
+}
+
+.bit-engine-product-ui.command-os .connector-progress-rail,
+.bit-engine-product-ui.command-os .progress-rail {
+  background: #e2e8f0;
+  border-color: #dbe5ef;
+}
+
+.bit-engine-product-ui.command-os .connector-progress-rail span,
+.bit-engine-product-ui.command-os .progress-rail span {
+  background: linear-gradient(90deg, var(--product-cyan), var(--product-blue));
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.command-os .connector-key-row span,
+.bit-engine-product-ui.command-os .connector-actions span,
+.bit-engine-product-ui.command-os .pill-button {
+  color: var(--product-ink);
+  background: #f8fafc;
+  border-color: var(--product-line);
+}
+
+.bit-engine-product-ui.command-os .text-link,
+.bit-engine-product-ui.command-os .text-button,
+.bit-engine-product-ui.bit-engine-lab a {
+  color: var(--product-cyan);
+}
+
+.bit-engine-product-ui.bit-engine-lab .site-shell {
+  max-width: 1280px;
+}
+
+.bit-engine-product-ui.bit-engine-lab .topbar {
+  padding: 14px;
+  border: 1px solid var(--product-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--product-soft-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.bit-engine-product-ui.bit-engine-lab .brand-mark {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--product-cyan), var(--product-blue));
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.bit-engine-lab .topnav a {
+  color: var(--product-muted);
+}
+
+.bit-engine-product-ui.bit-engine-lab .topnav a:hover {
+  color: var(--product-cyan);
+}
+
+.bit-engine-product-ui.bit-engine-lab .hero {
+  color: var(--product-ink);
+  min-height: 250px;
+  border: 1px solid var(--product-line);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(236, 254, 255, 0.82)),
+    radial-gradient(circle at 86% 12%, rgba(34, 211, 238, 0.18), transparent 32%);
+  box-shadow: var(--product-shadow);
+}
+
+.bit-engine-product-ui.bit-engine-lab .hero h2 {
+  max-width: 860px;
+  color: var(--product-ink);
+  font-size: clamp(2.2rem, 4.8vw, 5rem);
+}
+
+.bit-engine-product-ui.bit-engine-lab .grid-two {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.8fr);
+  gap: 16px;
+}
+
+.bit-engine-product-ui.bit-engine-lab .strategy-control-grid {
+  gap: 12px;
+}
+
+.bit-engine-product-ui.bit-engine-lab .strategy-creator-panel,
+.bit-engine-product-ui.bit-engine-lab .optimization-brief {
+  border: 1px solid var(--product-line);
+  background: var(--product-card-soft);
+  box-shadow: none;
+}
+
+.bit-engine-product-ui.bit-engine-lab .stack-form label span {
+  color: var(--product-muted);
+}
+
+@media (max-width: 1080px) {
+  .bit-engine-product-ui.command-os .dashboard-shell,
+  .bit-engine-product-ui.command-os .dashboard-main,
+  .bit-engine-product-ui.command-os .content-grid,
+  .bit-engine-product-ui.command-os .market-console-grid,
+  .bit-engine-product-ui.bit-engine-lab .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .bit-engine-product-ui.command-os .sidebar {
+    position: static;
+    height: auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  }
+
+  .bit-engine-product-ui.command-os .operator-strip {
+    position: static;
+    grid-template-columns: 1fr;
+  }
+
+  .bit-engine-product-ui.command-os #dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .bit-engine-product-ui.command-os .dashboard-main,
+  .bit-engine-product-ui.command-os .sidebar,
+  .bit-engine-product-ui.bit-engine-lab .site-shell {
+    padding: 14px;
+  }
+
+  .bit-engine-product-ui.command-os #dashboard-metrics,
+  .bit-engine-product-ui.command-os .operator-strip-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .bit-engine-product-ui.command-os .dashboard-hero h2,
+  .bit-engine-product-ui.bit-engine-lab .hero h2 {
+    font-size: clamp(2rem, 12vw, 3.5rem);
+  }
+}
