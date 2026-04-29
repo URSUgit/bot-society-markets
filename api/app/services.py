@@ -43,6 +43,8 @@ from .models import (
     BusinessModelTeamRole,
     BotDetail,
     BotSummary,
+    ConnectorDiagnosticCheck,
+    ConnectorDiagnosticResult,
     CycleResult,
     DashboardSnapshot,
     EdgeOpportunityView,
@@ -2403,6 +2405,326 @@ class BotSocietyService:
             ),
             live_or_ready_count=live_or_ready_count,
             connectors=connectors,
+        )
+
+    def get_connector_diagnostic(self, connector_id: str) -> ConnectorDiagnosticResult:
+        normalized_id = connector_id.strip().lower()
+        connector = next(
+            (item for item in self.get_connector_control().connectors if item.id == normalized_id),
+            None,
+        )
+        if connector is None:
+            raise ValueError("Connector not found")
+
+        checks: list[ConnectorDiagnosticCheck] = [
+            self._connector_check(
+                key="configuration",
+                label="Configuration",
+                status="pass" if connector.configured else ("warn" if connector.state == "planned" else "fail"),
+                detail=(
+                    f"{connector.label} has runtime configuration attached."
+                    if connector.configured
+                    else f"{connector.label} still needs its activation environment values."
+                ),
+            ),
+            self._connector_check(
+                key="readiness_score",
+                label="Readiness score",
+                status="pass" if connector.readiness_score >= 0.75 else ("warn" if connector.readiness_score >= 0.35 else "fail"),
+                detail=f"Current readiness is {round(connector.readiness_score * 100)}%. Target for promotion is 75% or higher.",
+            ),
+            self._connector_check(
+                key="runtime_state",
+                label="Runtime state",
+                status=(
+                    "pass"
+                    if connector.state in {"live", "ready"}
+                    else ("warn" if connector.state in {"demo", "planned"} else "fail")
+                ),
+                detail=f"Runtime state is {connector.state}. Mode is {connector.mode}; source is {connector.source}.",
+            ),
+            self._connector_check(
+                key="env_inventory",
+                label="Environment inventory",
+                status="pass" if connector.configured else ("warn" if connector.state == "planned" else "fail"),
+                detail=(
+                    f"Expected keys: {', '.join(connector.env_keys)}."
+                    if connector.env_keys
+                    else "No external environment keys are required for this connector."
+                ),
+            ),
+        ]
+
+        checks.extend(self._specific_connector_checks(connector))
+
+        if connector.risk_level == "high":
+            checks.append(
+                self._connector_check(
+                    key="high_risk_gate",
+                    label="High-risk promotion gate",
+                    status="pass" if connector.configured and connector.state in {"live", "ready"} else "blocked",
+                    detail=(
+                        "High-risk connectors require credentials, sandbox proof, and explicit operating limits before promotion."
+                    ),
+                )
+            )
+        elif connector.live_capable:
+            checks.append(
+                self._connector_check(
+                    key="live_guardrail",
+                    label="Live guardrail",
+                    status="pass" if connector.state in {"live", "ready"} else "warn",
+                    detail="Live-capable connector remains gated until readiness and fallback checks pass.",
+                    required=False,
+                )
+            )
+
+        blockers = [
+            f"{check.label}: {check.detail}"
+            for check in checks
+            if check.required and check.status in {"fail", "blocked"}
+        ]
+        overall_status = self._connector_diagnostic_status(checks)
+        ready_to_activate = not blockers and connector.configured and connector.readiness_score >= 0.75
+        safe_to_promote = ready_to_activate and overall_status == "pass" and connector.state in {"live", "ready"}
+        next_actions = blockers[:3] + list(connector.next_actions)
+
+        return ConnectorDiagnosticResult(
+            connector_id=connector.id,
+            label=connector.label,
+            generated_at=self._now(),
+            overall_status=overall_status,
+            ready_to_activate=ready_to_activate,
+            safe_to_promote=safe_to_promote,
+            checks=checks,
+            blockers=blockers,
+            next_actions=next_actions,
+        )
+
+    def _specific_connector_checks(self, connector: ConnectorStatusItem) -> list[ConnectorDiagnosticCheck]:
+        checks: list[ConnectorDiagnosticCheck] = []
+        connector_id = connector.id
+
+        if connector_id == "stripe-billing-rail":
+            required_values = {
+                "BSM_FIAT_BILLING_PROVIDER=stripe": self.settings.fiat_billing_provider == "stripe",
+                "BSM_STRIPE_PUBLISHABLE_KEY": bool(self.settings.stripe_publishable_key),
+                "BSM_STRIPE_SECRET_KEY": bool(self.settings.stripe_secret_key),
+                "BSM_STRIPE_WEBHOOK_SECRET": bool(self.settings.stripe_webhook_secret),
+                "BSM_STRIPE_BASIC_PRICE_ID": bool(self.settings.stripe_basic_price_id),
+            }
+            missing = [key for key, present in required_values.items() if not present]
+            checks.append(
+                self._connector_check(
+                    key="stripe_required_values",
+                    label="Stripe required values",
+                    status="pass" if not missing else "fail",
+                    detail="All hosted Stripe billing values are present." if not missing else f"Missing: {', '.join(missing)}.",
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="hosted_payment_boundary",
+                    label="Hosted payment boundary",
+                    status="pass",
+                    detail="Card entry stays inside Stripe Checkout and Portal; BITprivat does not collect card data directly.",
+                    required=False,
+                )
+            )
+
+        elif connector_id == "coinbase-onramp-rail":
+            required_values = {
+                "BSM_COINBASE_ONRAMP_API_KEY": bool(self.settings.coinbase_onramp_api_key),
+                "BSM_COINBASE_ONRAMP_APP_ID": bool(self.settings.coinbase_onramp_app_id),
+            }
+            missing = [key for key, present in required_values.items() if not present]
+            checks.append(
+                self._connector_check(
+                    key="coinbase_required_values",
+                    label="Coinbase onramp values",
+                    status="pass" if not missing else "fail",
+                    detail="Coinbase hosted onramp credentials are present." if not missing else f"Missing: {', '.join(missing)}.",
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="crypto_kyc_boundary",
+                    label="Hosted KYC boundary",
+                    status="pass",
+                    detail="Crypto funding must stay inside Coinbase or MoonPay hosted KYC/payment flows; internal custody remains disabled.",
+                    required=False,
+                )
+            )
+            backup_ready = bool(self.settings.coinbase_commerce_api_key or self.settings.moonpay_api_key)
+            checks.append(
+                self._connector_check(
+                    key="backup_crypto_rail",
+                    label="Backup crypto rail",
+                    status="pass" if backup_ready else "warn",
+                    detail=(
+                        "A backup Coinbase Commerce or MoonPay key is configured."
+                        if backup_ready
+                        else "No backup crypto checkout rail is configured yet."
+                    ),
+                    required=False,
+                )
+            )
+
+        elif connector_id == "cloudflare-edge-router":
+            checks.append(
+                self._connector_check(
+                    key="canonical_https",
+                    label="Canonical HTTPS",
+                    status="pass" if self.settings.canonical_host and self.settings.force_https else "fail",
+                    detail=(
+                        f"Canonical host is {self.settings.canonical_host} with HTTPS enforced."
+                        if self.settings.canonical_host and self.settings.force_https
+                        else "Set BSM_CANONICAL_HOST and BSM_FORCE_HTTPS=true on the hosted deployment."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="edge_deploy_automation",
+                    label="Edge deploy automation",
+                    status="warn",
+                    detail="Runtime cannot inspect GitHub repository secrets; keep CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in GitHub Actions.",
+                    required=False,
+                )
+            )
+
+        elif connector_id == "desktop-shell":
+            checks.append(
+                self._connector_check(
+                    key="desktop_shell_identity",
+                    label="Desktop shell identity",
+                    status="pass" if self.settings.desktop_app_framework != "none" and self.settings.desktop_bundle_id else "fail",
+                    detail=(
+                        f"{self.settings.desktop_app_framework} shell uses bundle ID {self.settings.desktop_bundle_id}."
+                        if self.settings.desktop_app_framework != "none" and self.settings.desktop_bundle_id
+                        else "Set BSM_DESKTOP_APP_FRAMEWORK and BSM_DESKTOP_BUNDLE_ID before packaging installers."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="desktop_signing",
+                    label="Signing and distribution",
+                    status="pass" if self.settings.apple_developer_team_id else "warn",
+                    detail=(
+                        "Apple developer team is configured for notarization planning."
+                        if self.settings.apple_developer_team_id
+                        else "Desktop installers still need signing/notarization setup before public distribution."
+                    ),
+                    required=False,
+                )
+            )
+
+        elif connector_id == "hyperliquid-market-feed":
+            checks.append(
+                self._connector_check(
+                    key="hyperliquid_feed_mode",
+                    label="Hyperliquid feed mode",
+                    status="pass" if self.settings.market_provider_mode == "hyperliquid" and self.settings.hyperliquid_dex else "fail",
+                    detail=(
+                        f"Hyperliquid feed is active for {self.settings.hyperliquid_dex}."
+                        if self.settings.market_provider_mode == "hyperliquid" and self.settings.hyperliquid_dex
+                        else "Keep this in research mode until BSM_MARKET_PROVIDER=hyperliquid and BSM_HYPERLIQUID_DEX are set."
+                    ),
+                )
+            )
+
+        elif connector_id == "kalshi-surfaces":
+            kalshi_ready = bool(self.settings.kalshi_demo_key_id and self.settings.kalshi_demo_private_key_path)
+            checks.append(
+                self._connector_check(
+                    key="kalshi_demo_credentials",
+                    label="Kalshi demo credentials",
+                    status="pass" if kalshi_ready else "fail",
+                    detail=(
+                        "Kalshi demo key ID and private key path are configured."
+                        if kalshi_ready
+                        else "Set BSM_KALSHI_DEMO_KEY_ID and BSM_KALSHI_DEMO_PRIVATE_KEY_PATH before enabling demo venue checks."
+                    ),
+                )
+            )
+
+        elif connector_id == "polymarket-intel":
+            has_wallets = bool(self.settings.tracked_wallets)
+            has_venue = "polymarket" in set(self.settings.venue_signal_providers)
+            checks.append(
+                self._connector_check(
+                    key="polymarket_signal_surface",
+                    label="Polymarket signal surface",
+                    status="pass" if has_venue or self.settings.wallet_provider_mode == "polymarket" else "warn",
+                    detail=(
+                        "Polymarket signal or wallet mode is active."
+                        if has_venue or self.settings.wallet_provider_mode == "polymarket"
+                        else "Enable polymarket in BSM_VENUE_SIGNAL_PROVIDERS or BSM_WALLET_PROVIDER for live venue intelligence."
+                    ),
+                    required=False,
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="tracked_wallets",
+                    label="Tracked public wallets",
+                    status="pass" if has_wallets else "warn",
+                    detail=(
+                        f"{len(self.settings.tracked_wallets)} public wallets are configured for provenance weighting."
+                        if has_wallets
+                        else "Curate tracked public wallets before ranking smart-money profiles."
+                    ),
+                    required=False,
+                )
+            )
+
+        elif connector_id == "signal-ingestion":
+            has_live_source = self.settings.signal_provider_mode in {"rss", "reddit"} and bool(
+                self.settings.rss_feed_urls or self.settings.reddit_client_id
+            )
+            checks.append(
+                self._connector_check(
+                    key="live_signal_source",
+                    label="Live signal source",
+                    status="pass" if has_live_source else "warn",
+                    detail=(
+                        "Live RSS or Reddit intake is configured."
+                        if has_live_source
+                        else "Signal intake is still demo-first; add RSS feeds or Reddit credentials for live collection."
+                    ),
+                    required=False,
+                )
+            )
+
+        return checks
+
+    @staticmethod
+    def _connector_diagnostic_status(checks: list[ConnectorDiagnosticCheck]) -> str:
+        required_checks = [check for check in checks if check.required]
+        if any(check.status == "blocked" for check in required_checks):
+            return "blocked"
+        if any(check.status == "fail" for check in required_checks):
+            return "fail"
+        if any(check.status == "warn" for check in checks):
+            return "warn"
+        return "pass"
+
+    @staticmethod
+    def _connector_check(
+        *,
+        key: str,
+        label: str,
+        status: str,
+        detail: str,
+        required: bool = True,
+    ) -> ConnectorDiagnosticCheck:
+        return ConnectorDiagnosticCheck(
+            key=key,
+            label=label,
+            status=status,
+            detail=detail,
+            required=required,
         )
 
     def get_infrastructure_readiness(self) -> InfrastructureReadinessSnapshot:

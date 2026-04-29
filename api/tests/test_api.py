@@ -140,6 +140,21 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert all(item["activation_phase"] for item in connectors_payload["connectors"])
         assert all(item["owner"] for item in connectors_payload["connectors"])
 
+        diagnostic_response = client.get("/api/system/connectors/stripe-billing-rail/diagnostics")
+        assert diagnostic_response.status_code == 200
+        diagnostic_payload = diagnostic_response.json()["connector_diagnostic"]
+        assert diagnostic_payload["connector_id"] == "stripe-billing-rail"
+        assert diagnostic_payload["label"] == "Stripe Billing Rail"
+        assert diagnostic_payload["overall_status"] in {"pass", "warn", "fail", "blocked"}
+        assert isinstance(diagnostic_payload["ready_to_activate"], bool)
+        assert isinstance(diagnostic_payload["safe_to_promote"], bool)
+        assert diagnostic_payload["checks"]
+        assert any(check["key"] == "stripe_required_values" for check in diagnostic_payload["checks"])
+        assert diagnostic_payload["next_actions"]
+
+        missing_diagnostic_response = client.get("/api/system/connectors/missing-provider/diagnostics")
+        assert missing_diagnostic_response.status_code == 400
+
         infrastructure_response = client.get("/api/system/infrastructure")
         assert infrastructure_response.status_code == 200
         infrastructure_payload = infrastructure_response.json()["infrastructure_readiness"]
@@ -204,6 +219,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="market-console-section"' in dashboard_response.text
         assert 'id="market-console-decisions"' in dashboard_response.text
         assert 'id="leaderboard-summary"' in dashboard_response.text
+        assert 'id="connector-diagnostic-panel"' in dashboard_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

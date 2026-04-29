@@ -576,6 +576,33 @@ function connectorStateVariant(state) {
   }
 }
 
+function connectorDiagnosticVariant(status) {
+  switch (status) {
+    case "pass":
+      return "positive";
+    case "warn":
+    case "fail":
+    case "blocked":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function connectorDiagnosticLabel(status) {
+  switch (status) {
+    case "pass":
+      return "Pass";
+    case "warn":
+      return "Review";
+    case "fail":
+    case "blocked":
+      return "Blocked";
+    default:
+      return "Waiting";
+  }
+}
+
 function renderConnectorControl(connectorControl) {
   const summary = document.getElementById("connector-summary");
   const badge = document.getElementById("connector-live-count");
@@ -627,6 +654,7 @@ function renderConnectorControl(connectorControl) {
         <div class="connector-key-row">${envKeys}</div>
         <div class="connector-actions">
           ${actionLink}
+          <button class="button tertiary small-button" type="button" data-action="run-connector-check" data-connector-id="${escapeHtml(connector.id)}">Run check</button>
           <span>${connector.live_capable ? "Live-capable" : "Demo-safe"}</span>
           <span>${connector.configured ? "Configured" : "Needs config"}</span>
         </div>
@@ -634,6 +662,71 @@ function renderConnectorControl(connectorControl) {
       </article>
     `;
   }).join("");
+}
+
+async function runConnectorDiagnostic(connectorId, button = null) {
+  if (!connectorId) {
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  setStatus(`Running activation check for ${connectorId}...`);
+  try {
+    const payload = await fetchJson(`/api/system/connectors/${encodeURIComponent(connectorId)}/diagnostics`);
+    renderConnectorDiagnostic(payload.connector_diagnostic);
+    const status = connectorDiagnosticLabel(payload.connector_diagnostic?.overall_status);
+    setStatus(`${payload.connector_diagnostic?.label || connectorId} check finished: ${status}.`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function renderConnectorDiagnostic(diagnostic) {
+  const panel = document.getElementById("connector-diagnostic-panel");
+  const title = document.getElementById("connector-diagnostic-title");
+  const badge = document.getElementById("connector-diagnostic-badge");
+  const summary = document.getElementById("connector-diagnostic-summary");
+  const grid = document.getElementById("connector-diagnostic-grid");
+  const actions = document.getElementById("connector-diagnostic-actions");
+  if (!panel || !title || !badge || !summary || !grid || !actions || !diagnostic) {
+    return;
+  }
+
+  panel.hidden = false;
+  title.textContent = `${diagnostic.label} activation check`;
+  badge.textContent = connectorDiagnosticLabel(diagnostic.overall_status);
+  badge.dataset.variant = connectorDiagnosticVariant(diagnostic.overall_status);
+
+  if (diagnostic.ready_to_activate && diagnostic.safe_to_promote) {
+    summary.textContent = "This connector is ready and safe to promote with the current runtime settings.";
+  } else if (diagnostic.blockers?.length) {
+    summary.textContent = `${diagnostic.blockers.length} blocker${diagnostic.blockers.length === 1 ? "" : "s"} must be cleared before activation.`;
+  } else {
+    summary.textContent = "No hard blockers were found, but review warnings before promotion.";
+  }
+
+  grid.innerHTML = (diagnostic.checks || []).map((check) => `
+    <article class="connector-diagnostic-card diagnostic-${escapeHtml(check.status)}">
+      <div class="connector-head">
+        <div>
+          <p class="eyebrow">${check.required ? "Required" : "Advisory"}</p>
+          <h4>${escapeHtml(check.label)}</h4>
+        </div>
+        <span class="status-pill" data-variant="${connectorDiagnosticVariant(check.status)}">${connectorDiagnosticLabel(check.status)}</span>
+      </div>
+      <p>${escapeHtml(check.detail)}</p>
+    </article>
+  `).join("");
+
+  actions.innerHTML = (diagnostic.next_actions || [])
+    .slice(0, 5)
+    .map((action) => `<li>${escapeHtml(action)}</li>`)
+    .join("");
+
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function renderInfrastructureReadiness(infrastructureReadiness) {
@@ -3693,6 +3786,11 @@ function bindInteractions() {
 
     const action = target.dataset.action;
     try {
+      if (action === "run-connector-check") {
+        event.preventDefault();
+        await runConnectorDiagnostic(target.dataset.connectorId, target);
+        return;
+      }
       if (action === "select-landing-asset") {
         selectedLandingAsset = target.dataset.value;
         if (latestLandingSnapshot?.assets?.length) {

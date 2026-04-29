@@ -188,6 +188,18 @@
           </div>
           <p class="panel-note" id="connector-summary">Loading connector inventory...</p>
           <div class="connector-grid" id="connector-grid"></div>
+          <div class="connector-diagnostic-panel" id="connector-diagnostic-panel" hidden>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Activation diagnostics</p>
+                <h3 id="connector-diagnostic-title">Connector check</h3>
+              </div>
+              <span class="status-pill" id="connector-diagnostic-badge" data-variant="neutral">Waiting</span>
+            </div>
+            <p class="panel-note" id="connector-diagnostic-summary">Run a connector check to see blockers, safety gates, and next steps.</p>
+            <div class="connector-diagnostic-grid" id="connector-diagnostic-grid"></div>
+            <ul class="launch-track-list connector-diagnostic-actions" id="connector-diagnostic-actions"></ul>
+          </div>
         </article>
 
         <article class="card side-card" id="infrastructure-section">

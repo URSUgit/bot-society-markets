@@ -18,6 +18,7 @@ OrderStatus = Literal["pending", "open", "filled", "cancelled", "rejected"]
 LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 BillingPlanKey = Literal["basic", "pro", "enterprise"]
 ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
+ConnectorDiagnosticStatus = Literal["pass", "warn", "fail", "blocked"]
 InfrastructureTaskState = Literal["ready", "attention", "planned"]
 
 
@@ -808,6 +809,26 @@ class ConnectorControlSnapshot(BaseModel):
     connectors: list[ConnectorStatusItem] = Field(default_factory=list)
 
 
+class ConnectorDiagnosticCheck(BaseModel):
+    key: str
+    label: str
+    status: ConnectorDiagnosticStatus
+    detail: str
+    required: bool = True
+
+
+class ConnectorDiagnosticResult(BaseModel):
+    connector_id: str
+    label: str
+    generated_at: str
+    overall_status: ConnectorDiagnosticStatus
+    ready_to_activate: bool = False
+    safe_to_promote: bool = False
+    checks: list[ConnectorDiagnosticCheck] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class InfrastructureTask(BaseModel):
     key: str
     label: str
@@ -1107,6 +1128,10 @@ class LaunchReadinessEnvelope(BaseModel):
 
 class ConnectorControlEnvelope(BaseModel):
     connector_control: ConnectorControlSnapshot
+
+
+class ConnectorDiagnosticEnvelope(BaseModel):
+    connector_diagnostic: ConnectorDiagnosticResult
 
 
 class InfrastructureReadinessEnvelope(BaseModel):
