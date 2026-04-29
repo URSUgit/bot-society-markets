@@ -31,6 +31,7 @@ from .models import (
     BusinessModelEnvelope,
     ConnectorControlEnvelope,
     ConnectorDiagnosticEnvelope,
+    ConnectorDiagnosticsEnvelope,
     CycleResult,
     DashboardSnapshot,
     EdgeSnapshot,
@@ -853,6 +854,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/system/connectors", response_model=ConnectorControlEnvelope)
     def connector_control(request: Request) -> ConnectorControlEnvelope:
         return ConnectorControlEnvelope(connector_control=get_service(request).get_connector_control())
+
+    @app.get("/api/v1/system/connectors/diagnostics", response_model=ConnectorDiagnosticsEnvelope)
+    @app.get("/api/system/connectors/diagnostics", response_model=ConnectorDiagnosticsEnvelope)
+    def connector_diagnostics(request: Request) -> ConnectorDiagnosticsEnvelope:
+        return ConnectorDiagnosticsEnvelope(connector_diagnostics=get_service(request).get_connector_diagnostics())
 
     @app.get("/api/v1/system/connectors/{connector_id}/diagnostics", response_model=ConnectorDiagnosticEnvelope)
     @app.get("/api/system/connectors/{connector_id}/diagnostics", response_model=ConnectorDiagnosticEnvelope)

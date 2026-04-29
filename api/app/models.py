@@ -1134,6 +1134,10 @@ class ConnectorDiagnosticEnvelope(BaseModel):
     connector_diagnostic: ConnectorDiagnosticResult
 
 
+class ConnectorDiagnosticsEnvelope(BaseModel):
+    connector_diagnostics: list[ConnectorDiagnosticResult] = Field(default_factory=list)
+
+
 class InfrastructureReadinessEnvelope(BaseModel):
     infrastructure_readiness: InfrastructureReadinessSnapshot
 

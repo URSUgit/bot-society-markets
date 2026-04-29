@@ -155,6 +155,13 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         missing_diagnostic_response = client.get("/api/system/connectors/missing-provider/diagnostics")
         assert missing_diagnostic_response.status_code == 400
 
+        diagnostics_response = client.get("/api/system/connectors/diagnostics")
+        assert diagnostics_response.status_code == 200
+        diagnostics_payload = diagnostics_response.json()["connector_diagnostics"]
+        assert len(diagnostics_payload) == len(connectors_payload["connectors"])
+        assert {item["connector_id"] for item in diagnostics_payload} == connector_ids
+        assert all(item["checks"] for item in diagnostics_payload)
+
         infrastructure_response = client.get("/api/system/infrastructure")
         assert infrastructure_response.status_code == 200
         infrastructure_payload = infrastructure_response.json()["infrastructure_readiness"]
@@ -219,6 +226,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="market-console-section"' in dashboard_response.text
         assert 'id="market-console-decisions"' in dashboard_response.text
         assert 'id="leaderboard-summary"' in dashboard_response.text
+        assert 'id="run-all-connector-checks-button"' in dashboard_response.text
         assert 'id="connector-diagnostic-panel"' in dashboard_response.text
 
         simulation_response = client.get("/simulation")
