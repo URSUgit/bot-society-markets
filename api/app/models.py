@@ -20,6 +20,9 @@ BillingPlanKey = Literal["basic", "pro", "enterprise"]
 ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
 ConnectorDiagnosticStatus = Literal["pass", "warn", "fail", "blocked"]
 InfrastructureTaskState = Literal["ready", "attention", "planned"]
+SocialPlatform = Literal["youtube", "x", "reddit", "telegram", "newsletter", "other"]
+SocialTradeMode = Literal["signals", "managed_paper"]
+SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
 
 
 class Summary(BaseModel):
@@ -954,6 +957,115 @@ class BusinessModelSnapshot(BaseModel):
     next_build_priorities: list[str] = Field(default_factory=list)
 
 
+class SocialEvidenceItem(BaseModel):
+    external_id: str
+    platform: SocialPlatform
+    title: str
+    summary: str
+    url: str
+    asset: str
+    direction: Direction
+    confidence: float = Field(ge=0, le=1)
+    engagement_score: float = Field(ge=0, le=1)
+    observed_at: str
+    derived_return: float
+
+
+class SocialTraderScorecard(BaseModel):
+    id: int
+    slug: str
+    display_name: str
+    handle: str
+    platform: SocialPlatform
+    source_url: str
+    avatar_seed: str
+    avatar_url: str | None = None
+    description: str
+    primary_assets: list[str] = Field(default_factory=list)
+    style_tags: list[str] = Field(default_factory=list)
+    signal_count: int = Field(ge=0)
+    tracked_years: float = Field(ge=0)
+    win_rate: float = Field(ge=0, le=1)
+    average_roi: float
+    roi_if_followed: float
+    max_drawdown: float = Field(le=0)
+    sharpe_like: float
+    consistency_score: float = Field(ge=0, le=1)
+    influence_score: float = Field(ge=0, le=1)
+    recency_score: float = Field(ge=0, le=1)
+    composite_score: float = Field(ge=0, le=100)
+    last_signal_at: str | None = None
+    state: SocialTraderState = "discovered"
+    evidence: list[SocialEvidenceItem] = Field(default_factory=list)
+
+
+class SocialTraderAllocation(BaseModel):
+    id: int
+    user_slug: str
+    trader_id: int
+    trader_slug: str
+    trader_name: str
+    mode: SocialTradeMode
+    allocation_limit_usd: float = Field(ge=0)
+    max_position_pct: float = Field(ge=0, le=1)
+    auto_rebalance: bool
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class SocialTradingSnapshot(BaseModel):
+    generated_at: str
+    provider_mode: str
+    youtube_required: bool = True
+    youtube_configured: bool
+    summary: str
+    top_traders: list[SocialTraderScorecard] = Field(default_factory=list)
+    allocations: list[SocialTraderAllocation] = Field(default_factory=list)
+    portfolio_limit_usd: float = Field(ge=0)
+    allocated_usd: float = Field(ge=0)
+    unallocated_usd: float = Field(ge=0)
+    diversification_plan: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+
+
+class SocialTradingEnvelope(BaseModel):
+    social_trading: SocialTradingSnapshot
+
+
+class SocialDiscoveryRunResult(BaseModel):
+    discovered: int = Field(ge=0)
+    updated: int = Field(ge=0)
+    provider: str
+    youtube_configured: bool
+    traders: list[SocialTraderScorecard] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SocialTraderFollowRequest(BaseModel):
+    trader_id: int | None = Field(default=None, ge=1)
+    trader_slug: str | None = Field(default=None, min_length=2, max_length=160)
+    mode: SocialTradeMode = "signals"
+    allocation_limit_usd: float = Field(default=500.0, ge=0, le=100000)
+    max_position_pct: float = Field(default=0.12, ge=0.01, le=1)
+    auto_rebalance: bool = True
+
+    @model_validator(mode="after")
+    def validate_trader_identity(self) -> "SocialTraderFollowRequest":
+        if not self.trader_id and not self.trader_slug:
+            raise ValueError("trader_id or trader_slug is required")
+        if self.trader_slug is not None:
+            self.trader_slug = self.trader_slug.strip().lower()
+        return self
+
+
+class SocialPortfolioDiversifyRequest(BaseModel):
+    budget_usd: float = Field(default=1500.0, ge=0, le=100000)
+    mode: SocialTradeMode = "managed_paper"
+    trader_count: int = Field(default=3, ge=1, le=8)
+    max_position_pct: float = Field(default=0.12, ge=0.01, le=1)
+
+
 class DashboardSnapshot(BaseModel):
     summary: Summary
     assets: list[AssetSnapshot]
@@ -966,6 +1078,7 @@ class DashboardSnapshot(BaseModel):
     edge_snapshot: EdgeSnapshot
     paper_trading: PaperTradingSnapshot
     paper_venues: PaperVenuesSnapshot
+    social_trading: SocialTradingSnapshot
     latest_operation: OperationSnapshot | None = None
     auth_session: AuthSessionSnapshot
     user_profile: "UserProfile"

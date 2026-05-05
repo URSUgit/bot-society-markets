@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover - optional during bootstrap before deps 
 
 MarketProviderMode = Literal["demo", "coingecko", "hyperliquid"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
+SocialDiscoveryProviderMode = Literal["demo", "youtube"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
 MacroProviderMode = Literal["demo", "fred"]
 WalletProviderMode = Literal["demo", "polymarket"]
@@ -99,6 +100,15 @@ class Settings:
     reddit_user_agent: str = "BotSocietyMarkets/0.7"
     reddit_subreddits: tuple[str, ...] = ("CryptoCurrency", "Bitcoin", "ethtrader", "solana")
     reddit_post_limit: int = 15
+    social_discovery_provider: SocialDiscoveryProviderMode = "demo"
+    youtube_api_key: str | None = None
+    youtube_discovery_queries: tuple[str, ...] = (
+        "crypto market prediction bitcoin ethereum",
+        "polymarket trading strategy prediction market",
+        "macro crypto market analysis",
+    )
+    youtube_channel_ids: tuple[str, ...] = ()
+    youtube_video_limit: int = 12
     polymarket_tag_id: int = 21
     polymarket_event_limit: int = 30
     tracked_wallets: tuple[str, ...] = ()
@@ -208,6 +218,10 @@ def get_settings() -> Settings:
     if signal_provider_mode not in {"demo", "rss", "reddit"}:
         signal_provider_mode = "demo"
 
+    social_discovery_provider = os.getenv("BSM_SOCIAL_DISCOVERY_PROVIDER", "demo").lower()
+    if social_discovery_provider not in {"demo", "youtube"}:
+        social_discovery_provider = "demo"
+
     macro_provider_mode = os.getenv("BSM_MACRO_PROVIDER", "demo").lower()
     if macro_provider_mode not in {"demo", "fred"}:
         macro_provider_mode = "demo"
@@ -261,6 +275,13 @@ def get_settings() -> Settings:
     tracked_wallets = _split_csv_env(os.getenv("BSM_TRACKED_WALLETS", ""))
     rss_feed_urls = _split_csv_env(os.getenv("BSM_RSS_FEED_URLS", ""))
     reddit_subreddits = _split_csv_env(os.getenv("BSM_REDDIT_SUBREDDITS", "CryptoCurrency,Bitcoin,ethtrader,solana"))
+    youtube_discovery_queries = _split_csv_env(
+        os.getenv(
+            "BSM_YOUTUBE_DISCOVERY_QUERIES",
+            "crypto market prediction bitcoin ethereum,polymarket trading strategy prediction market,macro crypto market analysis",
+        )
+    )
+    youtube_channel_ids = _split_csv_env(os.getenv("BSM_YOUTUBE_CHANNEL_IDS", ""))
 
     worker_interval_seconds = max(30, int(os.getenv("BSM_WORKER_INTERVAL_SECONDS", "900")))
     worker_max_cycles = max(0, int(os.getenv("BSM_WORKER_MAX_CYCLES", "0")))
@@ -268,6 +289,7 @@ def get_settings() -> Settings:
     session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
     outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
     reddit_post_limit = max(5, min(50, int(os.getenv("BSM_REDDIT_POST_LIMIT", "15"))))
+    youtube_video_limit = max(3, min(50, int(os.getenv("BSM_YOUTUBE_VIDEO_LIMIT", "12"))))
     polymarket_tag_id = max(1, int(os.getenv("BSM_POLYMARKET_TAG_ID", "21")))
     polymarket_event_limit = max(5, min(100, int(os.getenv("BSM_POLYMARKET_EVENT_LIMIT", "30"))))
     wallet_trade_limit = max(5, min(100, int(os.getenv("BSM_WALLET_TRADE_LIMIT", "25"))))
@@ -309,6 +331,16 @@ def get_settings() -> Settings:
         reddit_user_agent=os.getenv("BSM_REDDIT_USER_AGENT", "BotSocietyMarkets/0.7"),
         reddit_subreddits=reddit_subreddits or ("CryptoCurrency", "Bitcoin", "ethtrader", "solana"),
         reddit_post_limit=reddit_post_limit,
+        social_discovery_provider=social_discovery_provider,
+        youtube_api_key=os.getenv("BSM_YOUTUBE_API_KEY") or None,
+        youtube_discovery_queries=youtube_discovery_queries
+        or (
+            "crypto market prediction bitcoin ethereum",
+            "polymarket trading strategy prediction market",
+            "macro crypto market analysis",
+        ),
+        youtube_channel_ids=youtube_channel_ids,
+        youtube_video_limit=youtube_video_limit,
         polymarket_tag_id=polymarket_tag_id,
         polymarket_event_limit=polymarket_event_limit,
         wallet_trade_limit=wallet_trade_limit,

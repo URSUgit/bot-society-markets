@@ -20,6 +20,7 @@
       <nav class="sidebar-nav">
         <span class="sidebar-nav-label">Operate</span>
         <a class="active" href="#market-console-section">Overview</a>
+        <a href="#social-trader-section">Social Traders</a>
         <a href="#intelligence-section">Markets</a>
         <a href="#paper-section">Paper Trade</a>
         <a href="#leaderboard-section">Bots</a>
@@ -64,6 +65,11 @@
             <strong id="operator-paper-equity">--</strong>
             <small id="operator-paper-detail">Simulated account</small>
           </a>
+          <a class="operator-metric" href="#social-trader-section">
+            <span>Social Engine</span>
+            <strong id="operator-social-traders">--</strong>
+            <small id="operator-social-detail">Creator discovery</small>
+          </a>
           <a class="operator-metric" href="#connectors-section">
             <span>Providers</span>
             <strong id="operator-provider-count">--</strong>
@@ -81,6 +87,7 @@
         <div class="hero-actions compact-actions">
           <button class="button primary" id="run-cycle-button" type="button">Run Cycle</button>
           <a class="button secondary" href="/simulation">Strategy Lab</a>
+          <a class="button secondary" href="#social-trader-section">Social Traders</a>
           <a class="button secondary" href="#paper-section">Paper Trade</a>
         </div>
       </section>
@@ -126,6 +133,39 @@
             </div>
             <div class="console-risk-grid" id="market-console-risk"></div>
           </article>
+        </div>
+      </section>
+
+      <section class="social-trader-section card" id="social-trader-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Social trader engine</p>
+            <h3>Discover, score, and paper-follow high-signal trader influencers</h3>
+          </div>
+          <div class="section-actions">
+            <span class="status-pill" id="social-trader-badge">Syncing</span>
+            <button class="button secondary small-button" id="social-discovery-button" type="button">Run YouTube Discovery</button>
+            <button class="button tertiary small-button" id="social-diversify-button" type="button">Diversify Paper Allocation</button>
+          </div>
+        </div>
+        <p class="panel-note" id="social-trader-summary">Loading social trader discovery, evidence, and paper allocation limits...</p>
+        <div class="social-kpi-grid" id="social-trader-kpis"></div>
+        <div class="social-trader-layout">
+          <div>
+            <div class="social-card-grid" id="social-trader-grid"></div>
+          </div>
+          <aside class="social-side-panel">
+            <div>
+              <p class="eyebrow">Followed managers</p>
+              <h4>Paper allocation plan</h4>
+              <p class="panel-note">Use signal mode for research alerts, or managed paper mode to simulate copy-management before any legal live execution.</p>
+            </div>
+            <ul class="workspace-list compact-list" id="social-allocation-list"></ul>
+            <div class="social-safety-box">
+              <p class="eyebrow">Safety rails</p>
+              <ul id="social-safety-list"></ul>
+            </div>
+          </aside>
         </div>
       </section>
 

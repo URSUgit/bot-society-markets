@@ -74,6 +74,7 @@ Included today:
 - a scoring engine that evaluates historical predictions against stored market moves
 - demo ingestion providers plus optional CoinGecko and Hyperliquid market modes with safe fallback behavior
 - optional venue-intelligence signal ingestion from Polymarket Gamma and Kalshi public market data
+- social trader discovery that can index YouTube creator evidence, build avatar-style trader profiles, score historical signal quality, and rank ROI-if-followed scenarios with demo fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
 - a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
@@ -83,6 +84,7 @@ Included today:
 - macro regime tracking with demo data or optional FRED ingestion across configurable economic series
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
+- social-trader follow controls with separate signal-only and managed-paper allocation modes, allocation caps, diversification helpers, and compliance safety rails before any live copy-trading workflow
 - normalized paper order placement through `/api/v1/trading/orders`, with cash, exposure, single-order, and daily-loss risk checks before internal fills
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
@@ -125,6 +127,11 @@ Key endpoints include:
 - `GET /api/assets/{asset}/history`
 - `GET /api/macro`
 - `GET /api/wallet-intelligence`
+- `GET /api/social-trading`
+- `GET /api/social-traders`
+- `POST /api/social-traders/discover`
+- `POST /api/me/social-traders/follow`
+- `POST /api/me/social-traders/diversify`
 - `GET /api/edge`
 - `GET /api/simulation/config`
 - `GET /api/simulation/exports`
@@ -279,6 +286,11 @@ $env:BSM_MARKET_PROVIDER = "demo"
 $env:BSM_MACRO_PROVIDER = "demo"
 $env:BSM_WALLET_PROVIDER = "demo"
 $env:BSM_SIGNAL_PROVIDER = "demo"
+$env:BSM_SOCIAL_DISCOVERY_PROVIDER = "demo"
+$env:BSM_YOUTUBE_API_KEY = ""
+$env:BSM_YOUTUBE_DISCOVERY_QUERIES = "crypto market analysis,polymarket trading,prediction market analysis,macro trading"
+$env:BSM_YOUTUBE_CHANNEL_IDS = ""
+$env:BSM_YOUTUBE_VIDEO_LIMIT = "12"
 $env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_TRACKED_WALLETS = ""
@@ -331,6 +343,12 @@ $env:BSM_POLYMARKET_EVENT_LIMIT = "30"
 $env:BSM_KALSHI_CATEGORY = "Crypto"
 $env:BSM_KALSHI_SERIES_LIMIT = "12"
 $env:BSM_KALSHI_MARKETS_PER_SERIES = "4"
+
+$env:BSM_SOCIAL_DISCOVERY_PROVIDER = "youtube"
+$env:BSM_YOUTUBE_API_KEY = "your-youtube-data-api-key"
+$env:BSM_YOUTUBE_DISCOVERY_QUERIES = "crypto market analysis,polymarket trading,prediction market analysis,macro trading"
+$env:BSM_YOUTUBE_CHANNEL_IDS = ""
+$env:BSM_YOUTUBE_VIDEO_LIMIT = "12"
 ```
 
 Optional paper execution venue setup:
