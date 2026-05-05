@@ -54,6 +54,19 @@ $shortSha = git rev-parse --short=7 origin/main
 Use that tag in Akash Console to make the live dashboard pick up the latest
 merged app code without relying on cached `latest` pulls.
 
+The Akash templates also include the social-trader discovery defaults:
+
+```text
+BSM_SOCIAL_DISCOVERY_PROVIDER=demo
+BSM_YOUTUBE_API_KEY=
+BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market analysis,polymarket trading,prediction market analysis,macro trading
+BSM_YOUTUBE_VIDEO_LIMIT=12
+```
+
+Use `demo` until you add a YouTube Data API key. When the key is available,
+change `BSM_SOCIAL_DISCOVERY_PROVIDER` to `youtube` and set
+`BSM_YOUTUBE_API_KEY` in Akash Console.
+
 If the GHCR package remains private:
 
 - either make the package public in GitHub package settings
