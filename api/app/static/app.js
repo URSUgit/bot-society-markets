@@ -393,6 +393,8 @@ function renderOperatorStrip(snapshot) {
   const topBotDetail = document.getElementById("operator-top-bot-detail");
   const paperEquity = document.getElementById("operator-paper-equity");
   const paperDetail = document.getElementById("operator-paper-detail");
+  const socialTraders = document.getElementById("operator-social-traders");
+  const socialDetail = document.getElementById("operator-social-detail");
   const providerCount = document.getElementById("operator-provider-count");
   const providerDetail = document.getElementById("operator-provider-detail");
 
@@ -400,6 +402,7 @@ function renderOperatorStrip(snapshot) {
   const state = providerState(provider);
   const leader = snapshot.leaderboard?.[0];
   const paperSummary = snapshot.paper_trading?.summary || {};
+  const socialTrading = snapshot.social_trading || {};
   const readyConnectors = snapshot.connector_control?.live_or_ready_count ?? 0;
   const connectorTotal = snapshot.connector_control?.connectors?.length ?? 0;
   const latestOperation = snapshot.latest_operation;
@@ -426,6 +429,13 @@ function renderOperatorStrip(snapshot) {
   }
   if (paperDetail) {
     paperDetail.textContent = `${fmtSignedPercent(paperSummary.total_return || 0)} total · ${paperSummary.open_positions || 0} open`;
+  }
+  if (socialTraders) {
+    socialTraders.textContent = `${socialTrading.top_traders?.length || 0}`;
+  }
+  if (socialDetail) {
+    const allocationCount = socialTrading.allocations?.length || 0;
+    socialDetail.textContent = `${allocationCount} followed · ${socialTrading.youtube_configured ? "YouTube live" : "demo watchlist"}`;
   }
   if (providerCount) {
     providerCount.textContent = `${readyConnectors}/${connectorTotal}`;
@@ -1314,6 +1324,138 @@ function renderPaperVenues(paperVenues) {
       .map((step, index) => `<li><span>${index + 1}</span><p>${step}</p></li>`)
       .join("");
   }
+}
+
+function socialInitials(name) {
+  return String(name || "ST")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "ST";
+}
+
+function socialAvatarStyle(seed) {
+  const source = String(seed || "social");
+  const score = [...source].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return `--avatar-hue:${score % 360}deg`;
+}
+
+function renderSocialTrading(socialTrading) {
+  const summary = document.getElementById("social-trader-summary");
+  const badge = document.getElementById("social-trader-badge");
+  const kpis = document.getElementById("social-trader-kpis");
+  const grid = document.getElementById("social-trader-grid");
+  const allocationList = document.getElementById("social-allocation-list");
+  const safetyList = document.getElementById("social-safety-list");
+  if (!summary || !badge || !kpis || !grid || !allocationList || !safetyList || !socialTrading) {
+    return;
+  }
+
+  const traders = socialTrading.top_traders || [];
+  const allocations = socialTrading.allocations || [];
+  const allocationByTrader = new Map(allocations.map((allocation) => [allocation.trader_id, allocation]));
+  const canEdit = workspaceEditable();
+  const topScore = traders[0]?.composite_score || 0;
+  const averageRoi = traders.length
+    ? traders.reduce((total, trader) => total + Number(trader.roi_if_followed || 0), 0) / traders.length
+    : 0;
+
+  summary.textContent = socialTrading.summary;
+  badge.textContent = socialTrading.youtube_configured ? "YouTube API live" : "Demo YouTube watchlist";
+  badge.dataset.variant = socialTrading.youtube_configured ? "positive" : "warning";
+
+  kpis.innerHTML = `
+    <article>
+      <span>Indexed profiles</span>
+      <strong>${traders.length}</strong>
+      <small>${socialTrading.provider_mode || "social discovery"}</small>
+    </article>
+    <article>
+      <span>Top score</span>
+      <strong>${fmtScore(topScore)}</strong>
+      <small>Composite creator score</small>
+    </article>
+    <article>
+      <span>Paper allocated</span>
+      <strong>${fmtUsd(socialTrading.allocated_usd || 0)}</strong>
+      <small>${fmtUsd(socialTrading.unallocated_usd || 0)} unallocated</small>
+    </article>
+    <article>
+      <span>Avg if-followed ROI</span>
+      <strong>${fmtSignedPercent(averageRoi)}</strong>
+      <small>Backtest-style proxy from extracted calls</small>
+    </article>
+  `;
+
+  grid.innerHTML = traders.map((trader) => {
+    const allocation = allocationByTrader.get(trader.id);
+    const evidence = (trader.evidence || []).slice(0, 2).map((item) => `
+      <li>
+        <a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
+        <span>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtSignedPercent(item.derived_return)}</span>
+      </li>
+    `).join("") || "<li><span>No public evidence events indexed yet.</span></li>";
+    return `
+      <article class="social-trader-card">
+        <div class="social-trader-head">
+          <div class="social-avatar-bust" style="${socialAvatarStyle(trader.avatar_seed)}">
+            <span>${escapeHtml(socialInitials(trader.display_name))}</span>
+          </div>
+          <div>
+            <p class="eyebrow">${escapeHtml(humanizeKey(trader.platform))} · ${escapeHtml(trader.handle)}</p>
+            <h4>${escapeHtml(trader.display_name)}</h4>
+            <p>${escapeHtml(trader.description)}</p>
+          </div>
+        </div>
+        <div class="social-score-strip">
+          <div><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong></div>
+          <div><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong></div>
+          <div><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
+          <div><span>Drawdown</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
+        </div>
+        <div class="social-tag-row">
+          ${(trader.primary_assets || []).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
+          ${(trader.style_tags || []).slice(0, 3).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+        </div>
+        <ul class="social-evidence-list">${evidence}</ul>
+        <div class="social-manager-controls">
+          <label>
+            <span>Paper allocation cap</span>
+            <input type="number" min="0" max="100000" step="50" value="${allocation?.allocation_limit_usd || 500}" data-social-allocation-id="${trader.id}" ${disabledAttr(!canEdit)}>
+          </label>
+          <label>
+            <span>Max per idea</span>
+            <select data-social-position-id="${trader.id}" ${disabledAttr(!canEdit)}>
+              <option value="0.08">8%</option>
+              <option value="0.12" selected>12%</option>
+              <option value="0.18">18%</option>
+            </select>
+          </label>
+          <div class="social-action-row">
+            <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
+              ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
+            </button>
+            <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
+              ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Managed paper"}
+            </button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("") || '<article class="social-empty-card"><h4>No social traders yet</h4><p>Run YouTube discovery to populate creator scorecards.</p></article>';
+
+  allocationList.innerHTML = allocations.map((allocation) => `
+    <li>
+      <div>
+        <strong>${escapeHtml(allocation.trader_name)}</strong>
+        <p>${escapeHtml(humanizeKey(allocation.mode))} · cap ${fmtUsd(allocation.allocation_limit_usd)} · max ${fmtPercent(allocation.max_position_pct)} per idea</p>
+      </div>
+      <span class="badge">${allocation.is_active ? "Active" : "Paused"}</span>
+    </li>
+  `).join("") || "<li><p>No followed social managers yet. Sign in, then activate signal or managed-paper mode from a profile card.</p></li>";
+
+  safetyList.innerHTML = (socialTrading.safety_notes || []).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {
@@ -3432,6 +3574,7 @@ async function loadDashboard(options = {}) {
     renderEdgeSnapshot(snapshot.edge_snapshot);
     renderPaperTrading(snapshot.paper_trading);
     renderPaperVenues(snapshot.paper_venues);
+    renderSocialTrading(snapshot.social_trading);
     await renderDashboardMarketChart(snapshot.assets);
     renderActivityFeed(snapshot);
     renderOperation(snapshot.latest_operation);
@@ -3555,6 +3698,73 @@ async function followBot(botSlug) {
 async function unfollowBot(botSlug) {
   await fetchJson(`/api/me/follows/${botSlug}`, { method: "DELETE" });
   await loadDashboard();
+}
+
+async function runSocialDiscovery(button = null) {
+  if (button) {
+    button.disabled = true;
+  }
+  setStatus("Running YouTube-first social trader discovery...");
+  try {
+    const result = await fetchJson("/api/social-traders/discover", { method: "POST" });
+    await loadDashboard({ silent: true });
+    const warning = result.warnings?.length ? ` ${result.warnings[0]}` : "";
+    setStatus(`Social discovery updated ${result.updated} profile(s), ${result.discovered} new.${warning}`);
+  } catch (error) {
+    setStatus(`Social discovery failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function configureSocialTrader(traderId, mode) {
+  const allocationInput = document.querySelector(`[data-social-allocation-id="${traderId}"]`);
+  const positionSelect = document.querySelector(`[data-social-position-id="${traderId}"]`);
+  const allocationLimit = Number(allocationInput?.value || 500);
+  const maxPositionPct = Number(positionSelect?.value || 0.12);
+  setStatus(`Activating ${mode === "managed_paper" ? "managed paper" : "signal"} follow for social trader #${traderId}...`);
+  await fetchJson("/api/me/social-traders/follow", {
+    method: "POST",
+    body: JSON.stringify({
+      trader_id: Number(traderId),
+      mode,
+      allocation_limit_usd: allocationLimit,
+      max_position_pct: maxPositionPct,
+      auto_rebalance: true,
+    }),
+  });
+  await loadDashboard({ silent: true });
+  setStatus(mode === "managed_paper"
+    ? "Managed paper allocation is active. Live-money execution remains legally gated."
+    : "Signal follow is active. Alerts and evidence are now tracked for this trader.");
+}
+
+async function diversifySocialPortfolio(button = null) {
+  if (button) {
+    button.disabled = true;
+  }
+  setStatus("Building diversified managed-paper allocation across top social traders...");
+  try {
+    await fetchJson("/api/me/social-traders/diversify", {
+      method: "POST",
+      body: JSON.stringify({
+        budget_usd: 1500,
+        mode: "managed_paper",
+        trader_count: 3,
+        max_position_pct: 0.12,
+      }),
+    });
+    await loadDashboard({ silent: true });
+    setStatus("Diversified managed-paper allocation created across the top social trader scorecards.");
+  } catch (error) {
+    setStatus(`Diversification failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
 }
 
 async function addWatchlist(asset) {
@@ -3827,6 +4037,21 @@ function bindInteractions() {
       return;
     }
 
+    if (target.id === "social-discovery-button") {
+      event.preventDefault();
+      await runSocialDiscovery(target);
+      return;
+    }
+
+    if (target.id === "social-diversify-button") {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      await diversifySocialPortfolio(target);
+      return;
+    }
+
     if (target.id === "generate-advanced-export-button") {
       event.preventDefault();
       await generateAdvancedExport();
@@ -3892,6 +4117,16 @@ function bindInteractions() {
           return;
         }
         await followBot(target.dataset.botSlug);
+        return;
+      }
+      if (action === "social-follow-signal" || action === "social-follow-managed") {
+        if (!requireEditable()) {
+          return;
+        }
+        await configureSocialTrader(
+          target.dataset.socialTraderId,
+          action === "social-follow-managed" ? "managed_paper" : "signals",
+        );
         return;
       }
       if (action === "unfollow") {

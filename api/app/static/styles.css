@@ -6106,11 +6106,287 @@ body.bit-engine-product-ui .eyebrow {
   color: var(--product-muted);
 }
 
+.bit-engine-product-ui.command-os .social-trader-section {
+  order: 4;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 94% 8%, rgba(8, 145, 178, 0.16), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 249, 255, 0.88));
+}
+
+.bit-engine-product-ui.command-os #intelligence-section {
+  order: 5;
+}
+
+.bit-engine-product-ui.command-os #paper-section {
+  order: 6;
+}
+
+.bit-engine-product-ui.command-os #leaderboard-section {
+  order: 7;
+}
+
+.bit-engine-product-ui.command-os #connectors-section {
+  order: 8;
+}
+
+.bit-engine-product-ui.command-os #account-section {
+  order: 9;
+}
+
+.bit-engine-product-ui.command-os #workspace-section {
+  order: 10;
+}
+
+.bit-engine-product-ui.command-os .section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bit-engine-product-ui.command-os .social-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.bit-engine-product-ui.command-os .social-kpi-grid article,
+.bit-engine-product-ui.command-os .social-score-strip div {
+  padding: 12px;
+  border: 1px solid var(--product-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.bit-engine-product-ui.command-os .social-kpi-grid span,
+.bit-engine-product-ui.command-os .social-score-strip span {
+  display: block;
+  color: var(--product-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-kpi-grid strong,
+.bit-engine-product-ui.command-os .social-score-strip strong {
+  display: block;
+  color: var(--product-ink);
+  font-size: 1.15rem;
+  margin-top: 5px;
+}
+
+.bit-engine-product-ui.command-os .social-kpi-grid small {
+  color: var(--product-muted);
+}
+
+.bit-engine-product-ui.command-os .social-trader-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.36fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.bit-engine-product-ui.command-os .social-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.bit-engine-product-ui.command-os .social-trader-card,
+.bit-engine-product-ui.command-os .social-side-panel,
+.bit-engine-product-ui.command-os .social-empty-card {
+  border: 1px solid var(--product-line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.06);
+}
+
+.bit-engine-product-ui.command-os .social-trader-card {
+  padding: 16px;
+}
+
+.bit-engine-product-ui.command-os .social-trader-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.bit-engine-product-ui.command-os .social-trader-head h4,
+.bit-engine-product-ui.command-os .social-side-panel h4 {
+  color: var(--product-ink);
+}
+
+.bit-engine-product-ui.command-os .social-trader-head p:not(.eyebrow) {
+  color: var(--product-muted);
+  font-size: 0.93rem;
+}
+
+.bit-engine-product-ui.command-os .social-avatar-bust {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 82px;
+  border-radius: 999px 999px 26px 26px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 50% 22%, hsla(var(--avatar-hue), 84%, 74%, 0.72), transparent 31%),
+    linear-gradient(145deg, hsl(var(--avatar-hue), 72%, 36%), hsl(calc(var(--avatar-hue) + 38deg), 70%, 28%));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 16px 28px hsla(var(--avatar-hue), 70%, 34%, 0.22);
+  overflow: hidden;
+}
+
+.bit-engine-product-ui.command-os .social-avatar-bust::after {
+  content: "";
+  position: absolute;
+  width: 78%;
+  height: 32%;
+  left: 11%;
+  bottom: -8%;
+  border-radius: 50% 50% 0 0;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.bit-engine-product-ui.command-os .social-avatar-bust span {
+  position: relative;
+  z-index: 1;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.bit-engine-product-ui.command-os .social-score-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.bit-engine-product-ui.command-os .social-tag-row,
+.bit-engine-product-ui.command-os .social-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bit-engine-product-ui.command-os .social-tag-row span {
+  color: #075985;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 5px 8px;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  background: #e0f2fe;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list a {
+  color: var(--product-ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list span {
+  color: var(--product-muted);
+  font-size: 0.85rem;
+}
+
+.bit-engine-product-ui.command-os .social-manager-controls {
+  display: grid;
+  grid-template-columns: 1fr 0.72fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.bit-engine-product-ui.command-os .social-manager-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.bit-engine-product-ui.command-os .social-manager-controls label span {
+  color: var(--product-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-action-row {
+  grid-column: 1 / -1;
+}
+
+.bit-engine-product-ui.command-os .social-action-row .button {
+  flex: 1 1 150px;
+}
+
+.bit-engine-product-ui.command-os .social-side-panel {
+  position: sticky;
+  top: 92px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.bit-engine-product-ui.command-os .social-side-panel .compact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bit-engine-product-ui.command-os .social-side-panel .compact-list li,
+.bit-engine-product-ui.command-os .social-safety-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.bit-engine-product-ui.command-os .social-side-panel .compact-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px;
+}
+
+.bit-engine-product-ui.command-os .social-side-panel .compact-list p,
+.bit-engine-product-ui.command-os .social-safety-box li {
+  color: var(--product-muted);
+  font-size: 0.88rem;
+}
+
+.bit-engine-product-ui.command-os .social-safety-box {
+  padding: 12px;
+}
+
+.bit-engine-product-ui.command-os .social-safety-box ul {
+  display: grid;
+  gap: 7px;
+}
+
 @media (max-width: 1080px) {
   .bit-engine-product-ui.command-os .dashboard-shell,
   .bit-engine-product-ui.command-os .dashboard-main,
   .bit-engine-product-ui.command-os .content-grid,
   .bit-engine-product-ui.command-os .market-console-grid,
+  .bit-engine-product-ui.command-os .social-trader-layout,
+  .bit-engine-product-ui.command-os .social-card-grid,
   .bit-engine-product-ui.bit-engine-lab .grid-two {
     grid-template-columns: 1fr;
   }
@@ -6128,7 +6404,16 @@ body.bit-engine-product-ui .eyebrow {
     grid-template-columns: 1fr;
   }
 
+  .bit-engine-product-ui.command-os .social-side-panel {
+    position: static;
+  }
+
   .bit-engine-product-ui.command-os #dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bit-engine-product-ui.command-os .social-kpi-grid,
+  .bit-engine-product-ui.command-os .social-score-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -6141,7 +6426,10 @@ body.bit-engine-product-ui .eyebrow {
   }
 
   .bit-engine-product-ui.command-os #dashboard-metrics,
-  .bit-engine-product-ui.command-os .operator-strip-metrics {
+  .bit-engine-product-ui.command-os .operator-strip-metrics,
+  .bit-engine-product-ui.command-os .social-manager-controls,
+  .bit-engine-product-ui.command-os .social-kpi-grid,
+  .bit-engine-product-ui.command-os .social-score-strip {
     grid-template-columns: 1fr;
   }
 

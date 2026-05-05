@@ -85,6 +85,12 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["paper_trading"]["summary"]["starting_balance"] == 10000
         assert payload["paper_venues"]["venues"]
         assert payload["paper_venues"]["recommended_venue_id"] == "polysandbox"
+        assert payload["social_trading"]["top_traders"]
+        assert payload["social_trading"]["top_traders"][0]["platform"] == "youtube"
+        assert payload["social_trading"]["top_traders"][0]["evidence"]
+        assert payload["social_trading"]["youtube_required"] is True
+        assert payload["social_trading"]["youtube_configured"] is False
+        assert "paper-only" in " ".join(payload["social_trading"]["safety_notes"])
         assert payload["launch_readiness"]["tracks"]
         assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
         assert payload["connector_control"]["connectors"]
@@ -232,6 +238,9 @@ def test_professional_console_pages_are_served() -> None:
         assert 'class="sidebar-brand"' in dashboard_response.text
         assert "bit-engine-mark" in dashboard_response.text
         assert ">Overview</a>" in dashboard_response.text
+        assert 'id="social-trader-section"' in dashboard_response.text
+        assert 'id="social-trader-grid"' in dashboard_response.text
+        assert "Run YouTube Discovery" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
@@ -312,6 +321,65 @@ def test_user_workspace_mutations() -> None:
         alert_response = client.post("/api/me/alert-rules", json={"asset": "BTC", "min_confidence": 0.7})
         assert alert_response.status_code == 200
         assert any(rule["asset"] == "BTC" for rule in alert_response.json()["alert_rules"])
+
+
+def test_social_trader_discovery_follow_and_diversify_flow() -> None:
+    with build_client() as client:
+        initial_response = client.get("/api/social-trading")
+        assert initial_response.status_code == 200
+        initial_snapshot = initial_response.json()["social_trading"]
+        assert initial_snapshot["top_traders"]
+        assert initial_snapshot["top_traders"][0]["evidence"]
+
+        discovery_response = client.post("/api/social-traders/discover")
+        assert discovery_response.status_code == 200
+        discovery_payload = discovery_response.json()
+        assert discovery_payload["updated"] >= 4
+        assert discovery_payload["traders"][0]["platform"] == "youtube"
+
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Social Manager User",
+                "email": "social-manager@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        trader_id = discovery_payload["traders"][0]["id"]
+        follow_response = client.post(
+            "/api/v1/me/social-traders/follow",
+            json={
+                "trader_id": trader_id,
+                "mode": "managed_paper",
+                "allocation_limit_usd": 750,
+                "max_position_pct": 0.12,
+                "auto_rebalance": True,
+            },
+        )
+        assert follow_response.status_code == 200
+        follow_snapshot = follow_response.json()["social_trading"]
+        assert any(
+            allocation["trader_id"] == trader_id and allocation["mode"] == "managed_paper"
+            for allocation in follow_snapshot["allocations"]
+        )
+        assert follow_snapshot["allocated_usd"] >= 750
+
+        diversify_response = client.post(
+            "/api/v1/me/social-traders/diversify",
+            json={"budget_usd": 1200, "mode": "managed_paper", "trader_count": 3, "max_position_pct": 0.1},
+        )
+        assert diversify_response.status_code == 200
+        diversify_snapshot = diversify_response.json()["social_trading"]
+        assert len(diversify_snapshot["allocations"]) >= 3
+        assert all(allocation["mode"] == "managed_paper" for allocation in diversify_snapshot["allocations"])
+
+        audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
+        assert audit_response.status_code == 200
+        actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
+        assert {"social_trader.follow", "social_trader.diversify"}.issubset(actions)
 
 
 def test_v1_routes_and_audit_log_capture_mutations() -> None:

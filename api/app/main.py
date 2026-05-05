@@ -52,6 +52,11 @@ from .models import (
     ProductionCutoverEnvelope,
     ProviderStatusEnvelope,
     SignalView,
+    SocialDiscoveryRunResult,
+    SocialPortfolioDiversifyRequest,
+    SocialTraderFollowRequest,
+    SocialTraderScorecard,
+    SocialTradingEnvelope,
     BacktestRunView,
     SimulationConfig,
     SimulationExportArtifact,
@@ -369,6 +374,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/leaderboard", response_model=list[BotSummary])
     def leaderboard(request: Request) -> list[BotSummary]:
         return get_service(request).get_leaderboard(current_user_slug(request))
+
+    @app.get("/api/v1/social-trading", response_model=SocialTradingEnvelope)
+    @app.get("/api/social-trading", response_model=SocialTradingEnvelope)
+    def social_trading(request: Request) -> SocialTradingEnvelope:
+        user_slug = current_user_slug(request) or active_settings.default_user_slug
+        return SocialTradingEnvelope(social_trading=get_service(request).get_social_trading_snapshot(user_slug))
+
+    @app.get("/api/v1/social-traders", response_model=list[SocialTraderScorecard])
+    @app.get("/api/social-traders", response_model=list[SocialTraderScorecard])
+    def social_traders(request: Request) -> list[SocialTraderScorecard]:
+        user_slug = current_user_slug(request) or active_settings.default_user_slug
+        return get_service(request).get_social_trading_snapshot(user_slug).top_traders
+
+    @app.post("/api/v1/social-traders/discover", response_model=SocialDiscoveryRunResult)
+    @app.post("/api/social-traders/discover", response_model=SocialDiscoveryRunResult)
+    def discover_social_traders(request: Request) -> SocialDiscoveryRunResult:
+        result = get_service(request).refresh_social_trader_discovery()
+        audit_event(
+            request,
+            action="social_trader.discovery",
+            resource_type="social_trader",
+            after_state={
+                "provider": result.provider,
+                "updated": result.updated,
+                "youtube_configured": result.youtube_configured,
+            },
+        )
+        return result
+
+    @app.post("/api/v1/me/social-traders/follow", response_model=SocialTradingEnvelope)
+    @app.post("/api/me/social-traders/follow", response_model=SocialTradingEnvelope)
+    def follow_social_trader(
+        payload: SocialTraderFollowRequest,
+        request: Request,
+    ) -> SocialTradingEnvelope:
+        user_slug = authenticated_user_slug(request)
+        snapshot = run_validated(lambda: get_service(request).follow_social_trader(user_slug, payload))
+        audit_event(
+            request,
+            action="social_trader.follow",
+            resource_type="social_trader",
+            resource_id=str(payload.trader_id or payload.trader_slug),
+            actor_user_slug=user_slug,
+            after_state=payload.model_dump(),
+        )
+        return SocialTradingEnvelope(social_trading=snapshot)
+
+    @app.post("/api/v1/me/social-traders/diversify", response_model=SocialTradingEnvelope)
+    @app.post("/api/me/social-traders/diversify", response_model=SocialTradingEnvelope)
+    def diversify_social_traders(
+        payload: SocialPortfolioDiversifyRequest,
+        request: Request,
+    ) -> SocialTradingEnvelope:
+        user_slug = authenticated_user_slug(request)
+        snapshot = run_validated(lambda: get_service(request).diversify_social_portfolio(user_slug, payload))
+        audit_event(
+            request,
+            action="social_trader.diversify",
+            resource_type="social_trader_allocation",
+            actor_user_slug=user_slug,
+            after_state=payload.model_dump(),
+        )
+        return SocialTradingEnvelope(social_trading=snapshot)
 
     @app.get("/api/v1/predictions", response_model=list[PredictionView])
     @app.get("/api/predictions", response_model=list[PredictionView])

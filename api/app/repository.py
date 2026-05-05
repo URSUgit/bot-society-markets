@@ -24,6 +24,9 @@ from .database import (
     pipeline_runs_table,
     predictions_table,
     signals_table,
+    social_trader_allocations_table,
+    social_trader_events_table,
+    social_traders_table,
     strategies_table,
     user_follows_table,
     user_sessions_table,
@@ -665,6 +668,135 @@ class BotSocietyRepository:
             .join(bots_table, bots_table.c.slug == user_follows_table.c.bot_slug)
             .where(user_follows_table.c.user_slug == user_slug)
             .order_by(user_follows_table.c.created_at.asc())
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def upsert_social_traders(self, traders: Iterable[dict[str, Any]]) -> None:
+        trader_list = list(traders)
+        if not trader_list:
+            return
+        stmt = self.database.upsert_insert(social_traders_table).values(trader_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[social_traders_table.c.slug],
+            set_={
+                "display_name": stmt.excluded.display_name,
+                "handle": stmt.excluded.handle,
+                "platform": stmt.excluded.platform,
+                "source_url": stmt.excluded.source_url,
+                "avatar_seed": stmt.excluded.avatar_seed,
+                "avatar_url": stmt.excluded.avatar_url,
+                "description": stmt.excluded.description,
+                "primary_assets_json": stmt.excluded.primary_assets_json,
+                "style_tags_json": stmt.excluded.style_tags_json,
+                "signal_count": stmt.excluded.signal_count,
+                "tracked_years": stmt.excluded.tracked_years,
+                "win_rate": stmt.excluded.win_rate,
+                "average_roi": stmt.excluded.average_roi,
+                "roi_if_followed": stmt.excluded.roi_if_followed,
+                "max_drawdown": stmt.excluded.max_drawdown,
+                "sharpe_like": stmt.excluded.sharpe_like,
+                "consistency_score": stmt.excluded.consistency_score,
+                "influence_score": stmt.excluded.influence_score,
+                "recency_score": stmt.excluded.recency_score,
+                "composite_score": stmt.excluded.composite_score,
+                "last_signal_at": stmt.excluded.last_signal_at,
+                "state": stmt.excluded.state,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def list_social_traders(self, *, limit: int = 25) -> list[dict[str, Any]]:
+        stmt = (
+            select(social_traders_table)
+            .order_by(desc(social_traders_table.c.composite_score), desc(social_traders_table.c.updated_at))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_social_trader_by_id(self, trader_id: int) -> dict[str, Any] | None:
+        stmt = select(social_traders_table).where(social_traders_table.c.id == trader_id).limit(1)
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_social_trader_by_slug(self, slug: str) -> dict[str, Any] | None:
+        stmt = select(social_traders_table).where(social_traders_table.c.slug == slug).limit(1)
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_social_trader_events(self, events: Iterable[dict[str, Any]]) -> None:
+        event_list = list(events)
+        if not event_list:
+            return
+        stmt = self.database.upsert_insert(social_trader_events_table).values(event_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[social_trader_events_table.c.external_id],
+            set_={
+                "trader_id": stmt.excluded.trader_id,
+                "platform": stmt.excluded.platform,
+                "title": stmt.excluded.title,
+                "summary": stmt.excluded.summary,
+                "url": stmt.excluded.url,
+                "asset": stmt.excluded.asset,
+                "direction": stmt.excluded.direction,
+                "confidence": stmt.excluded.confidence,
+                "engagement_score": stmt.excluded.engagement_score,
+                "observed_at": stmt.excluded.observed_at,
+                "derived_return": stmt.excluded.derived_return,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def list_social_trader_events(self, trader_id: int, *, limit: int = 6) -> list[dict[str, Any]]:
+        stmt = (
+            select(social_trader_events_table)
+            .where(social_trader_events_table.c.trader_id == trader_id)
+            .order_by(desc(social_trader_events_table.c.observed_at), desc(social_trader_events_table.c.id))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def upsert_social_trader_allocation(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        stmt = self.database.upsert_insert(social_trader_allocations_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                social_trader_allocations_table.c.user_slug,
+                social_trader_allocations_table.c.trader_id,
+            ],
+            set_={
+                "mode": stmt.excluded.mode,
+                "allocation_limit_usd": stmt.excluded.allocation_limit_usd,
+                "max_position_pct": stmt.excluded.max_position_pct,
+                "auto_rebalance": stmt.excluded.auto_rebalance,
+                "is_active": stmt.excluded.is_active,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+            selected = select(social_trader_allocations_table).where(
+                and_(
+                    social_trader_allocations_table.c.user_slug == payload["user_slug"],
+                    social_trader_allocations_table.c.trader_id == payload["trader_id"],
+                )
+            )
+            return self._row(connection.execute(selected))
+
+    def list_social_trader_allocations(self, user_slug: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                social_trader_allocations_table,
+                social_traders_table.c.slug.label("trader_slug"),
+                social_traders_table.c.display_name.label("trader_name"),
+            )
+            .join(social_traders_table, social_traders_table.c.id == social_trader_allocations_table.c.trader_id)
+            .where(social_trader_allocations_table.c.user_slug == user_slug)
+            .order_by(desc(social_trader_allocations_table.c.is_active), desc(social_trader_allocations_table.c.updated_at))
         )
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))

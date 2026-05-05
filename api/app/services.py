@@ -80,6 +80,13 @@ from .models import (
     ProductionCutoverStep,
     SignalView,
     SignalMixItem,
+    SocialDiscoveryRunResult,
+    SocialEvidenceItem,
+    SocialPortfolioDiversifyRequest,
+    SocialTraderAllocation,
+    SocialTraderFollowRequest,
+    SocialTraderScorecard,
+    SocialTradingSnapshot,
     SimulationConfig,
     SimulationDataSourceOption,
     SimulationExportArtifact,
@@ -127,6 +134,12 @@ from .providers import (
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
 from .seed import ensure_demo_user_state, seed_demo_dataset
+from .social_intelligence import (
+    DemoSocialDiscoveryProvider,
+    DiscoveredSocialTrader,
+    SocialEvidenceRecord,
+    YouTubeSocialDiscoveryProvider,
+)
 from .utils import parse_timestamp, to_timestamp
 
 SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -178,6 +191,7 @@ class BotSocietyService:
         )
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
+        self.social_discovery_provider = self._build_social_discovery_provider()
         self.macro_provider = self._build_macro_provider()
         self.wallet_provider = self._build_wallet_provider()
         self.market_intel_provider = PolymarketPredictionMarketIntelProvider(
@@ -202,6 +216,7 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
         ensure_demo_user_state(repository)
+        social_refresh = self.refresh_social_trader_discovery(repository=repository)
         macro_refreshed = self._refresh_macro_data(repository)
         refreshed_signals = repository.refresh_signal_quality_scores()
         repository.delete_expired_sessions(self._now())
@@ -222,7 +237,8 @@ class BotSocietyService:
                     "message": (
                         "Seeded demo market data, user state, historical signals, and scored the initial prediction archive. "
                         f"Initialized {alert_deliveries} alert deliveries, refreshed {refreshed_signals} signal quality records, "
-                        f"hydrated {macro_refreshed} macro observations, and seeded {demo_paper_positions} demo paper positions."
+                        f"hydrated {macro_refreshed} macro observations, seeded {demo_paper_positions} demo paper positions, "
+                        f"and indexed {social_refresh.updated} social trader profile(s)."
                     ),
                 }
             )
@@ -349,6 +365,157 @@ class BotSocietyService:
                 limit=limit,
             )
         ]
+
+    def refresh_social_trader_discovery(
+        self,
+        *,
+        repository: BotSocietyRepository | None = None,
+    ) -> SocialDiscoveryRunResult:
+        active_repository = repository or BotSocietyRepository(self.database)
+        before_slugs = {str(row["slug"]) for row in active_repository.list_social_traders(limit=500)}
+        result = self.social_discovery_provider.discover()
+        now = self._now()
+        trader_payloads = [self._social_trader_payload(trader, now=now) for trader in result.traders]
+        active_repository.upsert_social_traders(trader_payloads)
+
+        refreshed_rows = active_repository.list_social_traders(limit=500)
+        trader_ids = {str(row["slug"]): int(row["id"]) for row in refreshed_rows}
+        event_payloads: list[dict[str, object]] = []
+        for trader in result.traders:
+            trader_id = trader_ids.get(trader.slug)
+            if not trader_id:
+                continue
+            event_payloads.extend(self._social_event_payloads(trader_id, trader.evidence, now=now))
+        active_repository.upsert_social_trader_events(event_payloads)
+
+        visible_rows = active_repository.list_social_traders(limit=12)
+        visible_scorecards = [
+            self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=6))
+            for row in visible_rows
+        ]
+        return SocialDiscoveryRunResult(
+            discovered=len([payload for payload in trader_payloads if str(payload["slug"]) not in before_slugs]),
+            updated=len(trader_payloads),
+            provider=result.provider,
+            youtube_configured=result.youtube_configured,
+            traders=visible_scorecards,
+            warnings=result.warnings,
+        )
+
+    def get_social_trading_snapshot(
+        self,
+        user_slug: str,
+        repository: BotSocietyRepository | None = None,
+    ) -> SocialTradingSnapshot:
+        active_repository = repository or BotSocietyRepository(self.database)
+        trader_rows = active_repository.list_social_traders(limit=16)
+        top_traders = [
+            self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=5))
+            for row in trader_rows
+        ]
+        allocations = [
+            self._to_social_trader_allocation(row)
+            for row in active_repository.list_social_trader_allocations(user_slug)
+        ]
+        allocated_usd = round(sum(item.allocation_limit_usd for item in allocations if item.is_active), 2)
+        portfolio_limit = round(max(self.settings.paper_starting_balance, allocated_usd), 2)
+        unallocated = round(max(0.0, portfolio_limit - allocated_usd), 2)
+        leader_count = len(top_traders)
+        youtube_configured = bool(self.settings.youtube_api_key)
+        if leader_count:
+            summary = (
+                f"{leader_count} creator-trader profile(s) indexed. "
+                f"{len(allocations)} followed allocation(s), {allocated_usd:,.0f} USD paper risk assigned."
+            )
+        else:
+            summary = "No social trader profiles are indexed yet. Run discovery to seed the YouTube-first watchlist."
+        return SocialTradingSnapshot(
+            generated_at=self._now(),
+            provider_mode=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
+            youtube_required=True,
+            youtube_configured=youtube_configured,
+            summary=summary,
+            top_traders=top_traders,
+            allocations=allocations,
+            portfolio_limit_usd=portfolio_limit,
+            allocated_usd=allocated_usd,
+            unallocated_usd=unallocated,
+            diversification_plan=self._social_diversification_plan(top_traders, allocations),
+            safety_notes=[
+                "Signal mode sends alerts and watchlist updates only.",
+                "Managed mode is paper-only here: no live user funds are moved by this MVP.",
+                "Live copy trading requires KYC/suitability review, exchange authorization, risk controls, audit logging, and legal sign-off.",
+                "YouTube ingestion uses the official YouTube Data API when BSM_YOUTUBE_API_KEY is configured.",
+            ],
+        )
+
+    def follow_social_trader(
+        self,
+        user_slug: str,
+        payload: SocialTraderFollowRequest,
+    ) -> SocialTradingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        trader = (
+            repository.get_social_trader_by_id(payload.trader_id)
+            if payload.trader_id
+            else repository.get_social_trader_by_slug(str(payload.trader_slug))
+        )
+        if not trader:
+            raise ValueError("Social trader profile was not found. Run discovery first.")
+        if payload.mode == "managed_paper" and payload.allocation_limit_usd <= 0:
+            raise ValueError("Managed paper mode needs an allocation limit above zero")
+        if payload.allocation_limit_usd > self.settings.paper_starting_balance * 10:
+            raise ValueError("Allocation is above the configured safety ceiling for this workspace")
+        now = self._now()
+        repository.upsert_social_trader_allocation(
+            {
+                "user_slug": user_slug,
+                "trader_id": int(trader["id"]),
+                "mode": payload.mode,
+                "allocation_limit_usd": round(payload.allocation_limit_usd, 2),
+                "max_position_pct": round(payload.max_position_pct, 4),
+                "auto_rebalance": bool(payload.auto_rebalance),
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        return self.get_social_trading_snapshot(user_slug, repository)
+
+    def diversify_social_portfolio(
+        self,
+        user_slug: str,
+        payload: SocialPortfolioDiversifyRequest,
+    ) -> SocialTradingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        top_traders = repository.list_social_traders(limit=payload.trader_count)
+        if not top_traders:
+            discovery = self.refresh_social_trader_discovery(repository=repository)
+            top_traders = repository.list_social_traders(limit=payload.trader_count)
+            if not top_traders:
+                raise ValueError(f"Social discovery returned no profiles ({'; '.join(discovery.warnings)})")
+        total_weight = sum(max(1.0, float(row.get("composite_score") or 1.0)) for row in top_traders)
+        now = self._now()
+        for row in top_traders:
+            weight = max(1.0, float(row.get("composite_score") or 1.0)) / total_weight
+            repository.upsert_social_trader_allocation(
+                {
+                    "user_slug": user_slug,
+                    "trader_id": int(row["id"]),
+                    "mode": payload.mode,
+                    "allocation_limit_usd": round(payload.budget_usd * weight, 2),
+                    "max_position_pct": round(payload.max_position_pct, 4),
+                    "auto_rebalance": True,
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+        return self.get_social_trading_snapshot(user_slug, repository)
 
     def create_strategy(self, user_slug: str, payload: StrategyCreateRequest) -> StrategyView:
         repository = BotSocietyRepository(self.database)
@@ -3609,6 +3776,7 @@ class BotSocietyService:
             edge_snapshot=edge_snapshot,
             paper_trading=self.get_paper_trading_snapshot(user_slug),
             paper_venues=self.get_paper_venues(),
+            social_trading=self.get_social_trading_snapshot(user_slug, repository),
             latest_operation=self._latest_operation(repository),
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
             user_profile=self.get_user_profile(user_slug),
@@ -4622,6 +4790,17 @@ class BotSocietyService:
             )
         return self.demo_wallet_provider
 
+    def _build_social_discovery_provider(self):
+        if self.settings.social_discovery_provider == "youtube":
+            return YouTubeSocialDiscoveryProvider(
+                api_key=self.settings.youtube_api_key,
+                queries=self.settings.youtube_discovery_queries,
+                channel_ids=self.settings.youtube_channel_ids,
+                video_limit=self.settings.youtube_video_limit,
+                timeout_seconds=self.settings.outbound_timeout_seconds,
+            )
+        return DemoSocialDiscoveryProvider()
+
     def _build_signal_provider(self):
         if self.settings.signal_provider_mode == "rss":
             return RSSNewsSignalProvider(feed_urls=self.settings.rss_feed_urls)
@@ -5266,6 +5445,151 @@ class BotSocietyService:
     @staticmethod
     def _to_asset_model(row: dict) -> AssetSnapshot:
         return AssetSnapshot(**row)
+
+    def _social_trader_payload(self, trader: DiscoveredSocialTrader, *, now: str) -> dict[str, object]:
+        return {
+            "slug": trader.slug,
+            "display_name": trader.display_name,
+            "handle": trader.handle,
+            "platform": trader.platform,
+            "source_url": trader.source_url,
+            "avatar_seed": trader.avatar_seed,
+            "avatar_url": trader.avatar_url,
+            "description": trader.description,
+            "primary_assets_json": self._encode_json_payload(trader.primary_assets) or "[]",
+            "style_tags_json": self._encode_json_payload(trader.style_tags) or "[]",
+            "signal_count": trader.signal_count,
+            "tracked_years": trader.tracked_years,
+            "win_rate": trader.win_rate,
+            "average_roi": trader.average_roi,
+            "roi_if_followed": trader.roi_if_followed,
+            "max_drawdown": trader.max_drawdown,
+            "sharpe_like": trader.sharpe_like,
+            "consistency_score": trader.consistency_score,
+            "influence_score": trader.influence_score,
+            "recency_score": trader.recency_score,
+            "composite_score": trader.composite_score,
+            "last_signal_at": trader.last_signal_at,
+            "state": "discovered",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    def _social_event_payloads(
+        self,
+        trader_id: int,
+        evidence: list[SocialEvidenceRecord],
+        *,
+        now: str,
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "trader_id": trader_id,
+                "external_id": item.external_id,
+                "platform": item.platform,
+                "title": item.title[:255],
+                "summary": item.summary,
+                "url": item.url,
+                "asset": item.asset,
+                "direction": item.direction,
+                "confidence": item.confidence,
+                "engagement_score": item.engagement_score,
+                "observed_at": item.observed_at,
+                "derived_return": item.derived_return,
+                "created_at": now,
+            }
+            for item in evidence
+        ]
+
+    def _to_social_trader_scorecard(
+        self,
+        row: dict,
+        event_rows: list[dict] | None = None,
+    ) -> SocialTraderScorecard:
+        return SocialTraderScorecard(
+            id=int(row["id"]),
+            slug=str(row["slug"]),
+            display_name=str(row["display_name"]),
+            handle=str(row["handle"]),
+            platform=str(row["platform"]),
+            source_url=str(row["source_url"]),
+            avatar_seed=str(row["avatar_seed"]),
+            avatar_url=row.get("avatar_url"),
+            description=str(row["description"]),
+            primary_assets=self._decode_string_list(row.get("primary_assets_json")),
+            style_tags=self._decode_string_list(row.get("style_tags_json")),
+            signal_count=int(row.get("signal_count") or 0),
+            tracked_years=round(float(row.get("tracked_years") or 0), 2),
+            win_rate=round(float(row.get("win_rate") or 0), 3),
+            average_roi=round(float(row.get("average_roi") or 0), 4),
+            roi_if_followed=round(float(row.get("roi_if_followed") or 0), 4),
+            max_drawdown=round(float(row.get("max_drawdown") or 0), 4),
+            sharpe_like=round(float(row.get("sharpe_like") or 0), 3),
+            consistency_score=round(float(row.get("consistency_score") or 0), 3),
+            influence_score=round(float(row.get("influence_score") or 0), 3),
+            recency_score=round(float(row.get("recency_score") or 0), 3),
+            composite_score=round(float(row.get("composite_score") or 0), 2),
+            last_signal_at=row.get("last_signal_at"),
+            state=str(row.get("state") or "discovered"),
+            evidence=[self._to_social_evidence_item(event_row) for event_row in (event_rows or [])],
+        )
+
+    @staticmethod
+    def _to_social_evidence_item(row: dict) -> SocialEvidenceItem:
+        return SocialEvidenceItem(
+            external_id=str(row["external_id"]),
+            platform=str(row["platform"]),
+            title=str(row["title"]),
+            summary=str(row["summary"]),
+            url=str(row["url"]),
+            asset=str(row["asset"]),
+            direction=str(row["direction"]),
+            confidence=round(float(row.get("confidence") or 0), 3),
+            engagement_score=round(float(row.get("engagement_score") or 0), 3),
+            observed_at=str(row["observed_at"]),
+            derived_return=round(float(row.get("derived_return") or 0), 4),
+        )
+
+    @staticmethod
+    def _to_social_trader_allocation(row: dict) -> SocialTraderAllocation:
+        return SocialTraderAllocation(
+            id=int(row["id"]),
+            user_slug=str(row["user_slug"]),
+            trader_id=int(row["trader_id"]),
+            trader_slug=str(row["trader_slug"]),
+            trader_name=str(row["trader_name"]),
+            mode=str(row["mode"]),
+            allocation_limit_usd=round(float(row.get("allocation_limit_usd") or 0), 2),
+            max_position_pct=round(float(row.get("max_position_pct") or 0), 4),
+            auto_rebalance=bool(row.get("auto_rebalance")),
+            is_active=bool(row.get("is_active")),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def _social_diversification_plan(
+        self,
+        top_traders: list[SocialTraderScorecard],
+        allocations: list[SocialTraderAllocation],
+    ) -> list[str]:
+        followed_ids = {allocation.trader_id for allocation in allocations if allocation.is_active}
+        candidates = [trader for trader in top_traders if trader.id not in followed_ids][:3]
+        if not candidates:
+            return [
+                "Keep each manager below the configured allocation cap.",
+                "Review paper results weekly before increasing exposure.",
+                "Diversify across at least one macro, one prediction-market, and one on-chain style.",
+            ]
+        return [
+            f"Start {trader.display_name} in signal mode first, then graduate to managed paper if 30-day paper tracking stays positive."
+            for trader in candidates
+        ]
+
+    def _decode_string_list(self, raw_payload: object) -> list[str]:
+        payload = self._decode_json_payload(str(raw_payload) if raw_payload is not None else None)
+        if isinstance(payload, list):
+            return [str(item) for item in payload if str(item).strip()]
+        return []
 
     @staticmethod
     def _to_signal_model(row: dict) -> SignalView:

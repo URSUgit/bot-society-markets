@@ -270,6 +270,72 @@ user_follows_table = Table(
     UniqueConstraint("user_slug", "bot_slug", name="uq_user_follows_user_bot"),
 )
 
+social_traders_table = Table(
+    "social_traders",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("slug", String(160), nullable=False, unique=True),
+    Column("display_name", String(255), nullable=False),
+    Column("handle", String(255), nullable=False),
+    Column("platform", String(32), nullable=False),
+    Column("source_url", Text, nullable=False),
+    Column("avatar_seed", String(255), nullable=False),
+    Column("avatar_url", Text),
+    Column("description", Text, nullable=False),
+    Column("primary_assets_json", Text, nullable=False),
+    Column("style_tags_json", Text, nullable=False),
+    Column("signal_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("tracked_years", Float, nullable=False, default=0.0, server_default="0"),
+    Column("win_rate", Float, nullable=False, default=0.0, server_default="0"),
+    Column("average_roi", Float, nullable=False, default=0.0, server_default="0"),
+    Column("roi_if_followed", Float, nullable=False, default=0.0, server_default="0"),
+    Column("max_drawdown", Float, nullable=False, default=0.0, server_default="0"),
+    Column("sharpe_like", Float, nullable=False, default=0.0, server_default="0"),
+    Column("consistency_score", Float, nullable=False, default=0.0, server_default="0"),
+    Column("influence_score", Float, nullable=False, default=0.0, server_default="0"),
+    Column("recency_score", Float, nullable=False, default=0.0, server_default="0"),
+    Column("composite_score", Float, nullable=False, default=0.0, server_default="0"),
+    Column("last_signal_at", String(64)),
+    Column("state", String(32), nullable=False, default="discovered", server_default="discovered"),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
+social_trader_events_table = Table(
+    "social_trader_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("trader_id", Integer, ForeignKey("social_traders.id", ondelete="CASCADE"), nullable=False),
+    Column("external_id", String(255), nullable=False, unique=True),
+    Column("platform", String(32), nullable=False),
+    Column("title", String(255), nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("url", Text, nullable=False),
+    Column("asset", String(32), nullable=False),
+    Column("direction", String(16), nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("engagement_score", Float, nullable=False),
+    Column("observed_at", String(64), nullable=False),
+    Column("derived_return", Float, nullable=False, default=0.0, server_default="0"),
+    Column("created_at", String(64), nullable=False),
+)
+
+social_trader_allocations_table = Table(
+    "social_trader_allocations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("trader_id", Integer, ForeignKey("social_traders.id", ondelete="CASCADE"), nullable=False),
+    Column("mode", String(32), nullable=False),
+    Column("allocation_limit_usd", Float, nullable=False),
+    Column("max_position_pct", Float, nullable=False),
+    Column("auto_rebalance", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "trader_id", name="uq_social_trader_allocations_user_trader"),
+)
+
 watchlist_items_table = Table(
     "watchlist_items",
     metadata,
@@ -393,6 +459,10 @@ Index("idx_paper_positions_user_status_opened", paper_positions_table.c.user_slu
 Index("idx_orders_user_submitted", orders_table.c.user_slug, orders_table.c.submitted_at.desc())
 Index("idx_orders_status_submitted", orders_table.c.status, orders_table.c.submitted_at.desc())
 Index("idx_orders_asset_submitted", orders_table.c.asset, orders_table.c.submitted_at.desc())
+Index("idx_social_traders_platform_score", social_traders_table.c.platform, social_traders_table.c.composite_score.desc())
+Index("idx_social_traders_score", social_traders_table.c.composite_score.desc())
+Index("idx_social_trader_events_trader_observed", social_trader_events_table.c.trader_id, social_trader_events_table.c.observed_at.desc())
+Index("idx_social_trader_allocations_user", social_trader_allocations_table.c.user_slug, social_trader_allocations_table.c.updated_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
 Index("idx_billing_customers_user_provider", billing_customers_table.c.user_slug, billing_customers_table.c.provider)
 Index(
