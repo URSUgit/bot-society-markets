@@ -2,7 +2,8 @@ param(
     [string]$RootUrl = "https://bitprivat.com",
     [string]$ApiUrl = "https://api.bitprivat.com",
     [string]$StatusUrl = "https://status.bitprivat.com",
-    [switch]$ExpectOperatorStrip
+    [switch]$ExpectOperatorStrip,
+    [switch]$ExpectSocialTrading
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,6 +67,26 @@ if ($ExpectOperatorStrip) {
         Url = "$RootUrl/dashboard?v=$cacheBust"
         Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*operator-strip*" }
     }
+}
+
+if ($ExpectSocialTrading) {
+    $checks += @(
+        @{
+            Name = "Social trading API"
+            Url = "$ApiUrl/api/social-trading?v=$cacheBust"
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social_traders*" -and $r.Content -like "*safety_notes*" }
+        },
+        @{
+            Name = "Social traders API"
+            Url = "$ApiUrl/api/social-traders?v=$cacheBust"
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*creator_score*" }
+        },
+        @{
+            Name = "Dashboard social section"
+            Url = "$RootUrl/dashboard?v=$cacheBust"
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social-trader-section*" -and $r.Content -like "*Run YouTube Discovery*" }
+        }
+    )
 }
 
 $results = foreach ($check in $checks) {
