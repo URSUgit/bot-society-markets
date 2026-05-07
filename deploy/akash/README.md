@@ -101,12 +101,17 @@ When `bitprivat.com` is proxied through Cloudflare, leave the Akash app setting
 as:
 
 ```text
+BSM_CANONICAL_HOST=
+BSM_CANONICAL_REDIRECT_HOSTS=
 BSM_FORCE_HTTPS=false
+BSM_SECURE_SESSION_COOKIE=true
 ```
 
-Cloudflare should own browser HTTPS redirects at the edge. If the app also
-forces HTTPS inside Akash, Cloudflare can receive a same-URL `308` redirect from
-the origin and the dashboard will appear down because of a redirect loop.
+Cloudflare should own browser HTTPS redirects and hostname routing at the edge.
+If the app also forces HTTPS or canonicalizes `api.bitprivat.com` /
+`status.bitprivat.com` to the root host inside Akash, Cloudflare can receive
+same-URL or cross-host `308` redirects from the origin and the dashboard will
+appear down because of a redirect loop.
 
 ## Fast Preview Path
 
