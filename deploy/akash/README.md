@@ -95,6 +95,19 @@ For Neon specifically:
 
 The app already supports this runtime path and runs Alembic upgrades on startup.
 
+## Cloudflare HTTPS Note
+
+When `bitprivat.com` is proxied through Cloudflare, leave the Akash app setting
+as:
+
+```text
+BSM_FORCE_HTTPS=false
+```
+
+Cloudflare should own browser HTTPS redirects at the edge. If the app also
+forces HTTPS inside Akash, Cloudflare can receive a same-URL `308` redirect from
+the origin and the dashboard will appear down because of a redirect loop.
+
 ## Fast Preview Path
 
 If you want the dashboard public before setting up Neon, deploy [web-demo-sqlite.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\web-demo-sqlite.yaml).
