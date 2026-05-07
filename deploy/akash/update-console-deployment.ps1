@@ -6,7 +6,14 @@ param(
     [switch]$List,
     [switch]$CreateNew,
     [decimal]$DepositUsd = 5,
-    [int]$BidWaitSeconds = 30
+    [int]$BidWaitSeconds = 30,
+    [int]$WaitSeconds = 90,
+    [switch]$Verify,
+    [string]$RootUrl = "https://bitprivat.com",
+    [string]$ApiUrl = "https://api.bitprivat.com",
+    [string]$StatusUrl = "https://status.bitprivat.com",
+    [switch]$ExpectOperatorStrip,
+    [switch]$ExpectSocialTrading
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,6 +58,55 @@ function Get-SdlContent {
     }
 
     Get-Content -LiteralPath $resolvedPath -Raw
+}
+
+function Invoke-ProductionVerification {
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $verifyScript = Join-Path $repoRoot "deploy\verify-production.ps1"
+    if (-not (Test-Path -LiteralPath $verifyScript)) {
+        throw "Production verifier not found: $verifyScript"
+    }
+
+    $verifyArgs = @{
+        RootUrl = $RootUrl
+        ApiUrl = $ApiUrl
+        StatusUrl = $StatusUrl
+    }
+    if ($ExpectOperatorStrip) {
+        $verifyArgs.ExpectOperatorStrip = $true
+    }
+    if ($ExpectSocialTrading) {
+        $verifyArgs.ExpectSocialTrading = $true
+    }
+
+    & $verifyScript @verifyArgs
+}
+
+function Wait-AfterDeploymentUpdate {
+    param([string]$ActiveDseq)
+
+    if ($WaitSeconds -le 0) {
+        return
+    }
+
+    Write-Output "Waiting $WaitSeconds seconds for Akash provider rollout..."
+    Start-Sleep -Seconds $WaitSeconds
+
+    try {
+        $deployment = Invoke-AkashConsoleApi -Method "GET" -Path "/v1/deployments/$ActiveDseq"
+        $leases = @($deployment.data.leases)
+        $uris = @()
+        foreach ($lease in $leases) {
+            if ($lease.status -and $lease.status.services) {
+                $uris += $lease.status.services.PSObject.Properties.Value | ForEach-Object { $_.uris }
+            }
+        }
+        if ($uris.Count) {
+            Write-Output "Akash lease URIs: $($uris -join ', ')"
+        }
+    } catch {
+        Write-Output "Akash deployment status check skipped after update: $($_.Exception.Message)"
+    }
 }
 
 if ($List) {
@@ -120,6 +176,10 @@ if ($CreateNew) {
 
     Write-Output "Lease created for deployment $createdDseq."
     Invoke-AkashConsoleApi -Method "GET" -Path "/v1/deployments/$createdDseq" | ConvertTo-Json -Depth 20
+    Wait-AfterDeploymentUpdate -ActiveDseq $createdDseq
+    if ($Verify) {
+        Invoke-ProductionVerification
+    }
     return
 }
 
@@ -134,4 +194,9 @@ Invoke-AkashConsoleApi -Method "PUT" -Path "/v1/deployments/$Dseq" -Body @{
 } | Out-Null
 
 Write-Output "Updated Akash deployment $Dseq with SDL: $SdlPath"
-Write-Output "Wait for the new pod to start, then run deploy\verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading"
+Wait-AfterDeploymentUpdate -ActiveDseq $Dseq
+if ($Verify) {
+    Invoke-ProductionVerification
+} else {
+    Write-Output "Verification skipped. To verify manually, run deploy\verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading"
+}

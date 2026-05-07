@@ -10,6 +10,18 @@ param(
 
     [switch]$WithWorker,
 
+    [switch]$EnableAppCanonicalRedirects,
+
+    [string]$SocialDiscoveryProvider = $env:BSM_SOCIAL_DISCOVERY_PROVIDER,
+
+    [string]$YouTubeApiKey = $env:BSM_YOUTUBE_API_KEY,
+
+    [string]$YouTubeDiscoveryQueries = $env:BSM_YOUTUBE_DISCOVERY_QUERIES,
+
+    [string]$YouTubeChannelIds = $env:BSM_YOUTUBE_CHANNEL_IDS,
+
+    [string]$YouTubeVideoLimit = $env:BSM_YOUTUBE_VIDEO_LIMIT,
+
     [string]$OutputPath
 )
 
@@ -67,6 +79,11 @@ $wwwHostEscaped = "www.$rootDomainEscaped"
 $appHostEscaped = "app.$rootDomainEscaped"
 $apiHostEscaped = "api.$rootDomainEscaped"
 $statusHostEscaped = "status.$rootDomainEscaped"
+$socialProviderEscaped = if ($SocialDiscoveryProvider) { $SocialDiscoveryProvider.Trim() } else { "demo" }
+$youtubeApiKeyEscaped = if ($YouTubeApiKey) { $YouTubeApiKey.Replace("`r", "").Replace("`n", "") } else { "" }
+$youtubeQueriesEscaped = if ($YouTubeDiscoveryQueries) { $YouTubeDiscoveryQueries.Replace("`r", "").Replace("`n", "") } else { "crypto market analysis,polymarket trading,prediction market analysis,macro trading" }
+$youtubeChannelIdsEscaped = if ($YouTubeChannelIds) { $YouTubeChannelIds.Replace("`r", "").Replace("`n", "") } else { "" }
+$youtubeVideoLimitEscaped = if ($YouTubeVideoLimit) { $YouTubeVideoLimit.Trim() } else { "12" }
 $rendered = $template.Replace(
     "ghcr.io/ursugit/bot-society-markets:latest",
     $resolvedImageRef
@@ -74,13 +91,29 @@ $rendered = $template.Replace(
     "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
     $databaseUrlEscaped
 )
-$rendered = $rendered -replace "BSM_CANONICAL_HOST=[^`r`n]*", "BSM_CANONICAL_HOST=$canonicalHostEscaped"
-$rendered = $rendered -replace "BSM_CANONICAL_REDIRECT_HOSTS=[^`r`n]*", "BSM_CANONICAL_REDIRECT_HOSTS=$wwwHostEscaped,$appHostEscaped"
 $rendered = $rendered.Replace("status.bitprivat.com", $statusHostEscaped)
 $rendered = $rendered.Replace("api.bitprivat.com", $apiHostEscaped)
 $rendered = $rendered.Replace("app.bitprivat.com", $appHostEscaped)
 $rendered = $rendered.Replace("www.bitprivat.com", $wwwHostEscaped)
 $rendered = $rendered.Replace("bitprivat.com", $rootDomainEscaped)
+
+if ($EnableAppCanonicalRedirects) {
+    $rendered = $rendered -replace "BSM_CANONICAL_HOST=[^`r`n]*", "BSM_CANONICAL_HOST=$canonicalHostEscaped"
+    $rendered = $rendered -replace "BSM_CANONICAL_REDIRECT_HOSTS=[^`r`n]*", "BSM_CANONICAL_REDIRECT_HOSTS=$wwwHostEscaped,$appHostEscaped"
+    $rendered = $rendered -replace "BSM_FORCE_HTTPS=[^`r`n]*", "BSM_FORCE_HTTPS=true"
+    $rendered = $rendered -replace "BSM_SECURE_SESSION_COOKIE=[^`r`n]*", "BSM_SECURE_SESSION_COOKIE=true"
+} else {
+    $rendered = $rendered -replace "BSM_CANONICAL_HOST=[^`r`n]*", "BSM_CANONICAL_HOST="
+    $rendered = $rendered -replace "BSM_CANONICAL_REDIRECT_HOSTS=[^`r`n]*", "BSM_CANONICAL_REDIRECT_HOSTS="
+    $rendered = $rendered -replace "BSM_FORCE_HTTPS=[^`r`n]*", "BSM_FORCE_HTTPS=false"
+    $rendered = $rendered -replace "BSM_SECURE_SESSION_COOKIE=[^`r`n]*", "BSM_SECURE_SESSION_COOKIE=true"
+}
+
+$rendered = $rendered -replace "BSM_SOCIAL_DISCOVERY_PROVIDER=[^`r`n]*", "BSM_SOCIAL_DISCOVERY_PROVIDER=$socialProviderEscaped"
+$rendered = $rendered -replace "BSM_YOUTUBE_API_KEY=[^`r`n]*", "BSM_YOUTUBE_API_KEY=$youtubeApiKeyEscaped"
+$rendered = $rendered -replace "BSM_YOUTUBE_DISCOVERY_QUERIES=[^`r`n]*", "BSM_YOUTUBE_DISCOVERY_QUERIES=$youtubeQueriesEscaped"
+$rendered = $rendered -replace "BSM_YOUTUBE_CHANNEL_IDS=[^`r`n]*", "BSM_YOUTUBE_CHANNEL_IDS=$youtubeChannelIdsEscaped"
+$rendered = $rendered -replace "BSM_YOUTUBE_VIDEO_LIMIT=[^`r`n]*", "BSM_YOUTUBE_VIDEO_LIMIT=$youtubeVideoLimitEscaped"
 
 $outputDirectory = Split-Path -Parent $resolvedOutputPath
 if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {

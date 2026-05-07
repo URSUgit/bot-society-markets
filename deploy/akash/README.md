@@ -167,6 +167,74 @@ Tradeoffs:
 8. Add the custom domain in Akash Console.
 9. Point Yandex DNS to the Akash deployment target.
 
+## Automated Production Redeploy
+
+The preferred production path is now the one-command wrapper:
+
+```powershell
+$env:AKASH_API_KEY = "your-akash-console-api-key"
+$env:AKASH_DSEQ = "your-existing-deployment-dseq"
+$env:BSM_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+.\deploy\akash\deploy-production.ps1
+```
+
+What it does:
+
+- derives the immutable GHCR image tag from the current Git commit
+- checks that the matching `Container Image` workflow has published the image
+- generates a secret-bearing SDL locally in `deploy/akash/*.generated.yaml`
+- keeps Cloudflare-safe app settings by default:
+  - `BSM_CANONICAL_HOST=`
+  - `BSM_CANONICAL_REDIRECT_HOSTS=`
+  - `BSM_FORCE_HTTPS=false`
+  - `BSM_SECURE_SESSION_COOKIE=true`
+- updates the existing Akash deployment through the Akash Console API
+- waits for rollout and runs production verification
+
+Useful commands:
+
+```powershell
+.\deploy\akash\deploy-production.ps1 -List
+.\deploy\akash\deploy-production.ps1 -ImageRef "ghcr.io/ursugit/bot-society-markets:sha-5684e60"
+.\deploy\akash\deploy-production.ps1 -NoVerify
+.\deploy\akash\deploy-production.ps1 -WithWorker
+```
+
+For YouTube social discovery activation:
+
+```powershell
+$env:BSM_SOCIAL_DISCOVERY_PROVIDER = "youtube"
+$env:BSM_YOUTUBE_API_KEY = "your-youtube-data-api-key"
+.\deploy\akash\deploy-production.ps1
+```
+
+Do not commit generated manifests. They can contain production database and API
+credentials and are intentionally ignored by Git.
+
+## GitHub Actions Automation
+
+This repo includes `.github/workflows/akash-deploy.yml`.
+
+Add these repository secrets:
+
+```text
+AKASH_API_KEY
+AKASH_DSEQ
+BSM_DATABASE_URL
+```
+
+Optional:
+
+```text
+BSM_YOUTUBE_API_KEY
+```
+
+After the secrets are configured, the workflow can redeploy Akash from GitHub
+Actions. It also listens for successful `Container Image` workflow completions
+on `main`, so future production image publishes can flow into Akash without a
+manual console paste. If any required secret is missing, the workflow skips the
+deploy with a notice instead of failing the whole project pipeline.
+
 ## bitprivat.com DNS Shape
 
 Recommended:
