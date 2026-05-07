@@ -70,6 +70,10 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["provider_status"]["signal_provider_mode"] == "demo"
         assert payload["provider_status"]["macro_provider_mode"] == "demo"
         assert payload["provider_status"]["wallet_provider_mode"] == "demo"
+        assert payload["provider_status"]["social_discovery_provider_mode"] == "demo"
+        assert payload["provider_status"]["social_discovery_provider_source"] == "demo-social-discovery"
+        assert payload["provider_status"]["social_discovery_ready"] is True
+        assert payload["provider_status"]["youtube_discovery_queries"]
         assert payload["provider_status"]["environment_name"] == "development"
         assert payload["provider_status"]["deployment_target"] == "local"
         assert payload["provider_status"]["database_backend"] == "sqlite"
@@ -139,6 +143,7 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         connector_ids = {item["id"] for item in connectors_payload["connectors"]}
         assert "coingecko-market-data" in connector_ids
         assert "polymarket-intel" in connector_ids
+        assert "youtube-social-discovery" in connector_ids
         assert "stripe-billing-rail" in connector_ids
         assert "coinbase-onramp-rail" in connector_ids
         assert "cloudflare-edge-router" in connector_ids
@@ -181,6 +186,25 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert cutover_payload["target_backend"] == "postgresql"
         assert any(step["key"] == "generate_manifest" for step in cutover_payload["steps"])
         assert cutover_payload["verification_urls"]
+
+
+def test_youtube_social_discovery_provider_status_requires_key() -> None:
+    settings = Settings(
+        social_discovery_provider="youtube",
+        youtube_api_key=None,
+        youtube_discovery_queries=("crypto market analysis",),
+    )
+    with build_client(settings) as client:
+        response = client.get("/api/system/providers")
+        assert response.status_code == 200
+        provider_status = response.json()["provider_status"]
+        assert provider_status["social_discovery_provider_mode"] == "youtube"
+        assert provider_status["social_discovery_provider_source"] == "youtube-data-api"
+        assert provider_status["social_discovery_live_capable"] is True
+        assert provider_status["social_discovery_configured"] is False
+        assert provider_status["social_discovery_ready"] is False
+        assert provider_status["social_discovery_fallback_active"] is True
+        assert "BSM_YOUTUBE_API_KEY" in provider_status["social_discovery_warning"]
 
 
 def test_business_model_strategy_endpoint_maps_investor_deck() -> None:

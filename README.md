@@ -96,7 +96,7 @@ Included today:
 - advanced simulation exports that package backtest runs, wallet context, macro posture, and market-edge context for external engines
 - saved Strategy Lab export artifacts with download history and configurable storage paths
 - adapter ZIP packs that bridge Strategy Lab exports into prediction-market-backtesting runner workflows
-- operational job entrypoints for bootstrap, provider-status, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
+- operational job entrypoints for bootstrap, provider-status, social-discovery, run-cycle, retry-notifications, notification-health, db-upgrade, db-copy, and worker execution
 - API tests covering health, dashboard data, auth flows, user workspace mutations, notification channels, alert read flows, validation, and pipeline-cycle execution
 - versioned `/api/v1` compatibility routes for the current public, dashboard, signal, system, simulation, auth, billing, and workspace surfaces
 - append-only audit logging for authentication, workspace mutations, billing session launches, simulation runs, paper-trading simulation, admin jobs, and Stripe webhook processing
@@ -226,6 +226,7 @@ To install or refresh the desktop shortcuts:
 python -m api.app.jobs bootstrap
 python -m api.app.jobs provider-status
 python -m api.app.jobs provider-status --probe-live
+python -m api.app.jobs social-discovery
 python -m api.app.jobs run-cycle
 python -m api.app.jobs retry-notifications
 python -m api.app.jobs notification-health
@@ -349,7 +350,16 @@ $env:BSM_YOUTUBE_API_KEY = "your-youtube-data-api-key"
 $env:BSM_YOUTUBE_DISCOVERY_QUERIES = "crypto market analysis,polymarket trading,prediction market analysis,macro trading"
 $env:BSM_YOUTUBE_CHANNEL_IDS = ""
 $env:BSM_YOUTUBE_VIDEO_LIMIT = "12"
+python -m api.app.jobs social-discovery
+python -m api.app.jobs provider-status
 ```
+
+`social-discovery` is the operator command for refreshing creator-trader
+scorecards. In `demo` mode it seeds deterministic YouTube-style profiles. In
+`youtube` mode it uses the official YouTube Data API, then falls back safely to
+demo discovery if the key is missing or the API call fails. The provider status
+endpoint exposes `social_discovery_ready`, `social_discovery_warning`, and the
+configured query/channel scope so production can be checked before redeploying.
 
 Optional paper execution venue setup:
 

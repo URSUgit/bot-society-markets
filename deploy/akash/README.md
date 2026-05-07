@@ -67,6 +67,28 @@ Use `demo` until you add a YouTube Data API key. When the key is available,
 change `BSM_SOCIAL_DISCOVERY_PROVIDER` to `youtube` and set
 `BSM_YOUTUBE_API_KEY` in Akash Console.
 
+After changing the Akash environment, verify the connector state from the
+running image:
+
+```powershell
+python -m api.app.jobs provider-status
+python -m api.app.jobs social-discovery
+```
+
+Expected production posture after the key is present:
+
+```text
+social_discovery_provider_mode=youtube
+social_discovery_provider_source=youtube-data-api
+social_discovery_configured=True
+social_discovery_live_capable=True
+social_discovery_ready=True
+```
+
+If `social_discovery_ready=False`, keep the deployment in demo discovery mode or
+add the missing `BSM_YOUTUBE_API_KEY`, `BSM_YOUTUBE_DISCOVERY_QUERIES`, or
+`BSM_YOUTUBE_CHANNEL_IDS` value before promoting the redeploy.
+
 If the GHCR package remains private:
 
 - either make the package public in GitHub package settings

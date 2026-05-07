@@ -2250,6 +2250,7 @@ class BotSocietyService:
         signal_ready, signal_warning, venue_statuses = self._signal_provider_health()
         macro_readiness = self.macro_provider.readiness()
         wallet_readiness = self.wallet_provider.readiness()
+        social_readiness = self._social_discovery_provider_component()
         market_configured, market_live_capable = self._provider_configuration("market")
         signal_configured, signal_live_capable = self._provider_configuration("signal")
         macro_configured, macro_live_capable = self._provider_configuration("macro")
@@ -2283,6 +2284,14 @@ class BotSocietyService:
             wallet_provider_live_capable=wallet_live_capable,
             wallet_provider_ready=wallet_readiness.ready,
             wallet_provider_warning=wallet_readiness.warning,
+            social_discovery_provider_mode=social_readiness.mode,
+            social_discovery_provider_source=social_readiness.source,
+            social_discovery_configured=social_readiness.configured,
+            social_discovery_live_capable=social_readiness.live_capable,
+            social_discovery_ready=social_readiness.ready,
+            social_discovery_warning=social_readiness.warning,
+            youtube_discovery_queries=list(self.settings.youtube_discovery_queries),
+            youtube_channel_ids=list(self.settings.youtube_channel_ids),
             tracked_coin_ids=list(self.settings.tracked_coin_ids),
             fred_series_ids=list(self.settings.fred_series_ids),
             tracked_wallets=list(self.settings.tracked_wallets),
@@ -2293,6 +2302,11 @@ class BotSocietyService:
             signal_fallback_active=self.signal_provider_fallback,
             macro_fallback_active=self.macro_provider_fallback,
             wallet_fallback_active=self.wallet_provider_fallback,
+            social_discovery_fallback_active=(
+                self.settings.social_discovery_provider == "youtube"
+                and social_readiness.live_capable
+                and not social_readiness.ready
+            ),
         )
 
     def get_connector_control(self) -> ConnectorControlSnapshot:
@@ -2318,6 +2332,7 @@ class BotSocietyService:
         edge_router_ready = bool(self.settings.canonical_host and self.settings.force_https)
         desktop_configured = self.settings.desktop_app_framework != "none" or bool(self.settings.desktop_bundle_id)
         desktop_ready = self.settings.desktop_app_framework != "none" and bool(self.settings.desktop_bundle_id)
+        social_fallback_active = provider_status.social_discovery_fallback_active
 
         connectors = [
             self._connector_item(
@@ -2462,6 +2477,33 @@ class BotSocietyService:
                     "Curate a first production wallet list instead of relying on generic demo traffic.",
                     "Keep provenance weighting visible as smart-money surfaces expand.",
                 ],
+            ),
+            self._connector_item(
+                connector_id="youtube-social-discovery",
+                label="YouTube Social Discovery",
+                category="Social Intelligence",
+                mode=provider_status.social_discovery_provider_mode,
+                source=provider_status.social_discovery_provider_source,
+                configured=provider_status.social_discovery_configured,
+                live_capable=provider_status.social_discovery_live_capable,
+                ready=provider_status.social_discovery_ready,
+                fallback_active=social_fallback_active,
+                activation_phase="Creator-trader discovery",
+                owner="Signal Intelligence",
+                risk_level="medium",
+                target_surface="creator scorecards, evidence timelines, and managed-paper follow allocation",
+                env_keys=[
+                    "BSM_SOCIAL_DISCOVERY_PROVIDER",
+                    "BSM_YOUTUBE_API_KEY",
+                    "BSM_YOUTUBE_DISCOVERY_QUERIES",
+                    "BSM_YOUTUBE_CHANNEL_IDS",
+                    "BSM_YOUTUBE_VIDEO_LIMIT",
+                ],
+                next_actions=[
+                    "Run python -m api.app.jobs social-discovery after adding the YouTube key.",
+                    "Curate channel IDs for known trader-influencers before relying on query discovery alone.",
+                ],
+                app_url="https://console.cloud.google.com/apis/library/youtube.googleapis.com",
             ),
             self._connector_item(
                 connector_id="stripe-billing-rail",
@@ -3277,6 +3319,7 @@ class BotSocietyService:
             + int(provider_status.signal_provider_live_capable)
             + int(provider_status.macro_provider_live_capable)
             + int(provider_status.wallet_provider_live_capable)
+            + int(provider_status.social_discovery_live_capable)
             + sum(1 for provider in provider_status.venue_signal_providers if provider.live_capable)
         )
         connector_track = LaunchReadinessTrack(
@@ -3290,12 +3333,13 @@ class BotSocietyService:
                     or provider_status.signal_fallback_active
                     or provider_status.macro_fallback_active
                     or provider_status.wallet_fallback_active
+                    or provider_status.social_discovery_fallback_active
                 ),
             ),
             headline="Market intelligence connectors are already online; revenue and operations connectors come next.",
             summary=(
                 f"{live_connector_count} live-capable data connectors are already exposed across market, signal, macro, "
-                "wallet, and venue layers. Next connectors should add billing webhooks, onramp callbacks, CRM alerts, and exports."
+                "wallet, social discovery, and venue layers. Next connectors should add billing webhooks, onramp callbacks, CRM alerts, and exports."
             ),
             recommended_provider="Hyperliquid, Polymarket, Kalshi, FRED, Stripe webhooks, Coinbase webhooks",
             target_release="Continuous track - data, billing, and operations",
@@ -3816,6 +3860,7 @@ class BotSocietyService:
             + int(provider_status.signal_provider_live_capable)
             + int(provider_status.macro_provider_live_capable)
             + int(provider_status.wallet_provider_live_capable)
+            + int(provider_status.social_discovery_live_capable)
         )
         live_provider_count += sum(1 for venue in provider_status.venue_signal_providers if venue.live_capable)
         pending_predictions = len(active_repository.list_predictions(status="pending", limit=500))
@@ -3860,6 +3905,15 @@ class BotSocietyService:
                 diagnostics[key] = f"ok ({len(signal_batch)} signal(s) returned)"
             except Exception as exc:
                 diagnostics[key] = f"error ({exc.__class__.__name__}: {exc})"
+
+        try:
+            social_batch = self.social_discovery_provider.discover()
+            diagnostics["social_discovery"] = (
+                f"ok ({len(social_batch.traders)} trader(s) returned; "
+                f"provider={social_batch.provider}; youtube_configured={social_batch.youtube_configured})"
+            )
+        except Exception as exc:
+            diagnostics["social_discovery"] = f"error ({exc.__class__.__name__}: {exc})"
 
         return diagnostics
 
@@ -4749,6 +4803,34 @@ class BotSocietyService:
         configured = any(component.configured for component in components)
         live_capable = any(component.live_capable for component in components)
         return configured, live_capable
+
+    def _social_discovery_provider_component(self) -> ProviderComponentStatus:
+        source_name = getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider)
+        if self.settings.social_discovery_provider == "youtube":
+            configured = bool(self.settings.youtube_api_key)
+            has_scope = bool(self.settings.youtube_discovery_queries or self.settings.youtube_channel_ids)
+            ready = configured and has_scope
+            warning = None
+            if not configured:
+                warning = "Set BSM_YOUTUBE_API_KEY before promoting YouTube discovery from demo fallback."
+            elif not has_scope:
+                warning = "Set BSM_YOUTUBE_DISCOVERY_QUERIES or BSM_YOUTUBE_CHANNEL_IDS so discovery has a search scope."
+            return ProviderComponentStatus(
+                mode="youtube",
+                source=source_name,
+                configured=configured,
+                live_capable=True,
+                ready=ready,
+                warning=warning,
+            )
+        return ProviderComponentStatus(
+            mode=self.settings.social_discovery_provider,
+            source=source_name,
+            configured=True,
+            live_capable=False,
+            ready=True,
+            warning=None,
+        )
 
     def _database_target(self) -> str:
         if self.database.dialect_name == "postgresql":
