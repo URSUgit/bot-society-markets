@@ -186,6 +186,14 @@ class ProviderStatus(BaseModel):
     wallet_provider_live_capable: bool = False
     wallet_provider_ready: bool = True
     wallet_provider_warning: str | None = None
+    social_discovery_provider_mode: str = "demo"
+    social_discovery_provider_source: str = "demo-social-discovery"
+    social_discovery_configured: bool = True
+    social_discovery_live_capable: bool = False
+    social_discovery_ready: bool = True
+    social_discovery_warning: str | None = None
+    youtube_discovery_queries: list[str] = Field(default_factory=list)
+    youtube_channel_ids: list[str] = Field(default_factory=list)
     tracked_coin_ids: list[str]
     fred_series_ids: list[str] = Field(default_factory=list)
     tracked_wallets: list[str] = Field(default_factory=list)
@@ -196,6 +204,7 @@ class ProviderStatus(BaseModel):
     signal_fallback_active: bool = False
     macro_fallback_active: bool = False
     wallet_fallback_active: bool = False
+    social_discovery_fallback_active: bool = False
 
 
 class SignalMixItem(BaseModel):

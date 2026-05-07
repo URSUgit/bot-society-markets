@@ -178,11 +178,13 @@ function providerState(providerStatus) {
   const healthy = providerStatus?.market_provider_ready
     && providerStatus?.signal_provider_ready
     && providerStatus?.macro_provider_ready
-    && providerStatus?.wallet_provider_ready;
+    && providerStatus?.wallet_provider_ready
+    && providerStatus?.social_discovery_ready;
   const fallback = providerStatus?.market_fallback_active
     || providerStatus?.signal_fallback_active
     || providerStatus?.macro_fallback_active
-    || providerStatus?.wallet_fallback_active;
+    || providerStatus?.wallet_fallback_active
+    || providerStatus?.social_discovery_fallback_active;
   if (fallback) {
     return { label: "Fallback active", variant: "warning" };
   }
@@ -490,16 +492,18 @@ function renderRibbon(snapshot) {
   const providersHealthy = snapshot.provider_status.market_provider_ready
     && snapshot.provider_status.signal_provider_ready
     && snapshot.provider_status.macro_provider_ready
-    && snapshot.provider_status.wallet_provider_ready;
+    && snapshot.provider_status.wallet_provider_ready
+    && snapshot.provider_status.social_discovery_ready;
   const fallbackActive = snapshot.provider_status.market_fallback_active
     || snapshot.provider_status.signal_fallback_active
     || snapshot.provider_status.macro_fallback_active
-    || snapshot.provider_status.wallet_fallback_active;
+    || snapshot.provider_status.wallet_fallback_active
+    || snapshot.provider_status.social_discovery_fallback_active;
   if (providerValue) {
     providerValue.textContent = fallbackActive ? "Fallback active" : (providersHealthy ? "Primary providers stable" : "Needs attention");
   }
   if (providerSubtitle) {
-    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source} + ${snapshot.provider_status.macro_provider_source} + ${snapshot.provider_status.wallet_provider_source}`;
+    providerSubtitle.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable | ${snapshot.provider_status.market_provider_source} + ${snapshot.provider_status.signal_provider_source} + ${snapshot.provider_status.macro_provider_source} + ${snapshot.provider_status.wallet_provider_source} + ${snapshot.provider_status.social_discovery_provider_source}`;
   }
   if (activityBadge) {
     activityBadge.textContent = autoRefreshEnabled ? `Auto-refresh ${AUTO_REFRESH_MS / 1000}s` : "Manual refresh";
@@ -901,6 +905,7 @@ function renderMarketConsole(snapshot) {
     || provider.signal_fallback_active
     || provider.macro_fallback_active
     || provider.wallet_fallback_active
+    || provider.social_discovery_fallback_active
   );
 
   badge.textContent = fallbackActive ? "Fallback guarded" : `${readyConnectors.length} surfaces ready`;
@@ -935,6 +940,13 @@ function renderMarketConsole(snapshot) {
       detail: `${snapshot.wallet_intelligence?.wallets?.length || 0} tracked profiles | ${provider.wallet_provider_mode || "demo"} mode`,
       state: provider.wallet_provider_ready ? (provider.wallet_provider_live_capable ? "Live-capable" : "Ready") : "Needs attention",
       variant: provider.wallet_provider_ready ? "positive" : "warning",
+    },
+    {
+      label: "Creator discovery",
+      value: provider.social_discovery_provider_source || "social discovery",
+      detail: `${snapshot.social_trading?.top_traders?.length || 0} trader-creators | ${provider.social_discovery_provider_mode || "demo"} mode`,
+      state: provider.social_discovery_ready ? (provider.social_discovery_live_capable ? "YouTube live-capable" : "Ready") : "Needs key",
+      variant: provider.social_discovery_ready ? "positive" : "warning",
     },
   ];
 
@@ -3029,6 +3041,12 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
   const trackedWallets = providerStatus.tracked_wallets?.length
     ? providerStatus.tracked_wallets.map((wallet) => `<li>${wallet}</li>`).join("")
     : "<li>No tracked wallets configured</li>";
+  const youtubeQueries = providerStatus.youtube_discovery_queries?.length
+    ? providerStatus.youtube_discovery_queries.map((query) => `<li>${query}</li>`).join("")
+    : "<li>No YouTube discovery queries configured</li>";
+  const youtubeChannels = providerStatus.youtube_channel_ids?.length
+    ? providerStatus.youtube_channel_ids.map((channel) => `<li>${channel}</li>`).join("")
+    : "<li>No fixed YouTube channels configured</li>";
   card.innerHTML = `
     <p><strong>Environment:</strong> ${providerStatus.environment_name}</p>
     <p><strong>Deployment:</strong> ${providerStatus.deployment_target}</p>
@@ -3057,12 +3075,19 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     <p><strong>Wallet live capable:</strong> ${providerStatus.wallet_provider_live_capable ? "yes" : "no"}</p>
     <p><strong>Wallet ready:</strong> ${providerStatus.wallet_provider_ready ? "yes" : "no"}</p>
     ${providerStatus.wallet_provider_warning ? `<p class="error-text">${providerStatus.wallet_provider_warning}</p>` : ""}
+    <p><strong>Social discovery mode:</strong> ${providerStatus.social_discovery_provider_mode}</p>
+    <p><strong>Social discovery source:</strong> ${providerStatus.social_discovery_provider_source}</p>
+    <p><strong>Social discovery configured:</strong> ${providerStatus.social_discovery_configured ? "yes" : "no"}</p>
+    <p><strong>Social discovery live capable:</strong> ${providerStatus.social_discovery_live_capable ? "yes" : "no"}</p>
+    <p><strong>Social discovery ready:</strong> ${providerStatus.social_discovery_ready ? "yes" : "no"}</p>
+    ${providerStatus.social_discovery_warning ? `<p class="error-text">${providerStatus.social_discovery_warning}</p>` : ""}
     <p><strong>Tracked coins:</strong> ${providerStatus.tracked_coin_ids.join(", ")}</p>
     <p><strong>Macro series:</strong> ${providerStatus.fred_series_ids.join(", ")}</p>
     <p><strong>Market fallback:</strong> ${providerStatus.market_fallback_active ? "yes" : "no"}</p>
     <p><strong>Signal fallback:</strong> ${providerStatus.signal_fallback_active ? "yes" : "no"}</p>
     <p><strong>Macro fallback:</strong> ${providerStatus.macro_fallback_active ? "yes" : "no"}</p>
     <p><strong>Wallet fallback:</strong> ${providerStatus.wallet_fallback_active ? "yes" : "no"}</p>
+    <p><strong>Social fallback:</strong> ${providerStatus.social_discovery_fallback_active ? "yes" : "no"}</p>
     <div class="provider-feed-list">
       <strong>RSS feeds</strong>
       <ul>${rssFeeds}</ul>
@@ -3074,6 +3099,14 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     <div class="provider-feed-list">
       <strong>Venue providers</strong>
       <ul>${venueProviders}</ul>
+    </div>
+    <div class="provider-feed-list">
+      <strong>YouTube discovery queries</strong>
+      <ul>${youtubeQueries}</ul>
+    </div>
+    <div class="provider-feed-list">
+      <strong>YouTube channel IDs</strong>
+      <ul>${youtubeChannels}</ul>
     </div>
     <div class="provider-feed-list">
       <strong>Tracked wallets</strong>

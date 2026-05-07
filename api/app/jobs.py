@@ -11,11 +11,12 @@ from .worker import PipelineWorker
 
 
 
-def build_service() -> BotSocietyService:
+def build_service(*, bootstrap: bool = True) -> BotSocietyService:
     settings = get_settings()
     database = Database(path=settings.database_path, url=settings.database_url)
     service = BotSocietyService(database, settings)
-    service.bootstrap()
+    if bootstrap:
+        service.bootstrap()
     return service
 
 
@@ -44,6 +45,7 @@ def main() -> None:
             "db-copy",
             "db-backup",
             "cutover-report",
+            "social-discovery",
         ],
     )
     parser.add_argument("--interval-seconds", type=int, default=None)
@@ -98,6 +100,31 @@ def main() -> None:
         )
         return
 
+    if args.command == "social-discovery":
+        service = build_service(bootstrap=False)
+        service.database.initialize()
+        result = service.refresh_social_trader_discovery()
+        status = service.get_provider_status()
+        shown_traders = result.traders[: max(1, args.limit or len(result.traders))]
+        print(
+            f"Social discovery completed. provider={result.provider} "
+            f"mode={status.social_discovery_provider_mode} "
+            f"youtube_configured={result.youtube_configured} "
+            f"ready={status.social_discovery_ready} "
+            f"discovered={result.discovered} updated={result.updated}"
+        )
+        if status.social_discovery_warning:
+            print(f"warning={status.social_discovery_warning}")
+        for warning in result.warnings:
+            print(f"warning={warning}")
+        for trader in shown_traders:
+            print(
+                f"  trader={trader.display_name} platform={trader.platform} "
+                f"score={trader.composite_score} roi_if_followed={trader.roi_if_followed}% "
+                f"events={trader.signal_count} source={trader.source_url}"
+            )
+        return
+
     service = build_service()
     settings = service.settings
 
@@ -130,9 +157,25 @@ def main() -> None:
             f"signal_provider_source={status.signal_provider_source} "
             f"signal_provider_configured={status.signal_provider_configured} "
             f"signal_provider_live_capable={status.signal_provider_live_capable} "
+            f"macro_provider_mode={status.macro_provider_mode} "
+            f"macro_provider_source={status.macro_provider_source} "
+            f"macro_provider_configured={status.macro_provider_configured} "
+            f"macro_provider_live_capable={status.macro_provider_live_capable} "
+            f"wallet_provider_mode={status.wallet_provider_mode} "
+            f"wallet_provider_source={status.wallet_provider_source} "
+            f"wallet_provider_configured={status.wallet_provider_configured} "
+            f"wallet_provider_live_capable={status.wallet_provider_live_capable} "
+            f"social_discovery_provider_mode={status.social_discovery_provider_mode} "
+            f"social_discovery_provider_source={status.social_discovery_provider_source} "
+            f"social_discovery_configured={status.social_discovery_configured} "
+            f"social_discovery_live_capable={status.social_discovery_live_capable} "
+            f"social_discovery_ready={status.social_discovery_ready} "
             f"market_fallback_active={status.market_fallback_active} "
-            f"signal_fallback_active={status.signal_fallback_active}"
+            f"signal_fallback_active={status.signal_fallback_active} "
+            f"social_discovery_fallback_active={status.social_discovery_fallback_active}"
         )
+        if status.social_discovery_warning:
+            print(f"social_discovery_warning={status.social_discovery_warning}")
         if status.venue_signal_providers:
             for provider in status.venue_signal_providers:
                 print(
