@@ -74,12 +74,12 @@ if ($ExpectSocialTrading) {
         @{
             Name = "Social trading API"
             Url = "$ApiUrl/api/social-trading?v=$cacheBust"
-            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social_traders*" -and $r.Content -like "*safety_notes*" }
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*top_traders*" -and $r.Content -like "*safety_notes*" }
         },
         @{
             Name = "Social traders API"
             Url = "$ApiUrl/api/social-traders?v=$cacheBust"
-            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*creator_score*" }
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*display_name*" -and $r.Content -like "*composite_score*" }
         },
         @{
             Name = "Dashboard social section"
