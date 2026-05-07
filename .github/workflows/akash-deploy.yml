@@ -1,0 +1,165 @@
+name: Akash Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Container Image
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Optional image ref. Defaults to ghcr.io/<repo>:sha-<current-sha>.
+        required: false
+        type: string
+      dseq:
+        description: Optional Akash deployment DSEQ. Defaults to AKASH_DSEQ secret.
+        required: false
+        type: string
+      wait_seconds:
+        description: Seconds to wait before production verification.
+        required: false
+        default: "90"
+        type: string
+      verify:
+        description: Run production smoke verification after deploy.
+        required: false
+        default: true
+        type: boolean
+      with_worker:
+        description: Deploy the web + worker SDL instead of single web service.
+        required: false
+        default: false
+        type: boolean
+      skip_image_check:
+        description: Skip GitHub Container Image workflow verification.
+        required: false
+        default: false
+        type: boolean
+      social_discovery_provider:
+        description: Social discovery mode for the SDL.
+        required: false
+        default: demo
+        type: choice
+        options:
+          - demo
+          - youtube
+
+concurrency:
+  group: akash-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve deployment options
+        id: options
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_ref="${{ github.event.inputs.image_ref }}"
+          if [ -z "$image_ref" ]; then
+            sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+            short_sha="${sha:0:7}"
+            repo_lower="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+            image_ref="ghcr.io/${repo_lower}:sha-${short_sha}"
+          fi
+
+          wait_seconds="${{ github.event.inputs.wait_seconds }}"
+          if [ -z "$wait_seconds" ]; then
+            wait_seconds="90"
+          fi
+
+          verify="${{ github.event.inputs.verify }}"
+          if [ -z "$verify" ]; then
+            verify="true"
+          fi
+
+          with_worker="${{ github.event.inputs.with_worker }}"
+          if [ -z "$with_worker" ]; then
+            with_worker="false"
+          fi
+
+          skip_image_check="${{ github.event.inputs.skip_image_check }}"
+          if [ -z "$skip_image_check" ]; then
+            skip_image_check="false"
+          fi
+
+          social_provider="${{ github.event.inputs.social_discovery_provider }}"
+          if [ -z "$social_provider" ]; then
+            social_provider="demo"
+          fi
+
+          {
+            echo "image_ref=$image_ref"
+            echo "wait_seconds=$wait_seconds"
+            echo "verify=$verify"
+            echo "with_worker=$with_worker"
+            echo "skip_image_check=$skip_image_check"
+            echo "social_provider=$social_provider"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check deployment secrets
+        id: secrets
+        shell: bash
+        env:
+          AKASH_API_KEY: ${{ secrets.AKASH_API_KEY }}
+          AKASH_DSEQ: ${{ github.event.inputs.dseq || secrets.AKASH_DSEQ }}
+          BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
+        run: |
+          missing=()
+          [ -z "$AKASH_API_KEY" ] && missing+=("AKASH_API_KEY")
+          [ -z "$AKASH_DSEQ" ] && missing+=("AKASH_DSEQ")
+          [ -z "$BSM_DATABASE_URL" ] && missing+=("BSM_DATABASE_URL")
+          if [ "${{ steps.options.outputs.social_provider }}" = "youtube" ] && [ -z "$BSM_YOUTUBE_API_KEY" ]; then
+            missing+=("BSM_YOUTUBE_API_KEY")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Akash deploy skipped::Missing required repository secrets/inputs: ${missing[*]}"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Akash
+        if: steps.secrets.outputs.configured == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AKASH_API_KEY: ${{ secrets.AKASH_API_KEY }}
+          AKASH_DSEQ: ${{ github.event.inputs.dseq || secrets.AKASH_DSEQ }}
+          BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
+        run: |
+          $deployArgs = @{
+            ImageRef = "${{ steps.options.outputs.image_ref }}"
+            WaitSeconds = [int]"${{ steps.options.outputs.wait_seconds }}"
+            SocialDiscoveryProvider = "${{ steps.options.outputs.social_provider }}"
+          }
+
+          if ("${{ steps.options.outputs.verify }}" -ne "true") {
+            $deployArgs.NoVerify = $true
+          }
+          if ("${{ steps.options.outputs.with_worker }}" -eq "true") {
+            $deployArgs.WithWorker = $true
+          }
+          if ("${{ steps.options.outputs.skip_image_check }}" -eq "true") {
+            $deployArgs.SkipImageWorkflowCheck = $true
+          }
+
+          ./deploy/akash/deploy-production.ps1 @deployArgs

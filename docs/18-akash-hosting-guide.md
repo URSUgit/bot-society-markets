@@ -132,6 +132,26 @@ This writes a generated manifest into `deploy/akash/` that is ready to paste int
 
 Generated manifest files are ignored by Git on purpose because they may contain production database credentials.
 
+Automated redeploy, using the Akash Console API:
+
+```powershell
+$env:AKASH_API_KEY = "your-akash-console-api-key"
+$env:AKASH_DSEQ = "your-existing-deployment-dseq"
+$env:BSM_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+.\deploy\akash\deploy-production.ps1
+```
+
+The automation pins the current `ghcr.io/ursugit/bot-society-markets:sha-<commit>`
+image, generates a local ignored SDL, updates the existing Akash deployment,
+waits for rollout, and runs production verification. By default it keeps
+Cloudflare-safe settings enabled, so the app does not create the HTTPS/canonical
+redirect loop that previously made the dashboard unreachable.
+
+GitHub automation is available through `.github/workflows/akash-deploy.yml`.
+Configure repository secrets `AKASH_API_KEY`, `AKASH_DSEQ`, and
+`BSM_DATABASE_URL`. Add `BSM_YOUTUBE_API_KEY` only when promoting
+`social_discovery_provider` to `youtube`.
+
 Current helper usage with explicit host settings:
 
 ```powershell
