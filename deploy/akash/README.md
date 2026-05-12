@@ -200,6 +200,19 @@ Useful commands:
 .\deploy\akash\deploy-production.ps1 -WithWorker
 ```
 
+Operator setup helpers:
+
+```powershell
+.\deploy\akash\check-deploy-readiness.ps1
+.\deploy\akash\setup-github-secrets.ps1
+.\deploy\akash\trigger-github-deploy.ps1 -ImageRef "ghcr.io/ursugit/bot-society-markets:sha-6499e5a"
+```
+
+`setup-github-secrets.ps1` reads values from the current environment when they
+are already present. If they are not present, it prompts locally and writes them
+to GitHub Actions secrets through `gh secret set`. It does not write secrets to
+the repository.
+
 For YouTube social discovery activation:
 
 ```powershell
@@ -234,6 +247,12 @@ Actions. It also listens for successful `Container Image` workflow completions
 on `main`, so future production image publishes can flow into Akash without a
 manual console paste. If any required secret is missing, the workflow skips the
 deploy with a notice instead of failing the whole project pipeline.
+
+To trigger it manually from PowerShell:
+
+```powershell
+.\deploy\akash\trigger-github-deploy.ps1
+```
 
 ## bitprivat.com DNS Shape
 

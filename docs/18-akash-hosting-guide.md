@@ -152,6 +152,17 @@ Configure repository secrets `AKASH_API_KEY`, `AKASH_DSEQ`, and
 `BSM_DATABASE_URL`. Add `BSM_YOUTUBE_API_KEY` only when promoting
 `social_discovery_provider` to `youtube`.
 
+PowerShell operator helpers:
+
+```powershell
+.\deploy\akash\check-deploy-readiness.ps1
+.\deploy\akash\setup-github-secrets.ps1
+.\deploy\akash\trigger-github-deploy.ps1
+```
+
+Use `check-deploy-readiness.ps1 -VerifyProduction` when you want one command to
+check GitHub deployment prerequisites and smoke-test the live domains.
+
 Current helper usage with explicit host settings:
 
 ```powershell

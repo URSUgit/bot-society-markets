@@ -60,6 +60,8 @@ This repository contains both the founder documentation package and a profession
 - [Akash Web + Worker Manifest](deploy/akash/web-worker-external-postgres.yaml)
 - [Akash Full Stack Manifest](deploy/akash/full-stack-postgres.yaml)
 - [Akash Automated Deploy Command](deploy/akash/deploy-production.ps1)
+- [Akash Deploy Readiness Check](deploy/akash/check-deploy-readiness.ps1)
+- [Akash GitHub Secrets Setup](deploy/akash/setup-github-secrets.ps1)
 - [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
 
 ## Current Implementation
