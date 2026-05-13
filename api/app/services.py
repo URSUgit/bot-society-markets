@@ -441,6 +441,13 @@ class BotSocietyService:
             allocated_usd=allocated_usd,
             unallocated_usd=unallocated,
             diversification_plan=self._social_diversification_plan(top_traders, allocations),
+            portfolio_risk_notes=self._social_portfolio_risk_notes(
+                top_traders,
+                allocations,
+                allocated_usd=allocated_usd,
+                portfolio_limit=portfolio_limit,
+                youtube_configured=youtube_configured,
+            ),
             safety_notes=[
                 "Signal mode sends alerts and watchlist updates only.",
                 "Managed mode is paper-only here: no live user funds are moved by this MVP.",
@@ -5588,6 +5595,9 @@ class BotSocietyService:
         row: dict,
         event_rows: list[dict] | None = None,
     ) -> SocialTraderScorecard:
+        evidence = [self._to_social_evidence_item(event_row) for event_row in (event_rows or [])]
+        risk_level = self._social_trader_risk_level(row)
+        copy_trade_readiness = self._social_copy_trade_readiness(row, risk_level)
         return SocialTraderScorecard(
             id=int(row["id"]),
             slug=str(row["slug"]),
@@ -5613,11 +5623,21 @@ class BotSocietyService:
             composite_score=round(float(row.get("composite_score") or 0), 2),
             last_signal_at=row.get("last_signal_at"),
             state=str(row.get("state") or "discovered"),
-            evidence=[self._to_social_evidence_item(event_row) for event_row in (event_rows or [])],
+            risk_level=risk_level,
+            conviction_label=self._social_conviction_label(row),
+            copy_trade_readiness=copy_trade_readiness,
+            watch_mode_recommendation=self._social_watch_mode_recommendation(row, risk_level, copy_trade_readiness),
+            evidence_summary=self._social_evidence_summary(evidence),
+            risk_notes=self._social_risk_notes(row, evidence, risk_level),
+            allocation_guidance=self._social_allocation_guidance(row, risk_level, copy_trade_readiness),
+            evidence=evidence,
         )
 
     @staticmethod
     def _to_social_evidence_item(row: dict) -> SocialEvidenceItem:
+        confidence = round(float(row.get("confidence") or 0), 3)
+        engagement_score = round(float(row.get("engagement_score") or 0), 3)
+        derived_return = round(float(row.get("derived_return") or 0), 4)
         return SocialEvidenceItem(
             external_id=str(row["external_id"]),
             platform=str(row["platform"]),
@@ -5626,11 +5646,159 @@ class BotSocietyService:
             url=str(row["url"]),
             asset=str(row["asset"]),
             direction=str(row["direction"]),
-            confidence=round(float(row.get("confidence") or 0), 3),
-            engagement_score=round(float(row.get("engagement_score") or 0), 3),
+            confidence=confidence,
+            engagement_score=engagement_score,
+            evidence_weight=round(min(1.0, max(0.0, (confidence * 0.68) + (engagement_score * 0.32))), 3),
+            impact_label=BotSocietyService._social_evidence_impact_label(derived_return),
+            risk_flag=BotSocietyService._social_evidence_risk_flag(confidence, derived_return),
             observed_at=str(row["observed_at"]),
-            derived_return=round(float(row.get("derived_return") or 0), 4),
+            derived_return=derived_return,
         )
+
+    @staticmethod
+    def _social_evidence_impact_label(derived_return: float) -> str:
+        if derived_return >= 0.08:
+            return "strong positive"
+        if derived_return >= 0.02:
+            return "positive"
+        if derived_return <= -0.08:
+            return "large miss"
+        if derived_return <= -0.02:
+            return "negative"
+        return "flat"
+
+    @staticmethod
+    def _social_evidence_risk_flag(confidence: float, derived_return: float) -> str | None:
+        if confidence < 0.45:
+            return "low confidence extraction"
+        if derived_return <= -0.1:
+            return "recent call moved sharply against thesis"
+        return None
+
+    @staticmethod
+    def _social_trader_risk_level(row: dict) -> str:
+        signal_count = int(row.get("signal_count") or 0)
+        win_rate = float(row.get("win_rate") or 0)
+        max_drawdown = float(row.get("max_drawdown") or 0)
+        consistency_score = float(row.get("consistency_score") or 0)
+        composite_score = float(row.get("composite_score") or 0)
+        if max_drawdown <= -0.18 or win_rate < 0.46 or consistency_score < 0.42:
+            return "high"
+        if (
+            signal_count >= 8
+            and win_rate >= 0.58
+            and max_drawdown >= -0.08
+            and consistency_score >= 0.65
+            and composite_score >= 62
+        ):
+            return "low"
+        return "medium"
+
+    @staticmethod
+    def _social_conviction_label(row: dict) -> str:
+        composite_score = float(row.get("composite_score") or 0)
+        if composite_score >= 72:
+            return "High conviction tracker"
+        if composite_score >= 58:
+            return "Validated paper candidate"
+        if composite_score >= 45:
+            return "Signal watchlist"
+        return "Research only"
+
+    @staticmethod
+    def _social_copy_trade_readiness(row: dict, risk_level: str) -> str:
+        signal_count = int(row.get("signal_count") or 0)
+        win_rate = float(row.get("win_rate") or 0)
+        max_drawdown = float(row.get("max_drawdown") or 0)
+        composite_score = float(row.get("composite_score") or 0)
+        if signal_count < 5 or composite_score < 45:
+            return "needs_review"
+        if risk_level == "high":
+            return "signals_only"
+        if composite_score >= 58 and win_rate >= 0.52 and max_drawdown > -0.22:
+            return "paper_ready"
+        return "signals_only"
+
+    @staticmethod
+    def _social_watch_mode_recommendation(row: dict, risk_level: str, readiness: str) -> str:
+        display_name = str(row.get("display_name") or "This trader")
+        if readiness == "paper_ready":
+            return f"Start {display_name} in managed-paper mode with a capped allocation and weekly review."
+        if readiness == "needs_review":
+            return f"Keep {display_name} in research mode until more evidence is indexed."
+        if risk_level == "high":
+            return f"Use signal-only alerts for {display_name}; do not auto-allocate until drawdown improves."
+        return f"Use signal-only alerts for {display_name}, then promote after fresh calls validate."
+
+    @staticmethod
+    def _social_evidence_summary(evidence: list[SocialEvidenceItem]) -> str:
+        if not evidence:
+            return "No recent public evidence has been indexed yet."
+        assets = sorted({item.asset for item in evidence if item.asset})[:4]
+        directions = defaultdict(int)
+        for item in evidence:
+            directions[item.direction] += 1
+        dominant_direction = max(directions.items(), key=lambda item: item[1])[0] if directions else "neutral"
+        average_confidence = mean(item.confidence for item in evidence)
+        average_return = mean(item.derived_return for item in evidence)
+        asset_text = ", ".join(assets) if assets else "tracked assets"
+        return (
+            f"{len(evidence)} recent evidence item(s) across {asset_text}; "
+            f"{dominant_direction} bias, {average_confidence:.0%} average confidence, "
+            f"{average_return:+.1%} average resolved move."
+        )
+
+    @staticmethod
+    def _social_risk_notes(row: dict, evidence: list[SocialEvidenceItem], risk_level: str) -> list[str]:
+        signal_count = int(row.get("signal_count") or 0)
+        win_rate = float(row.get("win_rate") or 0)
+        max_drawdown = float(row.get("max_drawdown") or 0)
+        platform = str(row.get("platform") or "social")
+        notes: list[str] = []
+        if signal_count < 10:
+            notes.append("Sample size is still thin; keep this profile below normal allocation size.")
+        if max_drawdown <= -0.15:
+            notes.append(f"Historical proxy drawdown reached {max_drawdown:.1%}; cap exposure aggressively.")
+        if win_rate < 0.5:
+            notes.append(f"Win rate is below 50% at {win_rate:.0%}; require confirmation before managed allocation.")
+        if any(item.risk_flag for item in evidence):
+            notes.append("At least one recent evidence item carries a confidence or adverse-move warning.")
+        if platform == "youtube":
+            notes.append("YouTube narratives can lag trade entries; treat videos as thesis evidence, not verified fills.")
+        if risk_level == "low":
+            notes.append("Risk profile is comparatively stable, but every allocation should remain paper-only until compliance is live.")
+        else:
+            notes.append("Managed mode remains paper-only until live execution, suitability, and audit controls are approved.")
+        return notes[:4]
+
+    def _social_allocation_guidance(self, row: dict, risk_level: str, readiness: str) -> dict[str, object]:
+        portfolio = max(float(self.settings.paper_starting_balance or 0), 1000.0)
+        composite_score = float(row.get("composite_score") or 0)
+        risk_multiplier = {"low": 0.16, "medium": 0.1, "high": 0.04}.get(risk_level, 0.06)
+        max_position_pct = {"low": 0.12, "medium": 0.08, "high": 0.04}.get(risk_level, 0.06)
+        recommended_mode = "managed_paper" if readiness == "paper_ready" else "signals"
+        if readiness == "needs_review":
+            suggested_allocation = 0.0
+        else:
+            score_multiplier = min(1.15, max(0.35, composite_score / 75))
+            suggested_allocation = min(portfolio * 0.25, portfolio * risk_multiplier * score_multiplier)
+            if recommended_mode == "signals":
+                suggested_allocation = min(suggested_allocation, portfolio * 0.05)
+        suggested_allocation = round(suggested_allocation, 2)
+        max_single_position = round(suggested_allocation * max_position_pct, 2)
+        if readiness == "paper_ready":
+            rationale = "Metrics support a small managed-paper pilot with hard caps and review cadence."
+        elif readiness == "needs_review":
+            rationale = "Not enough high-quality evidence yet; collect more calls before allocating capital."
+        else:
+            rationale = "Useful signal source, but risk or consistency keeps it out of managed-paper mode for now."
+        return {
+            "recommended_mode": recommended_mode,
+            "suggested_allocation_usd": suggested_allocation,
+            "max_single_position_usd": max_single_position,
+            "max_position_pct": max_position_pct,
+            "rationale": rationale,
+        }
 
     @staticmethod
     def _to_social_trader_allocation(row: dict) -> SocialTraderAllocation:
@@ -5663,9 +5831,37 @@ class BotSocietyService:
                 "Diversify across at least one macro, one prediction-market, and one on-chain style.",
             ]
         return [
-            f"Start {trader.display_name} in signal mode first, then graduate to managed paper if 30-day paper tracking stays positive."
+            f"Start {trader.display_name} in {trader.allocation_guidance.recommended_mode.replace('_', ' ')} mode; suggested cap {trader.allocation_guidance.suggested_allocation_usd:,.0f} USD."
             for trader in candidates
         ]
+
+    @staticmethod
+    def _social_portfolio_risk_notes(
+        top_traders: list[SocialTraderScorecard],
+        allocations: list[SocialTraderAllocation],
+        *,
+        allocated_usd: float,
+        portfolio_limit: float,
+        youtube_configured: bool,
+    ) -> list[str]:
+        notes: list[str] = []
+        exposure_ratio = allocated_usd / portfolio_limit if portfolio_limit else 0
+        active_trader_ids = {allocation.trader_id for allocation in allocations if allocation.is_active}
+        high_risk_followed = [
+            trader.display_name for trader in top_traders if trader.id in active_trader_ids and trader.risk_level == "high"
+        ]
+        if allocated_usd <= 0:
+            notes.append("No paper capital is assigned yet; begin with signal mode before managed-paper allocation.")
+        else:
+            notes.append(f"Active social-manager exposure is {exposure_ratio:.0%} of the configured paper portfolio limit.")
+        if exposure_ratio > 0.35:
+            notes.append("Social-manager exposure is above the recommended launch ceiling; rebalance across independent strategies.")
+        if high_risk_followed:
+            notes.append(f"High-risk followed profile(s): {', '.join(high_risk_followed[:3])}. Keep them signal-only or reduce caps.")
+        if not youtube_configured:
+            notes.append("YouTube discovery is using demo evidence until BSM_YOUTUBE_API_KEY is configured in production secrets.")
+        notes.append("Never graduate social copy trading to live funds without KYC, suitability, disclosures, and venue permissions.")
+        return notes[:4]
 
     def _decode_string_list(self, raw_payload: object) -> list[str]:
         payload = self._decode_json_payload(str(raw_payload) if raw_payload is not None else None)

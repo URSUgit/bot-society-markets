@@ -1353,6 +1353,27 @@ function socialAvatarStyle(seed) {
   return `--avatar-hue:${score % 360}deg`;
 }
 
+function socialRiskTone(level) {
+  if (level === "low") {
+    return "positive";
+  }
+  if (level === "high") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function socialImpactTone(label) {
+  const normalized = String(label || "").toLowerCase();
+  if (normalized.includes("miss") || normalized.includes("negative")) {
+    return "danger";
+  }
+  if (normalized.includes("flat")) {
+    return "warning";
+  }
+  return "positive";
+}
+
 function renderSocialTrading(socialTrading) {
   const summary = document.getElementById("social-trader-summary");
   const badge = document.getElementById("social-trader-badge");
@@ -1402,10 +1423,16 @@ function renderSocialTrading(socialTrading) {
 
   grid.innerHTML = traders.map((trader) => {
     const allocation = allocationByTrader.get(trader.id);
+    const guidance = trader.allocation_guidance || {};
+    const riskNotes = (trader.risk_notes || []).slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
     const evidence = (trader.evidence || []).slice(0, 2).map((item) => `
       <li>
-        <a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
-        <span>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtSignedPercent(item.derived_return)}</span>
+        <div class="social-evidence-head">
+          <a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
+          <small data-tone="${socialImpactTone(item.impact_label)}">${escapeHtml(item.impact_label || "evidence")}</small>
+        </div>
+        <span>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtPercent(item.evidence_weight || 0)} weight · ${fmtSignedPercent(item.derived_return)}</span>
+        ${item.risk_flag ? `<em>${escapeHtml(item.risk_flag)}</em>` : ""}
       </li>
     `).join("") || "<li><span>No public evidence events indexed yet.</span></li>";
     return `
@@ -1420,21 +1447,37 @@ function renderSocialTrading(socialTrading) {
             <p>${escapeHtml(trader.description)}</p>
           </div>
         </div>
+        <div class="social-intel-strip">
+          <span data-tone="${socialRiskTone(trader.risk_level)}">Risk: ${escapeHtml(humanizeKey(trader.risk_level || "medium"))}</span>
+          <span>${escapeHtml(trader.conviction_label || "Signal watchlist")}</span>
+          <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
+        </div>
         <div class="social-score-strip">
           <div><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong></div>
           <div><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong></div>
           <div><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
           <div><span>Drawdown</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
         </div>
+        <div class="social-decision-box">
+          <p>${escapeHtml(trader.watch_mode_recommendation || "Start in signal mode, then validate with paper tracking.")}</p>
+          <div>
+            <span>Suggested cap <strong>${fmtUsd(guidance.suggested_allocation_usd || 0)}</strong></span>
+            <span>Max idea <strong>${fmtUsd(guidance.max_single_position_usd || 0)}</strong></span>
+            <span>Mode <strong>${escapeHtml(humanizeKey(guidance.recommended_mode || "signals"))}</strong></span>
+          </div>
+          <small>${escapeHtml(guidance.rationale || trader.evidence_summary || "")}</small>
+        </div>
         <div class="social-tag-row">
           ${(trader.primary_assets || []).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
           ${(trader.style_tags || []).slice(0, 3).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
         </div>
+        <p class="social-evidence-summary">${escapeHtml(trader.evidence_summary || "")}</p>
         <ul class="social-evidence-list">${evidence}</ul>
+        ${riskNotes ? `<ul class="social-risk-note-list">${riskNotes}</ul>` : ""}
         <div class="social-manager-controls">
           <label>
             <span>Paper allocation cap</span>
-            <input type="number" min="0" max="100000" step="50" value="${allocation?.allocation_limit_usd || 500}" data-social-allocation-id="${trader.id}" ${disabledAttr(!canEdit)}>
+            <input type="number" min="0" max="100000" step="50" value="${allocation?.allocation_limit_usd || guidance.suggested_allocation_usd || 500}" data-social-allocation-id="${trader.id}" ${disabledAttr(!canEdit)}>
           </label>
           <label>
             <span>Max per idea</span>
@@ -1467,7 +1510,10 @@ function renderSocialTrading(socialTrading) {
     </li>
   `).join("") || "<li><p>No followed social managers yet. Sign in, then activate signal or managed-paper mode from a profile card.</p></li>";
 
-  safetyList.innerHTML = (socialTrading.safety_notes || []).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
+  safetyList.innerHTML = [
+    ...(socialTrading.portfolio_risk_notes || []),
+    ...(socialTrading.safety_notes || []),
+  ].map((note) => `<li>${escapeHtml(note)}</li>`).join("");
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {

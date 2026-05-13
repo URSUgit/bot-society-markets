@@ -23,6 +23,8 @@ InfrastructureTaskState = Literal["ready", "attention", "planned"]
 SocialPlatform = Literal["youtube", "x", "reddit", "telegram", "newsletter", "other"]
 SocialTradeMode = Literal["signals", "managed_paper"]
 SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
+SocialRiskLevel = Literal["low", "medium", "high"]
+SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
 
 
 class Summary(BaseModel):
@@ -976,8 +978,19 @@ class SocialEvidenceItem(BaseModel):
     direction: Direction
     confidence: float = Field(ge=0, le=1)
     engagement_score: float = Field(ge=0, le=1)
+    evidence_weight: float = Field(ge=0, le=1)
+    impact_label: str
+    risk_flag: str | None = None
     observed_at: str
     derived_return: float
+
+
+class SocialTraderAllocationGuidance(BaseModel):
+    recommended_mode: SocialTradeMode
+    suggested_allocation_usd: float = Field(ge=0)
+    max_single_position_usd: float = Field(ge=0)
+    max_position_pct: float = Field(ge=0, le=1)
+    rationale: str
 
 
 class SocialTraderScorecard(BaseModel):
@@ -1005,6 +1018,13 @@ class SocialTraderScorecard(BaseModel):
     composite_score: float = Field(ge=0, le=100)
     last_signal_at: str | None = None
     state: SocialTraderState = "discovered"
+    risk_level: SocialRiskLevel
+    conviction_label: str
+    copy_trade_readiness: SocialCopyTradeReadiness
+    watch_mode_recommendation: str
+    evidence_summary: str
+    risk_notes: list[str] = Field(default_factory=list)
+    allocation_guidance: SocialTraderAllocationGuidance
     evidence: list[SocialEvidenceItem] = Field(default_factory=list)
 
 
@@ -1035,6 +1055,7 @@ class SocialTradingSnapshot(BaseModel):
     allocated_usd: float = Field(ge=0)
     unallocated_usd: float = Field(ge=0)
     diversification_plan: list[str] = Field(default_factory=list)
+    portfolio_risk_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
 
 
