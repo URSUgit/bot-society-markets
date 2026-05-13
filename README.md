@@ -117,6 +117,7 @@ Included today:
 - a streamlined public website positioned as a professional Market Intelligence OS instead of an overloaded analytics dashboard
 - a calmer BITprivat command dashboard with sticky grouped navigation and primary live-market workflows prioritized above secondary admin panels
 - Docker and Akash deployment defaults that target CoinGecko public market data plus Polymarket and Kalshi venue-signal ingestion, with safe demo fallback behavior still available
+- Akash operator automation for deploy, create-new, and list-DSEQ recovery modes through GitHub Actions
 
 ## Product Surface
 

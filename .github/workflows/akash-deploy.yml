@@ -10,6 +10,15 @@ on:
       - completed
   workflow_dispatch:
     inputs:
+      mode:
+        description: Deploy action to run.
+        required: false
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - list
+          - create_new
       image_ref:
         description: Optional image ref. Defaults to ghcr.io/<repo>:sha-<current-sha>.
         required: false
@@ -103,7 +112,13 @@ jobs:
             social_provider="demo"
           fi
 
+          mode="${{ github.event.inputs.mode }}"
+          if [ -z "$mode" ]; then
+            mode="deploy"
+          fi
+
           {
+            echo "mode=$mode"
             echo "image_ref=$image_ref"
             echo "wait_seconds=$wait_seconds"
             echo "verify=$verify"
@@ -123,8 +138,12 @@ jobs:
         run: |
           missing=()
           [ -z "$AKASH_API_KEY" ] && missing+=("AKASH_API_KEY")
-          [ -z "$AKASH_DSEQ" ] && missing+=("AKASH_DSEQ")
-          [ -z "$BSM_DATABASE_URL" ] && missing+=("BSM_DATABASE_URL")
+          if [ "${{ steps.options.outputs.mode }}" = "deploy" ] && [ -z "$AKASH_DSEQ" ]; then
+            missing+=("AKASH_DSEQ")
+          fi
+          if [ "${{ steps.options.outputs.mode }}" != "list" ] && [ -z "$BSM_DATABASE_URL" ]; then
+            missing+=("BSM_DATABASE_URL")
+          fi
           if [ "${{ steps.options.outputs.social_provider }}" = "youtube" ] && [ -z "$BSM_YOUTUBE_API_KEY" ]; then
             missing+=("BSM_YOUTUBE_API_KEY")
           fi
@@ -146,6 +165,11 @@ jobs:
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
           BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
         run: |
+          if ("${{ steps.options.outputs.mode }}" -eq "list") {
+            ./deploy/akash/deploy-production.ps1 -List
+            return
+          }
+
           $deployArgs = @{
             ImageRef = "${{ steps.options.outputs.image_ref }}"
             WaitSeconds = [int]"${{ steps.options.outputs.wait_seconds }}"
@@ -160,6 +184,9 @@ jobs:
           }
           if ("${{ steps.options.outputs.skip_image_check }}" -eq "true") {
             $deployArgs.SkipImageWorkflowCheck = $true
+          }
+          if ("${{ steps.options.outputs.mode }}" -eq "create_new") {
+            $deployArgs.CreateNew = $true
           }
 
           ./deploy/akash/deploy-production.ps1 @deployArgs
