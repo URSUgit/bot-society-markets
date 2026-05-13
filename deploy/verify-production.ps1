@@ -2,6 +2,8 @@ param(
     [string]$RootUrl = "https://bitprivat.com",
     [string]$ApiUrl = "https://api.bitprivat.com",
     [string]$StatusUrl = "https://status.bitprivat.com",
+    [int]$Attempts = 3,
+    [int]$RetryDelaySeconds = 2,
     [switch]$ExpectOperatorStrip,
     [switch]$ExpectSocialTrading
 )
@@ -15,25 +17,47 @@ function Invoke-ProductionCheck {
         [scriptblock]$Assert
     )
 
-    try {
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30
-        $passed = & $Assert $response
-        [pscustomobject]@{
-            Name = $Name
-            Status = [int]$response.StatusCode
-            Passed = [bool]$passed
-            Bytes = $response.Content.Length
-            Url = $Url
+    $lastError = $null
+    for ($attempt = 1; $attempt -le [Math]::Max(1, $Attempts); $attempt++) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30
+            $passed = & $Assert $response
+            if ($passed -or $attempt -ge $Attempts) {
+                return [pscustomobject]@{
+                    Name = $Name
+                    Status = [int]$response.StatusCode
+                    Passed = [bool]$passed
+                    Bytes = $response.Content.Length
+                    Url = $Url
+                    Attempts = $attempt
+                }
+            }
+        } catch {
+            $lastError = $_.Exception.Message
+            if ($attempt -ge $Attempts) {
+                return [pscustomobject]@{
+                    Name = $Name
+                    Status = "ERR"
+                    Passed = $false
+                    Bytes = 0
+                    Url = $Url
+                    Attempts = $attempt
+                    Error = $lastError
+                }
+            }
         }
-    } catch {
-        [pscustomobject]@{
-            Name = $Name
-            Status = "ERR"
-            Passed = $false
-            Bytes = 0
-            Url = $Url
-            Error = $_.Exception.Message
-        }
+
+        Start-Sleep -Seconds ([Math]::Max(1, $RetryDelaySeconds) * $attempt)
+    }
+
+    [pscustomobject]@{
+        Name = $Name
+        Status = "ERR"
+        Passed = $false
+        Bytes = 0
+        Url = $Url
+        Attempts = [Math]::Max(1, $Attempts)
+        Error = if ($lastError) { $lastError } else { "Unknown verification failure." }
     }
 }
 
