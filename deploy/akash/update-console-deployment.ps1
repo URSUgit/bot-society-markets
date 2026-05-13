@@ -12,11 +12,34 @@ param(
     [string]$RootUrl = "https://bitprivat.com",
     [string]$ApiUrl = "https://api.bitprivat.com",
     [string]$StatusUrl = "https://status.bitprivat.com",
+    [int]$ApiMaxAttempts = 6,
+    [int]$ApiRetryBaseSeconds = 5,
     [switch]$ExpectOperatorStrip,
     [switch]$ExpectSocialTrading
 )
 
 $ErrorActionPreference = "Stop"
+
+function Test-TransientAkashError {
+    param([Parameter(Mandatory = $true)]$ErrorRecord)
+
+    $messageParts = @(
+        $ErrorRecord.Exception.Message
+        $ErrorRecord.ErrorDetails.Message
+    ) | Where-Object { $_ }
+    $message = $messageParts -join " "
+
+    $statusCode = $null
+    if ($ErrorRecord.Exception.Response -and $ErrorRecord.Exception.Response.StatusCode) {
+        $statusCode = [int]$ErrorRecord.Exception.Response.StatusCode
+    }
+
+    if ($statusCode -in @(408, 429, 500, 502, 503, 504)) {
+        return $true
+    }
+
+    return $message -match "ServiceUnavailableError|service_unavailable|temporarily unavailable|timeout|timed out|gateway|connection reset|connection.*closed"
+}
 
 function Invoke-AkashConsoleApi {
     param(
@@ -35,12 +58,27 @@ function Invoke-AkashConsoleApi {
         "x-api-key" = $ApiKey
     }
     $uri = "$ApiBaseUrl$Path"
+    $canRetrySafely = $Method -in @("GET", "PUT")
+    $attempts = if ($canRetrySafely) { [Math]::Max(1, $ApiMaxAttempts) } else { 1 }
 
-    if ($null -ne $Body) {
-        $json = $Body | ConvertTo-Json -Depth 100
-        Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers -ContentType "application/json" -Body $json
-    } else {
-        Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        try {
+            if ($null -ne $Body) {
+                $json = $Body | ConvertTo-Json -Depth 100
+                return Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers -ContentType "application/json" -Body $json
+            }
+
+            return Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers
+        } catch {
+            $isTransient = Test-TransientAkashError -ErrorRecord $_
+            if (-not $canRetrySafely -or -not $isTransient -or $attempt -ge $attempts) {
+                throw
+            }
+
+            $delay = [int][Math]::Min(60, $ApiRetryBaseSeconds * [Math]::Pow(2, $attempt - 1))
+            Write-Output "Akash Console API $Method $Path failed with a transient provider error (attempt $attempt/$attempts). Retrying in $delay seconds..."
+            Start-Sleep -Seconds $delay
+        }
     }
 }
 
