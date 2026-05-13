@@ -187,11 +187,19 @@ if (-not $Dseq) {
     throw "Pass -Dseq for the existing deployment to update. Use -List to find active DSEQ values."
 }
 
-Invoke-AkashConsoleApi -Method "PUT" -Path "/v1/deployments/$Dseq" -Body @{
-    data = @{
-        sdl = $sdl
+try {
+    Invoke-AkashConsoleApi -Method "PUT" -Path "/v1/deployments/$Dseq" -Body @{
+        data = @{
+            sdl = $sdl
+        }
+    } | Out-Null
+} catch {
+    $message = $_.Exception.Message
+    if ($message -match "404|not_found|NotFound|Deployment not found") {
+        throw "Akash deployment '$Dseq' was not found for this API key. Run deploy\akash\deploy-production.ps1 -List, or trigger the Akash Deploy workflow with mode=list, then update AKASH_DSEQ with an active deployment DSEQ."
     }
-} | Out-Null
+    throw
+}
 
 Write-Output "Updated Akash deployment $Dseq with SDL: $SdlPath"
 Wait-AfterDeploymentUpdate -ActiveDseq $Dseq

@@ -6,6 +6,8 @@ param(
     [ValidateSet("demo", "youtube")]
     [string]$SocialDiscoveryProvider = "demo",
     [int]$WaitSeconds = 90,
+    [switch]$List,
+    [switch]$CreateNew,
     [switch]$WithWorker,
     [switch]$NoVerify,
     [switch]$SkipImageCheck,
@@ -43,11 +45,19 @@ $resolvedImageRef = if ($ImageRef) { $ImageRef.Trim() } else { Get-DefaultImageR
 $verifyValue = if ($NoVerify) { "false" } else { "true" }
 $withWorkerValue = if ($WithWorker) { "true" } else { "false" }
 $skipImageCheckValue = if ($SkipImageCheck) { "true" } else { "false" }
+$modeValue = if ($List) {
+    "list"
+} elseif ($CreateNew) {
+    "create_new"
+} else {
+    "deploy"
+}
 
 $workflowArgs = @(
     "workflow", "run", "Akash Deploy",
     "--repo", $Repo,
     "--ref", $Ref,
+    "-f", "mode=$modeValue",
     "-f", "image_ref=$resolvedImageRef",
     "-f", "wait_seconds=$WaitSeconds",
     "-f", "verify=$verifyValue",
