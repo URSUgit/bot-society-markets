@@ -502,10 +502,20 @@ def _sqlite_url_for_path(path: Path) -> str:
     return f"sqlite:///{path.resolve().as_posix()}"
 
 
+def normalize_database_url(url: str | None) -> str | None:
+    """Prefer the installed psycopg v3 driver when users paste generic Postgres URLs."""
+    if not url:
+        return None
+    normalized = url.strip()
+    if normalized.startswith("postgresql://"):
+        return "postgresql+psycopg://" + normalized.removeprefix("postgresql://")
+    return normalized
+
+
 class Database:
     def __init__(self, path: Path | None = None, url: str | None = None) -> None:
         self.path = path
-        self.url = url or _sqlite_url_for_path(path or Path("api/data/bot_society_markets.db"))
+        self.url = normalize_database_url(url) or _sqlite_url_for_path(path or Path("api/data/bot_society_markets.db"))
         if self.url.startswith("sqlite:///"):
             sqlite_path = path or Path(self.url.removeprefix("sqlite:///"))
             sqlite_path.parent.mkdir(parents=True, exist_ok=True)
