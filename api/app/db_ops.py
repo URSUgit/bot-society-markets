@@ -10,7 +10,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, select
 
-from .database import Database, metadata
+from .database import Database, metadata, normalize_database_url
 
 
 @dataclass(slots=True)
@@ -35,7 +35,7 @@ def build_alembic_config(database_url: str | None = None) -> Config:
     repo_root = Path(__file__).resolve().parents[2]
     config = Config(str((repo_root / "alembic.ini").resolve()))
     if database_url:
-        config.set_main_option("sqlalchemy.url", database_url)
+        config.set_main_option("sqlalchemy.url", normalize_database_url(database_url) or database_url)
     return config
 
 

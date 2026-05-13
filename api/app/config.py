@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .database import normalize_database_url
+
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - optional during bootstrap before deps install
@@ -204,7 +206,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 def get_settings() -> Settings:
     database_path = Path(os.getenv("BSM_DATABASE_PATH", str(_default_database_path())))
-    database_url = os.getenv("BSM_DATABASE_URL") or None
+    database_url = normalize_database_url(os.getenv("BSM_DATABASE_URL") or None)
     seed_demo_data = _env_bool("BSM_SEED_DEMO_DATA", True)
     force_https = _env_bool("BSM_FORCE_HTTPS", False)
     secure_session_cookie_env = os.getenv("BSM_SECURE_SESSION_COOKIE")

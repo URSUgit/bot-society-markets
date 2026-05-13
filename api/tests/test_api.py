@@ -17,7 +17,7 @@ import zipfile
 from fastapi.testclient import TestClient
 
 from api.app.config import Settings
-from api.app.database import Database
+from api.app.database import Database, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.main import create_app
 
@@ -49,6 +49,12 @@ def test_healthcheck() -> None:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+
+def test_generic_postgres_url_uses_installed_psycopg_driver() -> None:
+    url = "postgresql://user:pass@example.test/db?sslmode=require"
+    assert normalize_database_url(url) == "postgresql+psycopg://user:pass@example.test/db?sslmode=require"
+    assert normalize_database_url("postgresql+psycopg://user:pass@example.test/db") == "postgresql+psycopg://user:pass@example.test/db"
 
 
 def test_dashboard_snapshot_has_professional_data() -> None:
