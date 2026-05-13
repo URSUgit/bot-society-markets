@@ -210,6 +210,8 @@ class BotSocietyService:
         self.wallet_provider_source = self.wallet_provider.source_name
         self.wallet_snapshot_cache: tuple[datetime, WalletIntelligenceSnapshot] | None = None
         self.edge_snapshot_cache: tuple[datetime, EdgeSnapshot] | None = None
+        self.provider_status_cache: tuple[datetime, ProviderStatus] | None = None
+        self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
 
     def bootstrap(self) -> None:
         self.database.initialize()
@@ -387,6 +389,7 @@ class BotSocietyService:
                 continue
             event_payloads.extend(self._social_event_payloads(trader_id, trader.evidence, now=now))
         active_repository.upsert_social_trader_events(event_payloads)
+        self._clear_live_caches()
 
         visible_rows = active_repository.list_social_traders(limit=12)
         visible_scorecards = [
@@ -489,6 +492,7 @@ class BotSocietyService:
                 "updated_at": now,
             }
         )
+        self._clear_live_caches()
         return self.get_social_trading_snapshot(user_slug, repository)
 
     def diversify_social_portfolio(
@@ -522,6 +526,7 @@ class BotSocietyService:
                     "updated_at": now,
                 }
             )
+        self._clear_live_caches()
         return self.get_social_trading_snapshot(user_slug, repository)
 
     def create_strategy(self, user_slug: str, payload: StrategyCreateRequest) -> StrategyView:
@@ -935,16 +940,26 @@ class BotSocietyService:
         )
         return BillingWebhookAck(event_type=event_type, status="processed")
 
-    def get_summary(self, user_slug: str | None = None) -> Summary:
-        repository = BotSocietyRepository(self.database)
-        bots = self._build_bot_summaries(repository, user_slug)
-        predictions = repository.list_predictions(limit=500)
-        assets = repository.list_assets()
-        signals = repository.list_recent_signals(limit=100)
-        latest_run = repository.get_latest_pipeline_run()
+    def get_summary(
+        self,
+        user_slug: str | None = None,
+        *,
+        repository: BotSocietyRepository | None = None,
+        bot_summaries: list[BotSummary] | None = None,
+        predictions: list[dict] | None = None,
+        assets: list[str] | None = None,
+        signals: list[dict] | None = None,
+        latest_run: dict | None = None,
+    ) -> Summary:
+        active_repository = repository or BotSocietyRepository(self.database)
+        bots = bot_summaries or self._build_bot_summaries(active_repository, user_slug)
+        predictions = predictions if predictions is not None else active_repository.list_predictions(limit=500)
+        assets = assets if assets is not None else active_repository.list_assets()
+        signals = signals if signals is not None else active_repository.list_recent_signals(limit=100)
+        latest_run = latest_run if latest_run is not None else active_repository.get_latest_pipeline_run()
         latest_signal_time = parse_timestamp(signals[0]["observed_at"]) if signals else None
         signals_last_24h = (
-            repository.count_signals_since(to_timestamp(latest_signal_time.replace(hour=0, minute=0, second=0)))
+            active_repository.count_signals_since(to_timestamp(latest_signal_time.replace(hour=0, minute=0, second=0)))
             if latest_signal_time
             else 0
         )
@@ -1040,11 +1055,19 @@ class BotSocietyService:
         recent_predictions = self._build_prediction_views(repository, repository.list_predictions(bot_slug=slug, limit=8))
         return BotDetail(**summary.model_dump(), recent_predictions=recent_predictions)
 
-    def get_paper_trading_snapshot(self, user_slug: str) -> PaperTradingSnapshot:
-        repository = BotSocietyRepository(self.database)
-        closed_positions = self._sync_paper_positions(repository, user_slug)
-        positions = repository.list_paper_positions(user_slug)
-        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
+    def get_paper_trading_snapshot(
+        self,
+        user_slug: str,
+        *,
+        repository: BotSocietyRepository | None = None,
+        latest_assets: dict[str, dict] | None = None,
+    ) -> PaperTradingSnapshot:
+        active_repository = repository or BotSocietyRepository(self.database)
+        closed_positions = self._sync_paper_positions(active_repository, user_slug)
+        positions = active_repository.list_paper_positions(user_slug)
+        latest_assets = latest_assets or {
+            row["asset"]: row for row in active_repository.list_latest_market_snapshots()
+        }
         views: list[PaperPositionView] = []
 
         for row in positions:
@@ -1158,6 +1181,7 @@ class BotSocietyService:
                 created_positions += 1
                 available_cash -= allocation + fee_cost
 
+        self._clear_live_caches()
         return PaperSimulationResult(
             created_positions=created_positions,
             closed_positions=closed_positions,
@@ -1249,6 +1273,7 @@ class BotSocietyService:
         row = repository.get_order(user_slug, order_id)
         if not row:
             raise ValueError("Unable to record paper order")
+        self._clear_live_caches()
         return self._trading_order_view_from_row(row)
 
     def list_trading_orders(
@@ -1989,13 +2014,22 @@ class BotSocietyService:
         repository.mark_all_alert_deliveries_read(user_slug, self._now())
         return self.get_alert_inbox(user_slug)
 
-    def get_user_profile(self, user_slug: str) -> UserProfile:
-        repository = BotSocietyRepository(self.database)
-        user = repository.get_user(user_slug)
+    def get_user_profile(
+        self,
+        user_slug: str,
+        *,
+        repository: BotSocietyRepository | None = None,
+        leaderboard_map: dict[str, BotSummary] | None = None,
+        alert_inbox: AlertInbox | None = None,
+    ) -> UserProfile:
+        active_repository = repository or BotSocietyRepository(self.database)
+        user = active_repository.get_user(user_slug)
         if not user:
             raise ValueError(f"User {user_slug} is not available")
 
-        leaderboard_map = {bot.slug: bot for bot in self._build_bot_summaries(repository, user_slug)}
+        leaderboard_map = leaderboard_map or {
+            bot.slug: bot for bot in self._build_bot_summaries(active_repository, user_slug)
+        }
         follows = [
             FollowedBot(
                 bot_slug=row["bot_slug"],
@@ -2003,18 +2037,18 @@ class BotSocietyService:
                 score=leaderboard_map[row["bot_slug"]].score if row["bot_slug"] in leaderboard_map else 0.0,
                 created_at=row["created_at"],
             )
-            for row in repository.list_user_follows(user_slug)
+            for row in active_repository.list_user_follows(user_slug)
         ]
-        watchlist = [WatchlistItem(**row) for row in repository.list_watchlist_items(user_slug)]
+        watchlist = [WatchlistItem(**row) for row in active_repository.list_watchlist_items(user_slug)]
         alert_rules = [
             AlertRule(**{**row, "is_active": bool(row["is_active"])})
-            for row in repository.list_alert_rules(user_slug)
+            for row in active_repository.list_alert_rules(user_slug)
         ]
         notification_channels = [
             NotificationChannel(**{**row, "is_active": bool(row["is_active"])})
-            for row in repository.list_notification_channels(user_slug)
+            for row in active_repository.list_notification_channels(user_slug)
         ]
-        alert_inbox = self.get_alert_inbox(user_slug)
+        alert_inbox = alert_inbox or self.get_alert_inbox(user_slug)
         return UserProfile(
             slug=user["slug"],
             display_name=user["display_name"],
@@ -2181,11 +2215,13 @@ class BotSocietyService:
         if not repository.get_bot(bot_slug):
             raise ValueError(f"Unknown bot slug: {bot_slug}")
         repository.create_follow(user_slug, bot_slug, self._now())
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def unfollow_bot(self, user_slug: str, bot_slug: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         repository.delete_follow(user_slug, bot_slug)
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def add_watchlist_asset(self, user_slug: str, asset: str) -> UserProfile:
@@ -2194,11 +2230,13 @@ class BotSocietyService:
         if normalized_asset not in repository.list_assets():
             raise ValueError(f"Unknown asset: {normalized_asset}")
         repository.create_watchlist_item(user_slug, normalized_asset, self._now())
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def remove_watchlist_asset(self, user_slug: str, asset: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         repository.delete_watchlist_item(user_slug, asset.upper())
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def add_alert_rule(self, user_slug: str, payload: AlertRuleCreate) -> UserProfile:
@@ -2218,11 +2256,13 @@ class BotSocietyService:
                 "created_at": self._now(),
             }
         )
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def delete_alert_rule(self, user_slug: str, rule_id: int) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         repository.delete_alert_rule(user_slug, rule_id)
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def add_notification_channel(self, user_slug: str, payload: NotificationChannelCreate) -> UserProfile:
@@ -2245,14 +2285,19 @@ class BotSocietyService:
             )
         except IntegrityError as exc:
             raise ValueError("That notification channel already exists") from exc
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
     def delete_notification_channel(self, user_slug: str, channel_id: int) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         repository.delete_notification_channel(user_slug, channel_id)
+        self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
-    def get_provider_status(self) -> ProviderStatus:
+    def get_provider_status(self, *, force_refresh: bool = False) -> ProviderStatus:
+        if not force_refresh and self._cache_is_fresh(self.provider_status_cache, ttl_seconds=30):
+            return self.provider_status_cache[1]
+
         market_readiness = self.market_provider.readiness()
         signal_ready, signal_warning, venue_statuses = self._signal_provider_health()
         macro_readiness = self.macro_provider.readiness()
@@ -2262,7 +2307,7 @@ class BotSocietyService:
         signal_configured, signal_live_capable = self._provider_configuration("signal")
         macro_configured, macro_live_capable = self._provider_configuration("macro")
         wallet_configured, wallet_live_capable = self._provider_configuration("wallet")
-        return ProviderStatus(
+        status = ProviderStatus(
             environment_name=self.settings.environment_name,
             deployment_target=self.settings.deployment_target,
             database_backend=self.database.dialect_name,
@@ -2315,10 +2360,16 @@ class BotSocietyService:
                 and not social_readiness.ready
             ),
         )
+        self.provider_status_cache = (datetime.now(timezone.utc), status)
+        return status
 
-    def get_connector_control(self) -> ConnectorControlSnapshot:
-        provider_status = self.get_provider_status()
-        paper_venues = self.get_paper_venues()
+    def get_connector_control(
+        self,
+        provider_status: ProviderStatus | None = None,
+        paper_venues: PaperVenuesSnapshot | None = None,
+    ) -> ConnectorControlSnapshot:
+        provider_status = provider_status or self.get_provider_status()
+        paper_venues = paper_venues or self.get_paper_venues()
         venue_lookup = {venue.id: venue for venue in paper_venues.venues}
 
         signal_source = provider_status.signal_provider_source
@@ -2949,8 +3000,8 @@ class BotSocietyService:
             required=required,
         )
 
-    def get_infrastructure_readiness(self) -> InfrastructureReadinessSnapshot:
-        provider_status = self.get_provider_status()
+    def get_infrastructure_readiness(self, provider_status: ProviderStatus | None = None) -> InfrastructureReadinessSnapshot:
+        provider_status = provider_status or self.get_provider_status()
         database_ready = provider_status.database_backend == "postgresql"
         hosted_target = self.settings.deployment_target in {"render", "akash"}
         https_ready = bool(self.settings.canonical_host and self.settings.force_https)
@@ -3022,8 +3073,8 @@ class BotSocietyService:
             tasks=tasks,
         )
 
-    def get_production_cutover(self) -> ProductionCutoverSnapshot:
-        provider_status = self.get_provider_status()
+    def get_production_cutover(self, provider_status: ProviderStatus | None = None) -> ProductionCutoverSnapshot:
+        provider_status = provider_status or self.get_provider_status()
         current_backend = provider_status.database_backend
         current_target = provider_status.database_target
         source_path = str(self.settings.database_path)
@@ -3247,8 +3298,8 @@ class BotSocietyService:
             return "building"
         return "selected"
 
-    def get_launch_readiness(self) -> LaunchReadinessSnapshot:
-        provider_status = self.get_provider_status()
+    def get_launch_readiness(self, provider_status: ProviderStatus | None = None) -> LaunchReadinessSnapshot:
+        provider_status = provider_status or self.get_provider_status()
         terms_url = self.settings.terms_url or "/terms"
         privacy_url = self.settings.privacy_url or "/privacy"
         risk_disclosure_url = self.settings.risk_disclosure_url or "/risk"
@@ -3809,36 +3860,80 @@ class BotSocietyService:
         )
 
     def get_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
+        cache_key = user_slug or self.settings.default_user_slug
+        cached_snapshot = self.dashboard_snapshot_cache.get(cache_key)
+        if self._cache_is_fresh(cached_snapshot, ttl_seconds=20):
+            return cached_snapshot[1]
+
         repository = BotSocietyRepository(self.database)
+        provider_status = self.get_provider_status()
+        latest_assets = repository.list_latest_market_snapshots()
+        latest_asset_map = {row["asset"]: row for row in latest_assets}
+        recent_signals = repository.list_recent_signals(limit=96)
+        recent_prediction_rows = repository.list_predictions(limit=10)
+        all_predictions = repository.list_predictions(limit=500)
+        pending_predictions = [row for row in all_predictions if row["status"] == "pending"]
+        asset_symbols = sorted({str(row["asset"]) for row in latest_assets})
+        latest_operation = self._latest_operation(repository)
+        leaderboard = self._build_bot_summaries(repository, user_slug)
+        leaderboard_map = {bot.slug: bot for bot in leaderboard}
+        notification_health = self.get_notification_health(user_slug)
+        alert_inbox = self.get_alert_inbox(user_slug)
         macro_snapshot = self.get_macro_snapshot(repository)
         wallet_snapshot = self.get_wallet_intelligence()
         edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
-        system_pulse = self.get_system_pulse(repository)
-        recent_prediction_rows = repository.list_predictions(limit=10)
-        return DashboardSnapshot(
-            summary=self.get_summary(user_slug),
-            assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository, user_slug),
+        system_pulse = self.get_system_pulse(
+            repository,
+            provider_status=provider_status,
+            notification_health=notification_health if user_slug == self.settings.default_user_slug else None,
+            recent_signals=recent_signals,
+            latest_assets=latest_assets,
+            pending_predictions=pending_predictions,
+        )
+        paper_venues = self.get_paper_venues()
+        snapshot = DashboardSnapshot(
+            summary=self.get_summary(
+                user_slug,
+                repository=repository,
+                bot_summaries=leaderboard,
+                predictions=all_predictions,
+                assets=asset_symbols,
+                signals=recent_signals,
+                latest_run=latest_operation.model_dump() if latest_operation else None,
+            ),
+            assets=[self._to_asset_model(row) for row in latest_assets],
+            leaderboard=leaderboard,
             recent_predictions=self._build_prediction_views(repository, recent_prediction_rows),
-            recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=8)],
+            recent_signals=[self._to_signal_model(row) for row in recent_signals[:8]],
             system_pulse=system_pulse,
             macro_snapshot=macro_snapshot,
             wallet_intelligence=wallet_snapshot,
             edge_snapshot=edge_snapshot,
-            paper_trading=self.get_paper_trading_snapshot(user_slug),
-            paper_venues=self.get_paper_venues(),
+            paper_trading=self.get_paper_trading_snapshot(
+                user_slug,
+                repository=repository,
+                latest_assets=latest_asset_map,
+            ),
+            paper_venues=paper_venues,
             social_trading=self.get_social_trading_snapshot(user_slug, repository),
-            latest_operation=self._latest_operation(repository),
+            latest_operation=latest_operation,
             auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
-            user_profile=self.get_user_profile(user_slug),
-            notification_health=self.get_notification_health(user_slug),
-            provider_status=self.get_provider_status(),
-            launch_readiness=self.get_launch_readiness(),
-            connector_control=self.get_connector_control(),
-            infrastructure_readiness=self.get_infrastructure_readiness(),
-            production_cutover=self.get_production_cutover(),
+            user_profile=self.get_user_profile(
+                user_slug,
+                repository=repository,
+                leaderboard_map=leaderboard_map,
+                alert_inbox=alert_inbox,
+            ),
+            notification_health=notification_health,
+            provider_status=provider_status,
+            launch_readiness=self.get_launch_readiness(provider_status=provider_status),
+            connector_control=self.get_connector_control(provider_status=provider_status, paper_venues=paper_venues),
+            infrastructure_readiness=self.get_infrastructure_readiness(provider_status=provider_status),
+            production_cutover=self.get_production_cutover(provider_status=provider_status),
             business_model=self.get_business_model_strategy(),
         )
+        self.dashboard_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
         repository = BotSocietyRepository(self.database)
@@ -3853,12 +3948,21 @@ class BotSocietyService:
             business_model=self.get_business_model_strategy(),
         )
 
-    def get_system_pulse(self, repository: BotSocietyRepository | None = None) -> SystemPulseSnapshot:
+    def get_system_pulse(
+        self,
+        repository: BotSocietyRepository | None = None,
+        *,
+        provider_status: ProviderStatus | None = None,
+        notification_health: NotificationHealthSnapshot | None = None,
+        recent_signals: list[dict] | None = None,
+        latest_assets: list[dict] | None = None,
+        pending_predictions: list[dict] | None = None,
+    ) -> SystemPulseSnapshot:
         active_repository = repository or BotSocietyRepository(self.database)
-        recent_signals = active_repository.list_recent_signals(limit=96)
-        latest_assets = active_repository.list_latest_market_snapshots()
-        provider_status = self.get_provider_status()
-        notification_health = self.get_notification_health(self.settings.default_user_slug)
+        recent_signals = recent_signals if recent_signals is not None else active_repository.list_recent_signals(limit=96)
+        latest_assets = latest_assets if latest_assets is not None else active_repository.list_latest_market_snapshots()
+        provider_status = provider_status or self.get_provider_status()
+        notification_health = notification_health or self.get_notification_health(self.settings.default_user_slug)
         generated_at = self._now()
         average_quality = mean(float(signal.get("source_quality_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
         average_freshness = mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
@@ -3870,14 +3974,18 @@ class BotSocietyService:
             + int(provider_status.social_discovery_live_capable)
         )
         live_provider_count += sum(1 for venue in provider_status.venue_signal_providers if venue.live_capable)
-        pending_predictions = len(active_repository.list_predictions(status="pending", limit=500))
+        pending_prediction_count = (
+            len(pending_predictions)
+            if pending_predictions is not None
+            else len(active_repository.list_predictions(status="pending", limit=500))
+        )
         return SystemPulseSnapshot(
             generated_at=generated_at,
             live_provider_count=live_provider_count,
             total_recent_signals=len(recent_signals),
             average_signal_quality=round(average_quality, 3),
             average_signal_freshness=round(average_freshness, 3),
-            pending_predictions=pending_predictions,
+            pending_predictions=pending_prediction_count,
             retry_queue_depth=notification_health.retry_queue_depth,
             signal_mix=self._build_signal_mix(recent_signals),
             venue_pulse=self._build_venue_pulse(recent_signals, latest_assets, provider_status),
@@ -4002,6 +4110,7 @@ class BotSocietyService:
             }
         )
         operation = repository.get_latest_pipeline_run()
+        self._clear_live_caches()
         return CycleResult(
             operation=self._to_operation_model(operation),
             leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
@@ -5386,6 +5495,10 @@ class BotSocietyService:
             return False
         cached_at, _ = cached_entry
         return cached_at >= datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+
+    def _clear_live_caches(self) -> None:
+        self.provider_status_cache = None
+        self.dashboard_snapshot_cache.clear()
 
     def _current_tracked_assets(self, repository: BotSocietyRepository | None = None) -> tuple[str, ...]:
         active_repository = repository or BotSocietyRepository(self.database)
