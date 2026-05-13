@@ -6226,6 +6226,43 @@ body.bit-engine-product-ui .eyebrow {
   font-size: 0.93rem;
 }
 
+.bit-engine-product-ui.command-os .social-intel-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.bit-engine-product-ui.command-os .social-intel-strip span {
+  color: var(--product-ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 7px 9px;
+  border: 1px solid #dbe6ea;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.bit-engine-product-ui.command-os .social-intel-strip span[data-tone="positive"] {
+  color: #0f766e;
+  border-color: #99f6e4;
+  background: #ccfbf1;
+}
+
+.bit-engine-product-ui.command-os .social-intel-strip span[data-tone="warning"] {
+  color: #a16207;
+  border-color: #fde68a;
+  background: #fef3c7;
+}
+
+.bit-engine-product-ui.command-os .social-intel-strip span[data-tone="danger"] {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fee2e2;
+}
+
 .bit-engine-product-ui.command-os .social-avatar-bust {
   position: relative;
   display: grid;
@@ -6266,6 +6303,49 @@ body.bit-engine-product-ui .eyebrow {
   margin: 14px 0;
 }
 
+.bit-engine-product-ui.command-os .social-decision-box {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(240, 253, 250, 0.96), rgba(255, 251, 235, 0.8)),
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.14), transparent 36%);
+}
+
+.bit-engine-product-ui.command-os .social-decision-box p {
+  color: var(--product-ink);
+  font-weight: 800;
+}
+
+.bit-engine-product-ui.command-os .social-decision-box div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bit-engine-product-ui.command-os .social-decision-box span {
+  display: grid;
+  gap: 3px;
+  color: var(--product-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-decision-box strong {
+  color: var(--product-ink);
+  font-size: 0.95rem;
+  text-transform: none;
+}
+
+.bit-engine-product-ui.command-os .social-decision-box small,
+.bit-engine-product-ui.command-os .social-evidence-summary {
+  color: var(--product-muted);
+  font-size: 0.87rem;
+}
+
 .bit-engine-product-ui.command-os .social-tag-row,
 .bit-engine-product-ui.command-os .social-action-row {
   display: flex;
@@ -6283,6 +6363,10 @@ body.bit-engine-product-ui .eyebrow {
   background: #e0f2fe;
 }
 
+.bit-engine-product-ui.command-os .social-evidence-summary {
+  margin-top: 12px;
+}
+
 .bit-engine-product-ui.command-os .social-evidence-list {
   display: grid;
   gap: 8px;
@@ -6298,15 +6382,66 @@ body.bit-engine-product-ui .eyebrow {
   background: #f8fafc;
 }
 
+.bit-engine-product-ui.command-os .social-evidence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .bit-engine-product-ui.command-os .social-evidence-list a {
   color: var(--product-ink);
   font-weight: 800;
   text-decoration: none;
 }
 
+.bit-engine-product-ui.command-os .social-evidence-list small {
+  flex: 0 0 auto;
+  color: #0f766e;
+  font-size: 0.67rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #ccfbf1;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list small[data-tone="warning"] {
+  color: #a16207;
+  background: #fef3c7;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list small[data-tone="danger"] {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
 .bit-engine-product-ui.command-os .social-evidence-list span {
   color: var(--product-muted);
   font-size: 0.85rem;
+}
+
+.bit-engine-product-ui.command-os .social-evidence-list em {
+  color: #b91c1c;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.bit-engine-product-ui.command-os .social-risk-note-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.bit-engine-product-ui.command-os .social-risk-note-list li {
+  color: #7c2d12;
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  background: #fff7ed;
 }
 
 .bit-engine-product-ui.command-os .social-manager-controls {
@@ -6415,6 +6550,10 @@ body.bit-engine-product-ui .eyebrow {
   .bit-engine-product-ui.command-os .social-kpi-grid,
   .bit-engine-product-ui.command-os .social-score-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bit-engine-product-ui.command-os .social-decision-box div {
+    grid-template-columns: 1fr;
   }
 }
 

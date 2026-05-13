@@ -92,6 +92,21 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["social_trading"]["top_traders"]
         assert payload["social_trading"]["top_traders"][0]["platform"] == "youtube"
         assert payload["social_trading"]["top_traders"][0]["evidence"]
+        assert payload["social_trading"]["top_traders"][0]["risk_level"] in {"low", "medium", "high"}
+        assert payload["social_trading"]["top_traders"][0]["copy_trade_readiness"] in {
+            "paper_ready",
+            "signals_only",
+            "needs_review",
+        }
+        assert payload["social_trading"]["top_traders"][0]["allocation_guidance"]["recommended_mode"] in {
+            "signals",
+            "managed_paper",
+        }
+        assert payload["social_trading"]["top_traders"][0]["evidence_summary"]
+        assert payload["social_trading"]["top_traders"][0]["risk_notes"]
+        assert payload["social_trading"]["top_traders"][0]["evidence"][0]["impact_label"]
+        assert 0 <= payload["social_trading"]["top_traders"][0]["evidence"][0]["evidence_weight"] <= 1
+        assert payload["social_trading"]["portfolio_risk_notes"]
         assert payload["social_trading"]["youtube_required"] is True
         assert payload["social_trading"]["youtube_configured"] is False
         assert "paper-only" in " ".join(payload["social_trading"]["safety_notes"])
@@ -354,12 +369,16 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         initial_snapshot = initial_response.json()["social_trading"]
         assert initial_snapshot["top_traders"]
         assert initial_snapshot["top_traders"][0]["evidence"]
+        assert initial_snapshot["top_traders"][0]["watch_mode_recommendation"]
+        assert initial_snapshot["top_traders"][0]["allocation_guidance"]["suggested_allocation_usd"] >= 0
 
         discovery_response = client.post("/api/social-traders/discover")
         assert discovery_response.status_code == 200
         discovery_payload = discovery_response.json()
         assert discovery_payload["updated"] >= 4
         assert discovery_payload["traders"][0]["platform"] == "youtube"
+        assert discovery_payload["traders"][0]["conviction_label"]
+        assert discovery_payload["traders"][0]["evidence"][0]["impact_label"]
 
         register_response = client.post(
             "/api/auth/register",

@@ -77,7 +77,7 @@ Included today:
 - a scoring engine that evaluates historical predictions against stored market moves
 - demo ingestion providers plus optional CoinGecko and Hyperliquid market modes with safe fallback behavior
 - optional venue-intelligence signal ingestion from Polymarket Gamma and Kalshi public market data
-- social trader discovery that can index YouTube creator evidence, build avatar-style trader profiles, score historical signal quality, and rank ROI-if-followed scenarios with demo fallback behavior
+- social trader discovery that can index YouTube creator evidence, build avatar-style trader profiles, score historical signal quality, rank ROI-if-followed scenarios, and explain risk/readiness/allocation guidance with demo fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
 - a working dashboard with demo-mode access, sign in/register flows, follows, watchlist items, alert rules, notification channels, alert inbox state, provider status, delivery-health visibility, and pipeline controls
 - a read-only demo workspace with clearly separated authenticated personal workspaces for saved follows, watchlists, rules, and notification actions
@@ -87,7 +87,7 @@ Included today:
 - macro regime tracking with demo data or optional FRED ingestion across configurable economic series
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
-- social-trader follow controls with separate signal-only and managed-paper allocation modes, allocation caps, diversification helpers, and compliance safety rails before any live copy-trading workflow
+- social-trader follow controls with separate signal-only and managed-paper allocation modes, allocation caps, evidence-weighted risk notes, diversification helpers, and compliance safety rails before any live copy-trading workflow
 - normalized paper order placement through `/api/v1/trading/orders`, with cash, exposure, single-order, and daily-loss risk checks before internal fills
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
