@@ -516,6 +516,60 @@ class HyperliquidMarketProvider(MarketProviderBase):
         return generated
 
 
+class AutoMarketProvider(MarketProviderBase):
+    source_name = "auto-market-router"
+
+    def __init__(self, providers: tuple[MarketProviderBase, ...]) -> None:
+        self.providers = providers
+        self.last_source_name = self.source_name
+        self.last_diagnostics: list[str] = []
+
+    def readiness(self) -> ProviderReadiness:
+        ready_sources: list[str] = []
+        warnings: list[str] = []
+
+        for provider in self.providers:
+            readiness = provider.readiness()
+            if readiness.ready:
+                ready_sources.append(provider.source_name)
+            elif readiness.warning:
+                warnings.append(f"{provider.source_name}: {readiness.warning}")
+
+        if ready_sources:
+            warning = "; ".join(warnings) if warnings else None
+            return ProviderReadiness(True, warning)
+
+        return ProviderReadiness(False, "; ".join(warnings) or "No live market provider is ready")
+
+    def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
+        diagnostics: list[str] = []
+
+        for provider in self.providers:
+            readiness = provider.readiness()
+            if not readiness.ready:
+                diagnostics.append(f"{provider.source_name}: not ready ({readiness.warning or 'missing configuration'})")
+                continue
+
+            try:
+                batch = provider.generate(latest_snapshots, cycle_index)
+            except Exception as exc:
+                diagnostics.append(f"{provider.source_name}: {exc.__class__.__name__}: {exc}")
+                continue
+
+            if not batch:
+                diagnostics.append(f"{provider.source_name}: returned zero snapshots")
+                continue
+
+            self.last_source_name = provider.source_name
+            self.last_diagnostics = diagnostics
+            return batch
+
+        self.last_source_name = f"{self.source_name}-unresolved"
+        self.last_diagnostics = diagnostics
+        detail = "; ".join(diagnostics) if diagnostics else "no providers configured"
+        raise ValueError(f"Auto market router could not resolve a live market feed: {detail}")
+
+
 class DemoSignalProvider(AssetAwareSignalProvider):
     source_name = "demo-signal-provider"
 

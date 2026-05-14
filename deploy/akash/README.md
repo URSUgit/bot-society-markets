@@ -61,11 +61,17 @@ merged app code without relying on cached `latest` pulls.
 The Akash templates also include the social-trader discovery defaults:
 
 ```text
+BSM_MARKET_PROVIDER=auto
 BSM_SOCIAL_DISCOVERY_PROVIDER=demo
 BSM_YOUTUBE_API_KEY=
 BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market analysis,polymarket trading,prediction market analysis,macro trading
 BSM_YOUTUBE_VIDEO_LIMIT=12
 ```
+
+`BSM_MARKET_PROVIDER=auto` makes the production container prefer the
+Hyperliquid public market feed first, then fall back to CoinGecko spot data.
+If both live feeds fail, the application falls back to deterministic demo
+snapshots and reports the fallback in `/api/system/providers`.
 
 Use `demo` until you add a YouTube Data API key. The GitHub Akash Deploy
 workflow now defaults `social_discovery_provider` to `auto`: if the

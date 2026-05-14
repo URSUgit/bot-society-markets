@@ -1205,6 +1205,33 @@ def test_hyperliquid_and_venue_provider_metadata() -> None:
         assert {provider["mode"] for provider in provider_payload["venue_signal_providers"]} == {"polymarket", "kalshi"}
 
 
+def test_auto_market_provider_metadata() -> None:
+    settings = Settings(
+        market_provider_mode="auto",
+        signal_provider_mode="demo",
+        venue_signal_providers=("polymarket", "kalshi"),
+    )
+    with build_client(settings) as client:
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        assert provider_payload["market_provider_mode"] == "auto"
+        assert provider_payload["market_provider_source"] == "auto-market-router"
+        assert provider_payload["market_provider_configured"] is True
+        assert provider_payload["market_provider_live_capable"] is True
+        assert provider_payload["market_provider_ready"] is True
+
+        connectors_response = client.get("/api/system/connectors")
+        assert connectors_response.status_code == 200
+        connector_lookup = {
+            item["id"]: item
+            for item in connectors_response.json()["connector_control"]["connectors"]
+        }
+        assert connector_lookup["hyperliquid-market-feed"]["mode"] == "auto"
+        assert connector_lookup["hyperliquid-market-feed"]["state"] in {"live", "ready"}
+        assert connector_lookup["hyperliquid-market-feed"]["readiness_score"] >= 0.8
+
+
 def test_wallet_provider_configuration_metadata() -> None:
     settings = Settings(
         wallet_provider_mode="polymarket",

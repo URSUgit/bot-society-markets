@@ -117,6 +117,7 @@ from .models import (
 from .notifications import NotificationDispatcher
 from .orchestration import PredictionOrchestrator
 from .providers import (
+    AutoMarketProvider,
     CoinGeckoMarketProvider,
     DemoMarketProvider,
     DemoMacroProvider,
@@ -2438,6 +2439,7 @@ class BotSocietyService:
         desktop_configured = self.settings.desktop_app_framework != "none" or bool(self.settings.desktop_bundle_id)
         desktop_ready = self.settings.desktop_app_framework != "none" and bool(self.settings.desktop_bundle_id)
         social_fallback_active = provider_status.social_discovery_fallback_active
+        hyperliquid_enabled = self.settings.market_provider_mode in {"auto", "hyperliquid"}
 
         connectors = [
             self._connector_item(
@@ -2456,7 +2458,7 @@ class BotSocietyService:
                 target_surface="Spot market tracking and historical archive hydration",
                 env_keys=["BSM_COINGECKO_API_KEY"],
                 next_actions=[
-                    "Move market mode to coingecko on production deployments.",
+                    "Keep market mode on auto so CoinGecko acts as the resilient spot-data fallback.",
                     "Attach a live API key before increasing tracked assets.",
                 ],
             ),
@@ -2464,19 +2466,19 @@ class BotSocietyService:
                 connector_id="hyperliquid-market-feed",
                 label="Hyperliquid Market Feed",
                 category="Derivatives",
-                mode="hyperliquid" if self.settings.market_provider_mode == "hyperliquid" else "planned",
+                mode="auto" if self.settings.market_provider_mode == "auto" else ("hyperliquid" if hyperliquid_enabled else "planned"),
                 source="Hyperliquid perpetual futures surfaces",
-                configured=bool(self.settings.hyperliquid_dex),
+                configured=hyperliquid_enabled,
                 live_capable=True,
-                ready=self.settings.market_provider_mode == "hyperliquid" and bool(self.settings.hyperliquid_dex),
-                fallback_active=self.settings.market_provider_mode != "hyperliquid",
+                ready=hyperliquid_enabled and provider_status.market_provider_ready,
+                fallback_active=(not hyperliquid_enabled) or provider_status.market_fallback_active,
                 activation_phase="Perps data activation",
                 owner="Trading Integrations",
                 risk_level="high",
                 target_surface="Perpetuals monitoring, momentum context, and future execution adapters",
                 env_keys=["BSM_HYPERLIQUID_DEX"],
                 next_actions=[
-                    "Set BSM_MARKET_PROVIDER=hyperliquid only after production data storage is durable.",
+                    "Keep BSM_MARKET_PROVIDER=auto so Hyperliquid can lead while CoinGecko remains a fallback.",
                     "Pair the live feed with testnet credentials before any execution-adjacent work.",
                 ],
                 app_url=self.settings.hyperliquid_testnet_app_url,
@@ -2941,15 +2943,18 @@ class BotSocietyService:
             )
 
         elif connector_id == "hyperliquid-market-feed":
+            hyperliquid_mode_active = self.settings.market_provider_mode in {"auto", "hyperliquid"}
             checks.append(
                 self._connector_check(
                     key="hyperliquid_feed_mode",
                     label="Hyperliquid feed mode",
-                    status="pass" if self.settings.market_provider_mode == "hyperliquid" and self.settings.hyperliquid_dex else "fail",
+                    status="pass" if hyperliquid_mode_active else "fail",
                     detail=(
-                        f"Hyperliquid feed is active for {self.settings.hyperliquid_dex}."
-                        if self.settings.market_provider_mode == "hyperliquid" and self.settings.hyperliquid_dex
-                        else "Keep this in research mode until BSM_MARKET_PROVIDER=hyperliquid and BSM_HYPERLIQUID_DEX are set."
+                        "Hyperliquid public feed is active through the auto market router."
+                        if self.settings.market_provider_mode == "auto"
+                        else f"Hyperliquid feed is active for {self.settings.hyperliquid_dex or 'the default universe'}."
+                        if hyperliquid_mode_active
+                        else "Keep this in research mode until BSM_MARKET_PROVIDER=auto or hyperliquid is set."
                     ),
                 )
             )
@@ -4092,7 +4097,7 @@ class BotSocietyService:
         try:
             market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
             self.market_provider_fallback = False
-            self.market_provider_source = self.market_provider.source_name
+            self.market_provider_source = getattr(self.market_provider, "last_source_name", self.market_provider.source_name)
             live_market_active = self.market_provider_source != self.demo_market_provider.source_name
         except Exception as exc:
             market_batch = self.demo_market_provider.generate(latest_snapshots, cycle_index)
@@ -4945,6 +4950,8 @@ class BotSocietyService:
         if provider_type == "market":
             if self.settings.market_provider_mode == "demo":
                 return True, False
+            if self.settings.market_provider_mode == "auto":
+                return True, True
             if self.settings.market_provider_mode == "hyperliquid":
                 return True, True
             configured = self.settings.coingecko_plan != "pro" or bool(self.settings.coingecko_api_key)
@@ -5006,6 +5013,20 @@ class BotSocietyService:
         return f"sqlite:{self.settings.database_path}"
 
     def _build_market_provider(self):
+        if self.settings.market_provider_mode == "auto":
+            return AutoMarketProvider(
+                (
+                    HyperliquidMarketProvider(
+                        tracked_coin_ids=self.settings.tracked_coin_ids,
+                        dex=self.settings.hyperliquid_dex,
+                    ),
+                    CoinGeckoMarketProvider(
+                        plan=self.settings.coingecko_plan,
+                        api_key=self.settings.coingecko_api_key,
+                        tracked_coin_ids=self.settings.tracked_coin_ids,
+                    ),
+                )
+            )
         if self.settings.market_provider_mode == "coingecko":
             return CoinGeckoMarketProvider(
                 plan=self.settings.coingecko_plan,

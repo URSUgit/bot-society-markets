@@ -316,6 +316,8 @@ $env:BSM_EXPORT_ARTIFACTS_DIR = "artifacts/strategy-exports"
 Optional live provider setup:
 
 ```powershell
+$env:BSM_MARKET_PROVIDER = "auto" # Hyperliquid public feed first, CoinGecko fallback.
+
 $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"
 $env:BSM_COINGECKO_API_KEY = "your-key-here"

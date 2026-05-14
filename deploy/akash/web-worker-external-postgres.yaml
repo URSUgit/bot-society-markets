@@ -23,7 +23,7 @@ services:
       # Recommended: use a Neon pooled connection string with sslmode=require
       - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
       - BSM_SEED_DEMO_DATA=true
-      - BSM_MARKET_PROVIDER=coingecko
+      - BSM_MARKET_PROVIDER=auto
       - BSM_COINGECKO_PLAN=demo
       - BSM_SIGNAL_PROVIDER=demo
       - BSM_SOCIAL_DISCOVERY_PROVIDER=demo
@@ -68,7 +68,7 @@ services:
       # Recommended: use a Neon pooled connection string with sslmode=require
       - BSM_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
       - BSM_SEED_DEMO_DATA=true
-      - BSM_MARKET_PROVIDER=coingecko
+      - BSM_MARKET_PROVIDER=auto
       - BSM_COINGECKO_PLAN=demo
       - BSM_SIGNAL_PROVIDER=demo
       - BSM_SOCIAL_DISCOVERY_PROVIDER=demo

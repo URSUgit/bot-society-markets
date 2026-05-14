@@ -12,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover - optional during bootstrap before deps install
     load_dotenv = None
 
-MarketProviderMode = Literal["demo", "coingecko", "hyperliquid"]
+MarketProviderMode = Literal["demo", "coingecko", "hyperliquid", "auto"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
 SocialDiscoveryProviderMode = Literal["demo", "youtube"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
@@ -213,7 +213,7 @@ def get_settings() -> Settings:
     secure_session_cookie = None if secure_session_cookie_env is None else _env_bool("BSM_SECURE_SESSION_COOKIE", False)
 
     market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", "demo").lower()
-    if market_provider_mode not in {"demo", "coingecko", "hyperliquid"}:
+    if market_provider_mode not in {"demo", "coingecko", "hyperliquid", "auto"}:
         market_provider_mode = "demo"
 
     signal_provider_mode = os.getenv("BSM_SIGNAL_PROVIDER", "demo").lower()
