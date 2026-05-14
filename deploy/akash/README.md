@@ -63,9 +63,11 @@ BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market analysis,polymarket trading,predicti
 BSM_YOUTUBE_VIDEO_LIMIT=12
 ```
 
-Use `demo` until you add a YouTube Data API key. When the key is available,
-change `BSM_SOCIAL_DISCOVERY_PROVIDER` to `youtube` and set
-`BSM_YOUTUBE_API_KEY` in Akash Console.
+Use `demo` until you add a YouTube Data API key. The GitHub Akash Deploy
+workflow now defaults `social_discovery_provider` to `auto`: if the
+`BSM_YOUTUBE_API_KEY` repository secret exists, it renders the deployment with
+`BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`; otherwise it keeps deterministic demo
+discovery. You can still force `demo` or `youtube` from workflow dispatch.
 
 After changing the Akash environment, verify the connector state from the
 running image:
@@ -216,9 +218,9 @@ the repository.
 For YouTube social discovery activation:
 
 ```powershell
-$env:BSM_SOCIAL_DISCOVERY_PROVIDER = "youtube"
 $env:BSM_YOUTUBE_API_KEY = "your-youtube-data-api-key"
-.\deploy\akash\deploy-production.ps1
+.\deploy\akash\setup-github-secrets.ps1 -IncludeYouTube
+.\deploy\akash\trigger-github-deploy.ps1
 ```
 
 Do not commit generated manifests. They can contain production database and API
@@ -245,7 +247,9 @@ BSM_YOUTUBE_API_KEY
 After the secrets are configured, the workflow can redeploy Akash from GitHub
 Actions. It also listens for successful `Container Image` workflow completions
 on `main`, so future production image publishes can flow into Akash without a
-manual console paste. If any required secret is missing, the workflow skips the
+manual console paste. The social discovery provider defaults to `auto`: the
+workflow promotes to YouTube when `BSM_YOUTUBE_API_KEY` is set, and keeps demo
+mode when it is not. If any required secret is missing, the workflow skips the
 deploy with a notice instead of failing the whole project pipeline.
 
 To trigger it manually from PowerShell:

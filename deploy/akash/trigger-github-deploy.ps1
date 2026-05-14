@@ -3,8 +3,8 @@ param(
     [string]$Ref = "main",
     [string]$ImageRef,
     [string]$Dseq,
-    [ValidateSet("demo", "youtube")]
-    [string]$SocialDiscoveryProvider = "demo",
+    [ValidateSet("auto", "demo", "youtube")]
+    [string]$SocialDiscoveryProvider = "auto",
     [int]$WaitSeconds = 90,
     [switch]$List,
     [switch]$CreateNew,

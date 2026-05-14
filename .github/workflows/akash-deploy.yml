@@ -48,11 +48,12 @@ on:
         default: false
         type: boolean
       social_discovery_provider:
-        description: Social discovery mode for the SDL.
+        description: Social discovery mode for the SDL. Auto promotes to YouTube when BSM_YOUTUBE_API_KEY exists.
         required: false
-        default: demo
+        default: auto
         type: choice
         options:
+          - auto
           - demo
           - youtube
 
@@ -77,6 +78,8 @@ jobs:
       - name: Resolve deployment options
         id: options
         shell: bash
+        env:
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
         run: |
           set -euo pipefail
           image_ref="${{ github.event.inputs.image_ref }}"
@@ -108,8 +111,12 @@ jobs:
           fi
 
           social_provider="${{ github.event.inputs.social_discovery_provider }}"
-          if [ -z "$social_provider" ]; then
-            social_provider="demo"
+          if [ -z "$social_provider" ] || [ "$social_provider" = "auto" ]; then
+            if [ -n "$BSM_YOUTUBE_API_KEY" ]; then
+              social_provider="youtube"
+            else
+              social_provider="demo"
+            fi
           fi
 
           mode="${{ github.event.inputs.mode }}"

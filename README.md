@@ -364,6 +364,10 @@ scorecards. In `demo` mode it seeds deterministic YouTube-style profiles. In
 demo discovery if the key is missing or the API call fails. The provider status
 endpoint exposes `social_discovery_ready`, `social_discovery_warning`, and the
 configured query/channel scope so production can be checked before redeploying.
+GitHub Akash deploy automation resolves the social provider automatically:
+when the `BSM_YOUTUBE_API_KEY` repository secret exists, new main-branch
+deployments are rendered with `BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`; without
+that secret they stay in deterministic `demo` mode.
 
 Optional paper execution venue setup:
 
