@@ -1,7 +1,7 @@
 param(
     [string]$Repo = "URSUgit/bot-society-markets",
     [string]$Ref = "main",
-    [ValidateSet("status", "update", "create")]
+    [ValidateSet("status", "manifest", "update", "create")]
     [string]$Mode = "update",
     [string]$ImageRef,
     [string]$Dseq,
@@ -73,7 +73,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Output "Triggered Akash CLI Deploy for $resolvedImageRef in $Mode mode."
-if ($Mode -ne "status" -and -not $ConfirmSpend) {
+if (($Mode -eq "update" -or $Mode -eq "create") -and -not $ConfirmSpend) {
     Write-Warning "The workflow will skip create/update until confirm_spend=true is supplied. Re-run with -ConfirmSpend when the deploy wallet is funded."
 }
 
