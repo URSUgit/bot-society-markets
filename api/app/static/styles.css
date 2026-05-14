@@ -5938,6 +5938,24 @@ body.bit-engine-product-ui .eyebrow {
   border: 1px solid #bae6fd;
 }
 
+.bit-engine-product-ui.command-os .badge[data-tone="positive"] {
+  color: #0f766e;
+  background: #ccfbf1;
+  border-color: #99f6e4;
+}
+
+.bit-engine-product-ui.command-os .badge[data-tone="warning"] {
+  color: #a16207;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.bit-engine-product-ui.command-os .badge[data-tone="danger"] {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
 .bit-engine-product-ui.command-os .button.primary,
 .bit-engine-product-ui.bit-engine-lab .button.primary {
   color: #ffffff;
@@ -6148,7 +6166,7 @@ body.bit-engine-product-ui .eyebrow {
 
 .bit-engine-product-ui.command-os .social-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   margin: 16px 0;
 }
@@ -6498,6 +6516,19 @@ body.bit-engine-product-ui .eyebrow {
   justify-content: space-between;
   gap: 10px;
   padding: 11px;
+}
+
+.bit-engine-product-ui.command-os .social-discovery-ledger {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.bit-engine-product-ui.command-os .social-discovery-ledger small {
+  display: block;
+  color: #a16207;
+  font-size: 0.76rem;
+  margin-top: 4px;
 }
 
 .bit-engine-product-ui.command-os .social-side-panel .compact-list p,

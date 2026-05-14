@@ -1043,6 +1043,19 @@ class SocialTraderAllocation(BaseModel):
     updated_at: str
 
 
+class SocialDiscoveryRunView(BaseModel):
+    id: int
+    provider: str
+    status: str
+    youtube_configured: bool
+    discovered: int = Field(ge=0)
+    updated: int = Field(ge=0)
+    evidence_count: int = Field(ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    started_at: str
+    completed_at: str
+
+
 class SocialTradingSnapshot(BaseModel):
     generated_at: str
     provider_mode: str
@@ -1054,6 +1067,8 @@ class SocialTradingSnapshot(BaseModel):
     portfolio_limit_usd: float = Field(ge=0)
     allocated_usd: float = Field(ge=0)
     unallocated_usd: float = Field(ge=0)
+    latest_discovery_run: SocialDiscoveryRunView | None = None
+    discovery_runs: list[SocialDiscoveryRunView] = Field(default_factory=list)
     diversification_plan: list[str] = Field(default_factory=list)
     portfolio_risk_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)

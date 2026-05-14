@@ -336,6 +336,21 @@ social_trader_allocations_table = Table(
     UniqueConstraint("user_slug", "trader_id", name="uq_social_trader_allocations_user_trader"),
 )
 
+social_discovery_runs_table = Table(
+    "social_discovery_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("provider", String(120), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("youtube_configured", Boolean, nullable=False, default=False, server_default=text("false")),
+    Column("discovered_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("updated_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("evidence_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("warnings_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("started_at", String(64), nullable=False),
+    Column("completed_at", String(64), nullable=False),
+)
+
 watchlist_items_table = Table(
     "watchlist_items",
     metadata,
@@ -461,6 +476,7 @@ Index("idx_orders_status_submitted", orders_table.c.status, orders_table.c.submi
 Index("idx_orders_asset_submitted", orders_table.c.asset, orders_table.c.submitted_at.desc())
 Index("idx_social_traders_platform_score", social_traders_table.c.platform, social_traders_table.c.composite_score.desc())
 Index("idx_social_traders_score", social_traders_table.c.composite_score.desc())
+Index("idx_social_discovery_runs_started", social_discovery_runs_table.c.started_at.desc())
 Index("idx_social_trader_events_trader_observed", social_trader_events_table.c.trader_id, social_trader_events_table.c.observed_at.desc())
 Index("idx_social_trader_allocations_user", social_trader_allocations_table.c.user_slug, social_trader_allocations_table.c.updated_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
