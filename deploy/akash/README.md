@@ -21,6 +21,10 @@ Why this is the recommended path:
 - [full-stack-postgres.yaml](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\full-stack-postgres.yaml): experimental all-in-Akash stack with Postgres persistent volume
 - [run-worker-with-health.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\run-worker-with-health.sh): helper used by the worker manifest
 - [prepare-bitprivat-neon.ps1](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\prepare-bitprivat-neon.ps1): generates a final Akash manifest for `app.bitprivat.com` from your Neon connection string
+- [cli-deploy.sh](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\cli-deploy.sh): GitHub Actions helper for crypto-wallet Akash CLI deploys
+- [trigger-github-cli-deploy.ps1](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\trigger-github-cli-deploy.ps1): triggers the Akash CLI deploy workflow
+- [setup-github-cli-secrets.ps1](C:\Users\ionut\OneDrive\Documents\New project\deploy\akash\setup-github-cli-secrets.ps1): stores wallet deploy secrets in GitHub Actions
+- [Akash CLI Wallet Deploy](C:\Users\ionut\OneDrive\Documents\New project\docs\28-akash-cli-wallet-deploy.md): crypto-native Akash deployment guide
 - [Production Cutover Playbook](C:\Users\ionut\OneDrive\Documents\New project\docs\19-production-cutover-playbook.md): step-by-step move from preview SQLite hosting to managed Postgres on Akash
 
 ## Container Image
@@ -258,6 +262,35 @@ To trigger it manually from PowerShell:
 .\deploy\akash\trigger-github-deploy.ps1
 ```
 
+## Crypto Wallet CLI Deploy
+
+If the Akash Console API works only for the credit-card / managed-wallet path,
+use the separate Akash CLI lane. It runs `provider-services` in GitHub Actions
+with a dedicated funded wallet mnemonic and does not replace the Console API
+workflow.
+
+Configure the wallet deploy secrets:
+
+```powershell
+.\deploy\akash\setup-github-cli-secrets.ps1 -IncludeDseq
+```
+
+Run a no-spend status check:
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode status
+```
+
+Update the existing deployment through the crypto wallet CLI path:
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode update -ConfirmSpend
+```
+
+Full operating guide:
+
+- [Akash CLI Wallet Deploy](C:\Users\ionut\OneDrive\Documents\New project\docs\28-akash-cli-wallet-deploy.md)
+
 ## bitprivat.com DNS Shape
 
 Recommended:
@@ -317,7 +350,8 @@ deployment is still on an older image.
 Akash's current docs still describe a native Windows CLI download path from GitHub Releases, but the current `provider-services` release does not include a Windows binary. On this machine, the professional path is:
 
 - Akash Console first
-- or WSL2 with a Linux install later if you want full CLI automation
+- GitHub Actions Akash CLI deploy for the crypto-wallet path
+- or WSL2 with a Linux install if you want to run `provider-services` directly on this workstation
 
 ## Important Risk Note
 

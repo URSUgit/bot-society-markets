@@ -22,6 +22,9 @@ param(
 
     [string]$YouTubeVideoLimit = $env:BSM_YOUTUBE_VIDEO_LIMIT,
 
+    [ValidateSet("uact", "uakt")]
+    [string]$PricingDenom = "uact",
+
     [string]$OutputPath
 )
 
@@ -114,6 +117,7 @@ $rendered = $rendered -replace "BSM_YOUTUBE_API_KEY=[^`r`n]*", "BSM_YOUTUBE_API_
 $rendered = $rendered -replace "BSM_YOUTUBE_DISCOVERY_QUERIES=[^`r`n]*", "BSM_YOUTUBE_DISCOVERY_QUERIES=$youtubeQueriesEscaped"
 $rendered = $rendered -replace "BSM_YOUTUBE_CHANNEL_IDS=[^`r`n]*", "BSM_YOUTUBE_CHANNEL_IDS=$youtubeChannelIdsEscaped"
 $rendered = $rendered -replace "BSM_YOUTUBE_VIDEO_LIMIT=[^`r`n]*", "BSM_YOUTUBE_VIDEO_LIMIT=$youtubeVideoLimitEscaped"
+$rendered = $rendered -replace "denom:\s+ua[ck]t", "denom: $PricingDenom"
 
 $outputDirectory = Split-Path -Parent $resolvedOutputPath
 if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
@@ -123,3 +127,4 @@ if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
 Set-Content -LiteralPath $resolvedOutputPath -Value $rendered -Encoding UTF8
 Write-Output "Generated Akash manifest: $resolvedOutputPath"
 Write-Output "Pinned image: $resolvedImageRef"
+Write-Output "Pricing denom: $PricingDenom"

@@ -1,0 +1,215 @@
+name: Akash CLI Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Container Image
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: CLI action to run.
+        required: false
+        default: update
+        type: choice
+        options:
+          - status
+          - update
+          - create
+      image_ref:
+        description: Optional image ref. Defaults to ghcr.io/<repo>:sha-<current-sha>.
+        required: false
+        type: string
+      dseq:
+        description: Optional Akash deployment DSEQ. Defaults to AKASH_CLI_DSEQ secret.
+        required: false
+        type: string
+      provider:
+        description: Optional provider address. Defaults to AKASH_CLI_PROVIDER secret or active lease lookup.
+        required: false
+        type: string
+      wait_seconds:
+        description: Seconds to wait before production verification.
+        required: false
+        default: "90"
+        type: string
+      verify:
+        description: Run production smoke verification after create/update.
+        required: false
+        default: true
+        type: boolean
+      with_worker:
+        description: Deploy the web + worker SDL instead of single web service.
+        required: false
+        default: false
+        type: boolean
+      confirm_spend:
+        description: Required for create/update because CLI signs blockchain transactions and spends AKT.
+        required: false
+        default: false
+        type: boolean
+      social_discovery_provider:
+        description: Social discovery mode for the SDL. Auto promotes to YouTube when BSM_YOUTUBE_API_KEY exists.
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - demo
+          - youtube
+
+concurrency:
+  group: akash-cli-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && vars.AKASH_CLI_AUTO_DEPLOY == 'true')
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve CLI deployment options
+        id: options
+        shell: bash
+        env:
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
+          AKASH_CLI_AUTO_CONFIRM_SPEND: ${{ vars.AKASH_CLI_AUTO_CONFIRM_SPEND }}
+        run: |
+          set -euo pipefail
+          image_ref="${{ github.event.inputs.image_ref }}"
+          if [ -z "$image_ref" ]; then
+            sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+            short_sha="${sha:0:7}"
+            repo_lower="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+            image_ref="ghcr.io/${repo_lower}:sha-${short_sha}"
+          fi
+
+          mode="${{ github.event.inputs.mode }}"
+          if [ -z "$mode" ]; then
+            mode="update"
+          fi
+
+          wait_seconds="${{ github.event.inputs.wait_seconds }}"
+          if [ -z "$wait_seconds" ]; then
+            wait_seconds="90"
+          fi
+
+          verify="${{ github.event.inputs.verify }}"
+          if [ -z "$verify" ]; then
+            verify="true"
+          fi
+
+          with_worker="${{ github.event.inputs.with_worker }}"
+          if [ -z "$with_worker" ]; then
+            with_worker="false"
+          fi
+
+          confirm_spend="${{ github.event.inputs.confirm_spend }}"
+          if [ -z "$confirm_spend" ]; then
+            confirm_spend="$AKASH_CLI_AUTO_CONFIRM_SPEND"
+          fi
+          if [ -z "$confirm_spend" ]; then
+            confirm_spend="false"
+          fi
+
+          social_provider="${{ github.event.inputs.social_discovery_provider }}"
+          if [ -z "$social_provider" ] || [ "$social_provider" = "auto" ]; then
+            if [ -n "$BSM_YOUTUBE_API_KEY" ]; then
+              social_provider="youtube"
+            else
+              social_provider="demo"
+            fi
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "image_ref=$image_ref"
+            echo "wait_seconds=$wait_seconds"
+            echo "verify=$verify"
+            echo "with_worker=$with_worker"
+            echo "confirm_spend=$confirm_spend"
+            echo "social_provider=$social_provider"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check CLI deployment secrets
+        id: secrets
+        shell: bash
+        env:
+          AKASH_CLI_MNEMONIC: ${{ secrets.AKASH_CLI_MNEMONIC }}
+          AKASH_CLI_DSEQ: ${{ github.event.inputs.dseq || secrets.AKASH_CLI_DSEQ }}
+          BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "$AKASH_CLI_MNEMONIC" ] && missing+=("AKASH_CLI_MNEMONIC")
+
+          if [ "${{ steps.options.outputs.mode }}" = "update" ] && [ -z "$AKASH_CLI_DSEQ" ]; then
+            missing+=("AKASH_CLI_DSEQ")
+          fi
+          if [ "${{ steps.options.outputs.mode }}" != "status" ] && [ -z "$BSM_DATABASE_URL" ]; then
+            missing+=("BSM_DATABASE_URL")
+          fi
+          if [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
+            missing+=("confirm_spend=true")
+          fi
+          if [ "${{ steps.options.outputs.social_provider }}" = "youtube" ] && [ -z "$BSM_YOUTUBE_API_KEY" ]; then
+            missing+=("BSM_YOUTUBE_API_KEY")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Akash CLI deploy skipped::Missing required wallet secrets/inputs: ${missing[*]}"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install runtime dependencies
+        if: steps.secrets.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq unzip
+
+      - name: Deploy with Akash CLI
+        if: steps.secrets.outputs.configured == 'true'
+        shell: bash
+        env:
+          AKASH_CLI_MODE: ${{ steps.options.outputs.mode }}
+          AKASH_CLI_CONFIRM_SPEND: ${{ steps.options.outputs.confirm_spend }}
+          AKASH_CLI_MNEMONIC: ${{ secrets.AKASH_CLI_MNEMONIC }}
+          AKASH_DSEQ: ${{ github.event.inputs.dseq || secrets.AKASH_CLI_DSEQ }}
+          AKASH_PROVIDER: ${{ github.event.inputs.provider || secrets.AKASH_CLI_PROVIDER }}
+          BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
+          BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
+          BSM_SOCIAL_DISCOVERY_PROVIDER: ${{ steps.options.outputs.social_provider }}
+          IMAGE_REF: ${{ steps.options.outputs.image_ref }}
+          WITH_WORKER: ${{ steps.options.outputs.with_worker }}
+        run: |
+          set -euo pipefail
+          bash ./deploy/akash/cli-deploy.sh
+          if [ -f deploy/akash/akash-cli-result.env ]; then
+            {
+              echo "### Akash CLI result"
+              sed 's/^/- /' deploy/akash/akash-cli-result.env
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Verify production
+        if: steps.secrets.outputs.configured == 'true' && steps.options.outputs.mode != 'status' && steps.options.outputs.verify == 'true'
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds ([int]"${{ steps.options.outputs.wait_seconds }}")
+          ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading
