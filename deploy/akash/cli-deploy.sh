@@ -119,7 +119,7 @@ render_sdl() {
     -OutputPath
     "$AKASH_SDL_PATH"
     -PricingDenom
-    uakt
+    uact
     -SocialDiscoveryProvider
     "$BSM_SOCIAL_DISCOVERY_PROVIDER"
   )
@@ -305,7 +305,7 @@ main() {
   AKASH_GAS="${AKASH_GAS:-auto}"
   AKASH_GAS_ADJUSTMENT="${AKASH_GAS_ADJUSTMENT:-1.5}"
   AKASH_GAS_PRICES="${AKASH_GAS_PRICES:-0.025uakt}"
-  AKASH_DEPOSIT="${AKASH_DEPOSIT:-500000uakt}"
+  AKASH_DEPOSIT="${AKASH_DEPOSIT:-500000uact}"
   AKASH_BID_WAIT_SECONDS="${AKASH_BID_WAIT_SECONDS:-45}"
   AKASH_MANIFEST_WAIT_SECONDS="${AKASH_MANIFEST_WAIT_SECONDS:-10}"
   AKASH_SDL_PATH="${AKASH_SDL_PATH:-deploy/akash/akash-cli.generated.yaml}"

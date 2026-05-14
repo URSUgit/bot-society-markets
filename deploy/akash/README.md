@@ -297,6 +297,11 @@ Full operating guide:
 
 - [Akash CLI Wallet Deploy](C:\Users\ionut\OneDrive\Documents\New project\docs\28-akash-cli-wallet-deploy.md)
 
+Denomination note:
+
+- SDL pricing and deployment escrow use ACT: `uact`
+- CLI gas uses AKT: `uakt`
+
 ## bitprivat.com DNS Shape
 
 Recommended:
