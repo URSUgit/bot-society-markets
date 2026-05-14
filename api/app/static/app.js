@@ -1374,12 +1374,24 @@ function socialImpactTone(label) {
   return "positive";
 }
 
+function socialRunTone(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized.includes("fail")) {
+    return "danger";
+  }
+  if (normalized.includes("warning")) {
+    return "warning";
+  }
+  return "positive";
+}
+
 function renderSocialTrading(socialTrading) {
   const summary = document.getElementById("social-trader-summary");
   const badge = document.getElementById("social-trader-badge");
   const kpis = document.getElementById("social-trader-kpis");
   const grid = document.getElementById("social-trader-grid");
   const allocationList = document.getElementById("social-allocation-list");
+  const discoveryRunList = document.getElementById("social-discovery-run-list");
   const safetyList = document.getElementById("social-safety-list");
   if (!summary || !badge || !kpis || !grid || !allocationList || !safetyList || !socialTrading) {
     return;
@@ -1393,6 +1405,7 @@ function renderSocialTrading(socialTrading) {
   const averageRoi = traders.length
     ? traders.reduce((total, trader) => total + Number(trader.roi_if_followed || 0), 0) / traders.length
     : 0;
+  const latestRun = socialTrading.latest_discovery_run || socialTrading.discovery_runs?.[0];
 
   summary.textContent = socialTrading.summary;
   badge.textContent = socialTrading.youtube_configured ? "YouTube API live" : "Demo YouTube watchlist";
@@ -1418,6 +1431,11 @@ function renderSocialTrading(socialTrading) {
       <span>Avg if-followed ROI</span>
       <strong>${fmtSignedPercent(averageRoi)}</strong>
       <small>Backtest-style proxy from extracted calls</small>
+    </article>
+    <article>
+      <span>Last discovery</span>
+      <strong>${latestRun ? fmtRelativeTime(latestRun.completed_at) : "Waiting"}</strong>
+      <small>${latestRun ? `${latestRun.updated} profiles · ${latestRun.evidence_count} evidence items` : "Run YouTube discovery to create the first ledger entry"}</small>
     </article>
   `;
 
@@ -1509,6 +1527,22 @@ function renderSocialTrading(socialTrading) {
       <span class="badge">${allocation.is_active ? "Active" : "Paused"}</span>
     </li>
   `).join("") || "<li><p>No followed social managers yet. Sign in, then activate signal or managed-paper mode from a profile card.</p></li>";
+
+  if (discoveryRunList) {
+    discoveryRunList.innerHTML = (socialTrading.discovery_runs || []).map((run) => {
+      const warnings = (run.warnings || []).slice(0, 1).map((warning) => `<small>${escapeHtml(warning)}</small>`).join("");
+      return `
+        <li>
+          <div>
+            <strong>${escapeHtml(humanizeKey(run.provider || "social discovery"))}</strong>
+            <p>${run.updated} profile(s), ${run.discovered} new, ${run.evidence_count} evidence item(s) · ${fmtRelativeTime(run.completed_at)}</p>
+            ${warnings}
+          </div>
+          <span class="badge" data-tone="${socialRunTone(run.status)}">${escapeHtml(humanizeKey(run.status || "completed"))}</span>
+        </li>
+      `;
+    }).join("") || "<li><p>No discovery runs are recorded yet.</p></li>";
+  }
 
   safetyList.innerHTML = [
     ...(socialTrading.portfolio_risk_notes || []),

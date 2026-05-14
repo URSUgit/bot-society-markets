@@ -285,6 +285,7 @@ def test_professional_console_pages_are_served() -> None:
         assert ">Overview</a>" in dashboard_response.text
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
+        assert 'id="social-discovery-run-list"' in dashboard_response.text
         assert "Run YouTube Discovery" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
@@ -377,6 +378,9 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert initial_snapshot["top_traders"][0]["evidence"]
         assert initial_snapshot["top_traders"][0]["watch_mode_recommendation"]
         assert initial_snapshot["top_traders"][0]["allocation_guidance"]["suggested_allocation_usd"] >= 0
+        assert initial_snapshot["latest_discovery_run"]["updated"] >= 4
+        assert initial_snapshot["latest_discovery_run"]["evidence_count"] >= 20
+        assert initial_snapshot["discovery_runs"]
 
         discovery_response = client.post("/api/social-traders/discover")
         assert discovery_response.status_code == 200
@@ -385,6 +389,12 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert discovery_payload["traders"][0]["platform"] == "youtube"
         assert discovery_payload["traders"][0]["conviction_label"]
         assert discovery_payload["traders"][0]["evidence"][0]["impact_label"]
+
+        refreshed_response = client.get("/api/social-trading")
+        refreshed_snapshot = refreshed_response.json()["social_trading"]
+        assert len(refreshed_snapshot["discovery_runs"]) >= 2
+        assert refreshed_snapshot["latest_discovery_run"]["provider"] == discovery_payload["provider"]
+        assert refreshed_snapshot["latest_discovery_run"]["status"] in {"completed", "completed_with_warnings"}
 
         register_response = client.post(
             "/api/auth/register",

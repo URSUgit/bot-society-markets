@@ -24,6 +24,7 @@ from .database import (
     pipeline_runs_table,
     predictions_table,
     signals_table,
+    social_discovery_runs_table,
     social_trader_allocations_table,
     social_trader_events_table,
     social_traders_table,
@@ -797,6 +798,22 @@ class BotSocietyRepository:
             .join(social_traders_table, social_traders_table.c.id == social_trader_allocations_table.c.trader_id)
             .where(social_trader_allocations_table.c.user_slug == user_slug)
             .order_by(desc(social_trader_allocations_table.c.is_active), desc(social_trader_allocations_table.c.updated_at))
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def insert_social_discovery_run(self, payload: dict[str, Any]) -> int:
+        stmt = social_discovery_runs_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_social_discovery_runs(self, *, limit: int = 8) -> list[dict[str, Any]]:
+        stmt = (
+            select(social_discovery_runs_table)
+            .order_by(desc(social_discovery_runs_table.c.started_at), desc(social_discovery_runs_table.c.id))
+            .limit(limit)
         )
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))

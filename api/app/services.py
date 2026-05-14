@@ -80,6 +80,7 @@ from .models import (
     ProductionCutoverStep,
     SignalView,
     SignalMixItem,
+    SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
     SocialEvidenceItem,
     SocialPortfolioDiversifyRequest,
@@ -374,36 +375,76 @@ class BotSocietyService:
         repository: BotSocietyRepository | None = None,
     ) -> SocialDiscoveryRunResult:
         active_repository = repository or BotSocietyRepository(self.database)
-        before_slugs = {str(row["slug"]) for row in active_repository.list_social_traders(limit=500)}
-        result = self.social_discovery_provider.discover()
-        now = self._now()
-        trader_payloads = [self._social_trader_payload(trader, now=now) for trader in result.traders]
-        active_repository.upsert_social_traders(trader_payloads)
+        started_at = self._now()
+        provider_name = getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider)
+        try:
+            before_slugs = {str(row["slug"]) for row in active_repository.list_social_traders(limit=500)}
+            result = self.social_discovery_provider.discover()
+            now = self._now()
+            trader_payloads = [self._social_trader_payload(trader, now=now) for trader in result.traders]
+            active_repository.upsert_social_traders(trader_payloads)
 
-        refreshed_rows = active_repository.list_social_traders(limit=500)
-        trader_ids = {str(row["slug"]): int(row["id"]) for row in refreshed_rows}
-        event_payloads: list[dict[str, object]] = []
-        for trader in result.traders:
-            trader_id = trader_ids.get(trader.slug)
-            if not trader_id:
-                continue
-            event_payloads.extend(self._social_event_payloads(trader_id, trader.evidence, now=now))
-        active_repository.upsert_social_trader_events(event_payloads)
-        self._clear_live_caches()
+            refreshed_rows = active_repository.list_social_traders(limit=500)
+            trader_ids = {str(row["slug"]): int(row["id"]) for row in refreshed_rows}
+            event_payloads: list[dict[str, object]] = []
+            for trader in result.traders:
+                trader_id = trader_ids.get(trader.slug)
+                if not trader_id:
+                    continue
+                event_payloads.extend(self._social_event_payloads(trader_id, trader.evidence, now=now))
+            active_repository.upsert_social_trader_events(event_payloads)
 
-        visible_rows = active_repository.list_social_traders(limit=12)
-        visible_scorecards = [
-            self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=6))
-            for row in visible_rows
-        ]
-        return SocialDiscoveryRunResult(
-            discovered=len([payload for payload in trader_payloads if str(payload["slug"]) not in before_slugs]),
-            updated=len(trader_payloads),
-            provider=result.provider,
-            youtube_configured=result.youtube_configured,
-            traders=visible_scorecards,
-            warnings=result.warnings,
-        )
+            discovered_count = len([payload for payload in trader_payloads if str(payload["slug"]) not in before_slugs])
+            updated_count = len(trader_payloads)
+            evidence_count = len(event_payloads)
+            active_repository.insert_social_discovery_run(
+                {
+                    "provider": result.provider,
+                    "status": "completed_with_warnings" if result.warnings else "completed",
+                    "youtube_configured": bool(result.youtube_configured),
+                    "discovered_count": discovered_count,
+                    "updated_count": updated_count,
+                    "evidence_count": evidence_count,
+                    "warnings_json": self._encode_json_payload(result.warnings) or "[]",
+                    "started_at": started_at,
+                    "completed_at": self._now(),
+                }
+            )
+            self._clear_live_caches()
+
+            visible_rows = active_repository.list_social_traders(limit=12)
+            visible_scorecards = [
+                self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=6))
+                for row in visible_rows
+            ]
+            return SocialDiscoveryRunResult(
+                discovered=discovered_count,
+                updated=updated_count,
+                provider=result.provider,
+                youtube_configured=result.youtube_configured,
+                traders=visible_scorecards,
+                warnings=result.warnings,
+            )
+        except Exception as exc:
+            completed_at = self._now()
+            try:
+                active_repository.insert_social_discovery_run(
+                    {
+                        "provider": provider_name,
+                        "status": "failed",
+                        "youtube_configured": bool(self.settings.youtube_api_key),
+                        "discovered_count": 0,
+                        "updated_count": 0,
+                        "evidence_count": 0,
+                        "warnings_json": self._encode_json_payload([f"{exc.__class__.__name__}: {exc}"]) or "[]",
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                    }
+                )
+            except Exception:
+                pass
+            self._clear_live_caches()
+            raise
 
     def get_social_trading_snapshot(
         self,
@@ -419,6 +460,10 @@ class BotSocietyService:
         allocations = [
             self._to_social_trader_allocation(row)
             for row in active_repository.list_social_trader_allocations(user_slug)
+        ]
+        discovery_runs = [
+            self._to_social_discovery_run(row)
+            for row in active_repository.list_social_discovery_runs(limit=6)
         ]
         allocated_usd = round(sum(item.allocation_limit_usd for item in allocations if item.is_active), 2)
         portfolio_limit = round(max(self.settings.paper_starting_balance, allocated_usd), 2)
@@ -443,6 +488,8 @@ class BotSocietyService:
             portfolio_limit_usd=portfolio_limit,
             allocated_usd=allocated_usd,
             unallocated_usd=unallocated,
+            latest_discovery_run=discovery_runs[0] if discovery_runs else None,
+            discovery_runs=discovery_runs,
             diversification_plan=self._social_diversification_plan(top_traders, allocations),
             portfolio_risk_notes=self._social_portfolio_risk_notes(
                 top_traders,
@@ -5928,6 +5975,22 @@ class BotSocietyService:
             is_active=bool(row.get("is_active")),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+        )
+
+    def _to_social_discovery_run(self, row: dict) -> SocialDiscoveryRunView:
+        warnings_payload = self._decode_json_payload(row.get("warnings_json"))
+        warnings = [str(item) for item in warnings_payload] if isinstance(warnings_payload, list) else []
+        return SocialDiscoveryRunView(
+            id=int(row["id"]),
+            provider=str(row["provider"]),
+            status=str(row["status"]),
+            youtube_configured=bool(row.get("youtube_configured")),
+            discovered=int(row.get("discovered_count") or 0),
+            updated=int(row.get("updated_count") or 0),
+            evidence_count=int(row.get("evidence_count") or 0),
+            warnings=warnings,
+            started_at=str(row["started_at"]),
+            completed_at=str(row["completed_at"]),
         )
 
     def _social_diversification_plan(
