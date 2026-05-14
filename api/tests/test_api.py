@@ -156,6 +156,17 @@ def test_bot_detail_and_cycle_flow() -> None:
         assert len(pending_payload) >= 6
 
 
+def test_admin_cycle_survives_audit_sink_failure() -> None:
+    with build_client() as client:
+        with patch("api.app.services.BotSocietyService.record_audit_event", side_effect=RuntimeError("audit unavailable")):
+            cycle_response = client.post("/api/admin/run-cycle")
+
+        assert cycle_response.status_code == 200
+        cycle_payload = cycle_response.json()
+        assert cycle_payload["operation"]["generated_predictions"] == 6
+        assert cycle_payload["provider_status"]["market_provider_source"]
+
+
 def test_connector_and_infrastructure_system_endpoints() -> None:
     with build_client() as client:
         connectors_response = client.get("/api/system/connectors")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -78,6 +79,7 @@ from .services import BotSocietyService
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+logger = logging.getLogger(__name__)
 
 
 def _request_host(request: Request) -> str:
@@ -241,16 +243,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         after_state: dict[str, object] | None = None,
     ) -> None:
         actor = actor_user_slug if actor_user_slug is not None else current_user_slug(request, fallback_to_demo=False)
-        get_service(request).record_audit_event(
-            actor_user_slug=actor,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            ip_address=request_ip(request),
-            user_agent=request.headers.get("user-agent"),
-            before_state=before_state,
-            after_state=after_state,
-        )
+        try:
+            get_service(request).record_audit_event(
+                actor_user_slug=actor,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                ip_address=request_ip(request),
+                user_agent=request.headers.get("user-agent"),
+                before_state=before_state,
+                after_state=after_state,
+            )
+        except Exception:
+            logger.exception(
+                "Audit event write failed",
+                extra={
+                    "audit_action": action,
+                    "audit_resource_type": resource_type,
+                    "audit_resource_id": resource_id,
+                    "audit_actor_user_slug": actor,
+                },
+            )
 
     def run_validated(action):
         try:
