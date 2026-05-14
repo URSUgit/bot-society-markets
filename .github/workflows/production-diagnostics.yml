@@ -1,0 +1,85 @@
+name: Production Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Diagnostic command to run against the production database secret.
+        required: true
+        default: provider-status
+        type: choice
+        options:
+          - provider-status
+          - run-cycle
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
+      BSM_ENVIRONMENT_NAME: production
+      BSM_DEPLOYMENT_TARGET: github-diagnostic
+      BSM_MARKET_PROVIDER: auto
+      BSM_SIGNAL_PROVIDER: demo
+      BSM_VENUE_SIGNAL_PROVIDERS: polymarket,kalshi
+      BSM_SOCIAL_DISCOVERY_PROVIDER: demo
+      BSM_SEED_DEMO_DATA: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run diagnostic
+        env:
+          DIAGNOSTIC_COMMAND: ${{ inputs.command }}
+        run: |
+          python - <<'PY'
+          import os
+          from api.app.jobs import build_service
+
+          if not os.environ.get("BSM_DATABASE_URL"):
+              raise SystemExit("BSM_DATABASE_URL secret is missing")
+
+          service = build_service()
+          command = os.environ["DIAGNOSTIC_COMMAND"]
+
+          if command == "provider-status":
+              status = service.get_provider_status(force_refresh=True)
+              print(
+                  "provider-status "
+                  f"market_mode={status.market_provider_mode} "
+                  f"market_source={status.market_provider_source} "
+                  f"market_ready={status.market_provider_ready} "
+                  f"market_fallback={status.market_fallback_active} "
+                  f"signal_source={status.signal_provider_source} "
+                  f"signal_fallback={status.signal_fallback_active}"
+              )
+          elif command == "run-cycle":
+              result = service.run_pipeline_cycle()
+              operation = result.operation
+              print(
+                  "run-cycle "
+                  f"operation_id={operation.id if operation else 'n/a'} "
+                  f"cycle_type={operation.cycle_type if operation else 'n/a'} "
+                  f"ingested={operation.ingested_signals if operation else 0} "
+                  f"generated={operation.generated_predictions if operation else 0} "
+                  f"market_source={result.provider_status.market_provider_source} "
+                  f"market_fallback={result.provider_status.market_fallback_active}"
+              )
+          else:
+              raise SystemExit(f"Unsupported diagnostic command: {command}")
+          PY
