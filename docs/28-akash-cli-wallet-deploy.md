@@ -13,7 +13,7 @@ Use this CLI lane when the Console API key cannot deploy crypto-funded workloads
 - `deploy/akash/cli-deploy.sh`
 - `deploy/akash/setup-github-cli-secrets.ps1`
 - `deploy/akash/trigger-github-cli-deploy.ps1`
-- `prepare-bitprivat-neon.ps1 -PricingDenom uakt`
+- `prepare-bitprivat-neon.ps1 -PricingDenom uact`
 
 The CLI lane is intentionally separate from the current production Console API lane.
 
@@ -115,6 +115,7 @@ Keep these off until the wallet is funded and the status check succeeds.
 
 ## Notes
 
-- CLI-generated SDL uses `uakt` pricing because official Akash CLI examples use `uakt` gas and deposit denominations.
+- CLI-generated SDL uses `uact` pricing because official Akash SDL docs use ACT (`uact`) for deployment pricing and escrow.
+- CLI gas still uses `uakt`, so the deploy script keeps `AKASH_GAS_PRICES=0.025uakt`.
 - The existing Console API workflow is untouched and remains the safe production fallback.
 - Generated SDL files stay ignored because they can contain database URLs and API keys.
