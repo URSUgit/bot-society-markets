@@ -249,9 +249,15 @@ BSM_YOUTUBE_API_KEY
 ```
 
 After the secrets are configured, the workflow can redeploy Akash from GitHub
-Actions. It also listens for successful `Container Image` workflow completions
-on `main`, so future production image publishes can flow into Akash without a
-manual console paste. The social discovery provider defaults to `auto`: the
+Actions. Manual dispatch is always available. Automatic redeploy after a
+successful `Container Image` run is opt-in through this repository variable:
+
+```text
+AKASH_CONSOLE_AUTO_DEPLOY=true
+```
+
+Keep it off when the Console API key has no active deployments or the saved
+`AKASH_DSEQ` points to a closed deployment. The social discovery provider defaults to `auto`: the
 workflow promotes to YouTube when `BSM_YOUTUBE_API_KEY` is set, and keeps demo
 mode when it is not. If any required secret is missing, the workflow skips the
 deploy with a notice instead of failing the whole project pipeline.
