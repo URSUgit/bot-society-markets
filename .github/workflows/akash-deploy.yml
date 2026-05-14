@@ -64,7 +64,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && vars.AKASH_CONSOLE_AUTO_DEPLOY == 'true')
     permissions:
       actions: read
       contents: read
