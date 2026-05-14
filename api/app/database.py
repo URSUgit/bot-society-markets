@@ -552,6 +552,7 @@ class Database:
         metadata.create_all(self.engine)
         self._migrate_existing_schema()
         metadata.create_all(self.engine)
+        self.sync_postgres_sequences()
 
     def dispose(self) -> None:
         self.engine.dispose()
@@ -560,6 +561,36 @@ class Database:
         if self.dialect_name == "postgresql":
             return postgresql_insert(table)
         return sqlite_insert(table)
+
+    def sync_postgres_sequences(self) -> None:
+        if self.dialect_name != "postgresql":
+            return
+
+        preparer = self.engine.dialect.identifier_preparer
+        with self.connect() as connection:
+            for table in metadata.sorted_tables:
+                for column in table.primary_key.columns:
+                    if not isinstance(column.type, Integer) or column.autoincrement is False:
+                        continue
+
+                    sequence_name = connection.execute(
+                        text("SELECT pg_get_serial_sequence(:table_name, :column_name)"),
+                        {"table_name": table.name, "column_name": column.name},
+                    ).scalar()
+                    if not sequence_name:
+                        continue
+
+                    quoted_table = preparer.quote(table.name)
+                    quoted_column = preparer.quote(column.name)
+                    next_value = int(
+                        connection.exec_driver_sql(
+                            f"SELECT COALESCE(MAX({quoted_column}), 0) + 1 FROM {quoted_table}"
+                        ).scalar_one()
+                    )
+                    connection.execute(
+                        text("SELECT setval(CAST(:sequence_name AS regclass), :next_value, false)"),
+                        {"sequence_name": sequence_name, "next_value": next_value},
+                    )
 
     def _migrate_existing_schema(self) -> None:
         inspector = inspect(self.engine)

@@ -62,6 +62,8 @@ def copy_database(source_database: Database, target_database: Database, *, trunc
                 target_connection.execute(table.insert(), rows)
             copied_rows[table.name] = len(rows)
 
+    target_database.sync_postgres_sequences()
+
     return DatabaseCopySummary(
         source_url=source_database.url,
         target_url=target_database.url,
