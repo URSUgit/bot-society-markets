@@ -69,6 +69,15 @@ This signs an Akash transaction and can spend gas. The `-ConfirmSpend` switch is
 .\deploy\akash\trigger-github-cli-deploy.ps1 -Mode update -ConfirmSpend
 ```
 
+## Send Manifest Only
+
+Use this when the chain deployment update succeeded but manifest upload failed.
+It sends the rendered SDL to the active provider without signing another chain transaction.
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode manifest
+```
+
 With an explicit immutable image:
 
 ```powershell

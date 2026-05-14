@@ -17,6 +17,7 @@ on:
         type: choice
         options:
           - status
+          - manifest
           - update
           - create
       image_ref:
@@ -37,7 +38,7 @@ on:
         default: "90"
         type: string
       verify:
-        description: Run production smoke verification after create/update.
+        description: Run production smoke verification after manifest/create/update.
         required: false
         default: true
         type: boolean
@@ -155,13 +156,13 @@ jobs:
           missing=()
           [ -z "$AKASH_CLI_MNEMONIC" ] && missing+=("AKASH_CLI_MNEMONIC")
 
-          if [ "${{ steps.options.outputs.mode }}" = "update" ] && [ -z "$AKASH_CLI_DSEQ" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "manifest" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
             missing+=("AKASH_CLI_DSEQ")
           fi
           if [ "${{ steps.options.outputs.mode }}" != "status" ] && [ -z "$BSM_DATABASE_URL" ]; then
             missing+=("BSM_DATABASE_URL")
           fi
-          if [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "create" ]; } && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
             missing+=("confirm_spend=true")
           fi
           if [ "${{ steps.options.outputs.social_provider }}" = "youtube" ] && [ -z "$BSM_YOUTUBE_API_KEY" ]; then

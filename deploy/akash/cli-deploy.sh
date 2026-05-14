@@ -98,10 +98,10 @@ extract_first_attr() {
 
 render_sdl() {
   if [ -z "${BSM_DATABASE_URL:-}" ]; then
-    fail "BSM_DATABASE_URL is required for create/update CLI deploys."
+    fail "BSM_DATABASE_URL is required for manifest/create/update CLI deploys."
   fi
   if [ -z "${IMAGE_REF:-}" ]; then
-    fail "IMAGE_REF is required for create/update CLI deploys."
+    fail "IMAGE_REF is required for manifest/create/update CLI deploys."
   fi
 
   require_command pwsh
@@ -191,6 +191,18 @@ write_result_env() {
   log "Wrote result metadata: $result_path"
 }
 
+send_manifest_to_provider() {
+  local dseq="$1"
+  local provider="$2"
+
+  # provider-services v0.12 accepts wallet/provider flags here, but not chain query flags.
+  provider-services send-manifest "$AKASH_SDL_PATH" \
+    --dseq "$dseq" \
+    --provider "$provider" \
+    --from "$AKASH_KEY_NAME" \
+    --keyring-backend "$AKASH_KEYRING_BACKEND"
+}
+
 status_deployment() {
   log "Akash network status"
   provider-services query block "${AKASH_QUERY_FLAGS[@]}" | jq '{height: .block.header.height, time: .block.header.time}'
@@ -255,16 +267,25 @@ create_deployment() {
     "${AKASH_TX_FLAGS[@]}" >/dev/null
 
   log "Sending manifest to provider $provider"
-  provider-services send-manifest "$AKASH_SDL_PATH" \
-    --dseq "$dseq" \
-    --provider "$provider" \
-    --from "$AKASH_KEY_NAME" \
-    --keyring-backend "$AKASH_KEYRING_BACKEND" \
-    --node "$AKASH_NODE" \
-    --chain-id "$AKASH_CHAIN_ID"
+  send_manifest_to_provider "$dseq" "$provider"
 
   write_result_env "$dseq" "$provider"
   log "Akash CLI create completed"
+}
+
+manifest_deployment() {
+  if [ -z "${AKASH_DSEQ:-}" ]; then
+    fail "AKASH_DSEQ is required for manifest mode."
+  fi
+
+  render_sdl
+  resolve_lease_from_active "$AKASH_DSEQ"
+
+  log "Sending manifest to provider $RESOLVED_PROVIDER for DSEQ $AKASH_DSEQ"
+  send_manifest_to_provider "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
+
+  write_result_env "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
+  log "Akash CLI manifest upload completed"
 }
 
 update_deployment() {
@@ -284,13 +305,7 @@ update_deployment() {
   sleep "$AKASH_MANIFEST_WAIT_SECONDS"
 
   log "Sending updated manifest to provider $RESOLVED_PROVIDER"
-  provider-services send-manifest "$AKASH_SDL_PATH" \
-    --dseq "$AKASH_DSEQ" \
-    --provider "$RESOLVED_PROVIDER" \
-    --from "$AKASH_KEY_NAME" \
-    --keyring-backend "$AKASH_KEYRING_BACKEND" \
-    --node "$AKASH_NODE" \
-    --chain-id "$AKASH_CHAIN_ID"
+  send_manifest_to_provider "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
 
   write_result_env "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
   log "Akash CLI update completed"
@@ -326,6 +341,9 @@ main() {
     status)
       status_deployment
       ;;
+    manifest)
+      manifest_deployment
+      ;;
     create)
       create_deployment
       ;;
@@ -333,7 +351,7 @@ main() {
       update_deployment
       ;;
     *)
-      fail "Unsupported AKASH_CLI_MODE '$AKASH_CLI_MODE'. Use status, create, or update."
+      fail "Unsupported AKASH_CLI_MODE '$AKASH_CLI_MODE'. Use status, manifest, create, or update."
       ;;
   esac
 }
