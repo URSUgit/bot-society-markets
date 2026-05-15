@@ -211,9 +211,9 @@ resolve_lease_from_active() {
   local leases_json
   leases_json="$(get_active_lease_json "$dseq")"
 
-  RESOLVED_PROVIDER="$(jq -r '(.leases // [])[0] | .lease.lease_id.provider // .lease_id.provider // .bid_id.provider // empty' <<<"$leases_json")"
-  RESOLVED_GSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.gseq // .lease_id.gseq // .bid_id.gseq // "1"' <<<"$leases_json")"
-  RESOLVED_OSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.oseq // .lease_id.oseq // .bid_id.oseq // "1"' <<<"$leases_json")"
+  RESOLVED_PROVIDER="$(jq -r '(.leases // [])[0] | .lease.lease_id.provider // .lease.id.provider // .lease_id.provider // .bid_id.provider // empty' <<<"$leases_json")"
+  RESOLVED_GSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.gseq // .lease.id.gseq // .lease_id.gseq // .bid_id.gseq // "1"' <<<"$leases_json")"
+  RESOLVED_OSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.oseq // .lease.id.oseq // .lease_id.oseq // .bid_id.oseq // "1"' <<<"$leases_json")"
 
   if [ -n "${AKASH_PROVIDER:-}" ]; then
     RESOLVED_PROVIDER="$AKASH_PROVIDER"
@@ -313,13 +313,13 @@ create_deployment() {
   local provider
   provider="${AKASH_CLI_CREATE_PROVIDER:-}"
   if [ -z "$provider" ]; then
-    provider="$(jq -r '(.bids // [])[0] | .bid.bid_id.provider // .bid.provider // .bid_id.provider // empty' <<<"$bids_json")"
+    provider="$(jq -r '(.bids // [])[0] | .bid.bid_id.provider // .bid.id.provider // .bid.provider // .bid_id.provider // empty' <<<"$bids_json")"
   fi
 
   local gseq
   local oseq
-  gseq="${AKASH_GSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.gseq // .bid.gseq // .bid_id.gseq // "1"' <<<"$bids_json")}"
-  oseq="${AKASH_OSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.oseq // .bid.oseq // .bid_id.oseq // "1"' <<<"$bids_json")}"
+  gseq="${AKASH_GSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.gseq // .bid.id.gseq // .bid.gseq // .bid_id.gseq // "1"' <<<"$bids_json")}"
+  oseq="${AKASH_OSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.oseq // .bid.id.oseq // .bid.oseq // .bid_id.oseq // "1"' <<<"$bids_json")}"
 
   if [ -z "$provider" ]; then
     echo "$bids_json" | jq '.'
