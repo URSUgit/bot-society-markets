@@ -213,6 +213,37 @@ status_deployment() {
   if [ -n "${AKASH_DSEQ:-}" ]; then
     log "Active leases for DSEQ $AKASH_DSEQ"
     get_active_lease_json "$AKASH_DSEQ" | jq '.leases // .'
+    resolve_lease_from_active "$AKASH_DSEQ"
+
+    log "Provider-services runtime command discovery"
+    provider-services --help | sed -n '1,120p' || true
+    provider-services query lease --help | sed -n '1,160p' || true
+    provider-services lease-status --help | sed -n '1,160p' || true
+    provider-services lease-logs --help | sed -n '1,160p' || true
+    provider-services provider lease-status --help | sed -n '1,160p' || true
+    provider-services provider lease-logs --help | sed -n '1,160p' || true
+    provider-services query lease logs --help | sed -n '1,160p' || true
+
+    log "Best-effort lease status"
+    provider-services lease-status \
+      --dseq "$AKASH_DSEQ" \
+      --gseq "$RESOLVED_GSEQ" \
+      --oseq "$RESOLVED_OSEQ" \
+      --provider "$RESOLVED_PROVIDER" \
+      --from "$AKASH_KEY_NAME" \
+      --keyring-backend "$AKASH_KEYRING_BACKEND" || true
+
+    log "Best-effort web service logs"
+    provider-services lease-logs \
+      --dseq "$AKASH_DSEQ" \
+      --gseq "$RESOLVED_GSEQ" \
+      --oseq "$RESOLVED_OSEQ" \
+      --provider "$RESOLVED_PROVIDER" \
+      --from "$AKASH_KEY_NAME" \
+      --keyring-backend "$AKASH_KEYRING_BACKEND" \
+      --service web \
+      --tail 120 || true
+
     write_result_env "$AKASH_DSEQ" "${AKASH_PROVIDER:-}"
   fi
 }
