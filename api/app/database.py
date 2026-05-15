@@ -528,6 +528,17 @@ def normalize_database_url(url: str | None) -> str | None:
     return normalized
 
 
+def engine_options_for_url(url: str) -> dict[str, object]:
+    options: dict[str, object] = {"future": True}
+    if not url.startswith("sqlite:"):
+        options.update(
+            pool_pre_ping=True,
+            pool_recycle=300,
+            pool_timeout=20,
+        )
+    return options
+
+
 class Database:
     def __init__(self, path: Path | None = None, url: str | None = None) -> None:
         self.path = path
@@ -535,7 +546,7 @@ class Database:
         if self.url.startswith("sqlite:///"):
             sqlite_path = path or Path(self.url.removeprefix("sqlite:///"))
             sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        self.engine: Engine = create_engine(self.url, future=True)
+        self.engine: Engine = create_engine(self.url, **engine_options_for_url(self.url))
 
     @property
     def dialect_name(self) -> str:
