@@ -66,6 +66,21 @@ ensure_wallet() {
   log "Using deploy wallet: $AKASH_OWNER_ADDRESS"
 }
 
+ensure_client_certificate() {
+  local cert_dir="${AKASH_CERT_HOME:-$HOME/.akash}"
+  local cert_path="$cert_dir/$AKASH_OWNER_ADDRESS.pem"
+  if [ -s "$cert_path" ]; then
+    log "Akash client certificate already exists at $cert_path"
+    return
+  fi
+
+  mkdir -p "$cert_dir"
+  log "Generating Akash client certificate for deployment transactions"
+  provider-services tx cert generate client \
+    --from "$AKASH_KEY_NAME" \
+    --keyring-backend "$AKASH_KEYRING_BACKEND"
+}
+
 query_flags() {
   printf '%s\0' --node "$AKASH_NODE" --chain-id "$AKASH_CHAIN_ID" --output json
 }
@@ -219,6 +234,7 @@ status_deployment() {
 
 create_deployment() {
   render_sdl
+  ensure_client_certificate
 
   log "Creating Akash deployment"
   local create_args=(tx deployment create "$AKASH_SDL_PATH" --deposit "$AKASH_DEPOSIT")
