@@ -167,6 +167,25 @@ def test_admin_cycle_survives_audit_sink_failure() -> None:
         assert cycle_payload["provider_status"]["market_provider_source"]
 
 
+def test_production_run_cycle_defaults_to_safe_snapshot() -> None:
+    settings = Settings(environment_name="production", deployment_target="akash")
+    with build_client(settings) as client:
+        before_response = client.get("/api/operations/latest")
+        assert before_response.status_code == 200
+        before_operation = before_response.json()
+
+        cycle_response = client.post("/api/admin/run-cycle")
+        assert cycle_response.status_code == 200
+        cycle_payload = cycle_response.json()
+        assert cycle_payload["cycle_started"] is False
+        assert "protected" in cycle_payload["cycle_message"].lower()
+        assert cycle_payload["operation"]["id"] == before_operation["id"]
+
+        after_response = client.get("/api/operations/latest")
+        assert after_response.status_code == 200
+        assert after_response.json()["id"] == before_operation["id"]
+
+
 def test_connector_and_infrastructure_system_endpoints() -> None:
     with build_client() as client:
         connectors_response = client.get("/api/system/connectors")

@@ -4047,6 +4047,24 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         return self._latest_operation(repository)
 
+    def get_cycle_result_snapshot(
+        self,
+        *,
+        cycle_started: bool = False,
+        cycle_message: str | None = None,
+    ) -> CycleResult:
+        repository = BotSocietyRepository(self.database)
+        return CycleResult(
+            operation=self._latest_operation(repository),
+            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
+            recent_predictions=self._build_prediction_views(repository, repository.list_predictions(limit=10)),
+            provider_status=self.get_provider_status(),
+            alert_inbox=self.get_alert_inbox(self.settings.default_user_slug),
+            notification_health=self.get_notification_health(self.settings.default_user_slug),
+            cycle_started=cycle_started,
+            cycle_message=cycle_message,
+        )
+
     def probe_provider_connectivity(self) -> dict[str, str]:
         repository = BotSocietyRepository(self.database)
         latest_snapshots = repository.list_latest_market_snapshots()
@@ -4163,13 +4181,9 @@ class BotSocietyService:
         )
         operation = repository.get_latest_pipeline_run()
         self._clear_live_caches()
-        return CycleResult(
-            operation=self._to_operation_model(operation),
-            leaderboard=self._build_bot_summaries(repository, self.settings.default_user_slug),
-            recent_predictions=self._build_prediction_views(repository, repository.list_predictions(limit=10)),
-            provider_status=self.get_provider_status(),
-            alert_inbox=self.get_alert_inbox(self.settings.default_user_slug),
-            notification_health=self.get_notification_health(self.settings.default_user_slug),
+        return self.get_cycle_result_snapshot(
+            cycle_started=True,
+            cycle_message=f"Cycle {operation['id'] if operation else 'n/a'} completed.",
         )
 
     def _deliver_alerts_for_predictions(self, repository: BotSocietyRepository, predictions: list[dict]) -> int:

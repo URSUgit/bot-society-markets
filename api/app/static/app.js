@@ -3750,7 +3750,11 @@ async function runCycle() {
   try {
     const result = await fetchJson("/api/admin/run-cycle", { method: "POST" });
     await loadDashboard({ silent: true });
-    setStatus(`Pipeline cycle completed. ${result.alert_inbox.unread_count} unread alerts currently in inbox.`);
+    if (result.cycle_started === false) {
+      setStatus(result.cycle_message || "Production cycle control is protected. Latest operation snapshot refreshed.");
+    } else {
+      setStatus(`Pipeline cycle completed. ${result.alert_inbox.unread_count} unread alerts currently in inbox.`);
+    }
   } catch (error) {
     setStatus(`Pipeline cycle failed: ${error.message}`);
   } finally {

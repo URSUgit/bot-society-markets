@@ -985,8 +985,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/admin/run-cycle", response_model=CycleResult)
     @app.post("/api/admin/run-cycle", response_model=CycleResult)
-    def run_cycle(request: Request) -> CycleResult:
-        result = get_service(request).run_pipeline_cycle()
+    def run_cycle(
+        request: Request,
+        wait: bool = Query(False, description="Execute synchronously. Production web defaults to a safe snapshot response."),
+    ) -> CycleResult:
+        service = get_service(request)
+        production_web = active_settings.environment_name == "production" or active_settings.deployment_target == "akash"
+        if production_web and not wait:
+            result = service.get_cycle_result_snapshot(
+                cycle_started=False,
+                cycle_message=(
+                    "Production web cycle execution is protected from blocking the public origin. "
+                    "Run the background worker or call this endpoint with wait=true from an operator context."
+                ),
+            )
+            audit_event(
+                request,
+                action="admin.run_cycle_snapshot",
+                resource_type="pipeline_run",
+                resource_id=str(result.operation.id) if result.operation else None,
+                after_state={"cycle_started": False},
+            )
+            return result
+
+        result = service.run_pipeline_cycle()
         audit_event(
             request,
             action="admin.run_cycle",

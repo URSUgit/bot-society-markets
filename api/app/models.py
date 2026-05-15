@@ -1154,6 +1154,8 @@ class CycleResult(BaseModel):
     provider_status: ProviderStatus
     alert_inbox: AlertInbox
     notification_health: NotificationHealthSnapshot
+    cycle_started: bool = True
+    cycle_message: str | None = None
 
 
 class FollowedBot(BaseModel):
