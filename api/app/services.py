@@ -212,6 +212,7 @@ class BotSocietyService:
         self.wallet_provider_source = self.wallet_provider.source_name
         self.wallet_snapshot_cache: tuple[datetime, WalletIntelligenceSnapshot] | None = None
         self.edge_snapshot_cache: tuple[datetime, EdgeSnapshot] | None = None
+        self.macro_snapshot_cache: tuple[datetime, MacroSnapshot] | None = None
         self.provider_status_cache: tuple[datetime, ProviderStatus] | None = None
         self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
 
@@ -1041,11 +1042,14 @@ class BotSocietyService:
         )
 
     def get_macro_snapshot(self, repository: BotSocietyRepository | None = None) -> MacroSnapshot:
+        if self._cache_is_fresh(self.macro_snapshot_cache, ttl_seconds=300):
+            return self.macro_snapshot_cache[1]
+
         active_repository = repository or BotSocietyRepository(self.database)
         latest_rows = active_repository.list_latest_macro_snapshots()
         series = []
         for row in latest_rows:
-            history_rows = active_repository.list_macro_history(str(row["series_id"]))
+            history_rows = active_repository.list_macro_history(str(row["series_id"]), limit=180)
             series.append(
                 MacroSeriesSnapshot(
                     series_id=row["series_id"],
@@ -1075,12 +1079,14 @@ class BotSocietyService:
             if strongest
             else "Macro provider is online but no series have been hydrated yet."
         )
-        return MacroSnapshot(
+        snapshot = MacroSnapshot(
             generated_at=self._now(),
             posture=posture,
             summary=summary,
             series=series,
         )
+        self.macro_snapshot_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_signals(self, limit: int = 12) -> list[SignalView]:
         repository = BotSocietyRepository(self.database)
@@ -5593,6 +5599,7 @@ class BotSocietyService:
 
     def _clear_live_caches(self) -> None:
         self.provider_status_cache = None
+        self.macro_snapshot_cache = None
         self.dashboard_snapshot_cache.clear()
 
     def _current_tracked_assets(self, repository: BotSocietyRepository | None = None) -> tuple[str, ...]:

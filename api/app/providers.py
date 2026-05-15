@@ -1314,7 +1314,7 @@ class PolymarketPredictionMarketIntelProvider(AssetAwareSignalProvider):
             f"https://gamma-api.polymarket.com/events?{query}",
             headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
         )
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=6) as response:
             payload = json.loads(response.read().decode("utf-8"))
 
         generated: list[dict] = []

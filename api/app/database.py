@@ -563,6 +563,7 @@ class Database:
         metadata.create_all(self.engine)
         self._migrate_existing_schema()
         metadata.create_all(self.engine)
+        self._ensure_performance_indexes()
         self.sync_postgres_sequences()
 
     def dispose(self) -> None:
@@ -645,3 +646,27 @@ class Database:
                 for column_name, statement in statements.items():
                     if column_name not in existing_columns:
                         connection.exec_driver_sql(statement)
+
+    def _ensure_performance_indexes(self) -> None:
+        """Create indexes that may be absent on long-lived production databases."""
+        statements = [
+            "CREATE INDEX IF NOT EXISTS idx_market_snapshots_asset_as_of ON market_snapshots (asset, as_of DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_macro_snapshots_series_date ON macro_snapshots (series_id, observation_date DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_signals_observed_quality_id ON signals (observed_at DESC, source_quality_score DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_signals_asset_observed_id ON signals (asset, observed_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_predictions_published_id ON predictions (published_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_predictions_status_published_id ON predictions (status, published_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_paper_positions_user_opened_id ON paper_positions (user_slug, opened_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_social_trader_events_trader_observed_id ON social_trader_events (trader_id, observed_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_social_trader_allocations_user_updated ON social_trader_allocations (user_slug, is_active DESC, updated_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_created_id ON alert_delivery_events (user_slug, created_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_read_created ON alert_delivery_events (user_slug, read_at, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_status_created ON alert_delivery_events (user_slug, delivery_status, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_channel_status ON alert_delivery_events (user_slug, notification_channel_id, delivery_status)",
+        ]
+        existing_tables = set(inspect(self.engine).get_table_names())
+        with self.connect() as connection:
+            for statement in statements:
+                table_name = statement.split(" ON ", 1)[1].split(" ", 1)[0]
+                if table_name in existing_tables:
+                    connection.exec_driver_sql(statement)

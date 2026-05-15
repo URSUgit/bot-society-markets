@@ -244,7 +244,17 @@ class BotSocietyRepository:
                     rows.append(row)
             return rows
 
-    def list_macro_history(self, series_id: str) -> list[dict[str, Any]]:
+    def list_macro_history(self, series_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+        if limit:
+            stmt = (
+                select(macro_snapshots_table)
+                .where(macro_snapshots_table.c.series_id == series_id)
+                .order_by(desc(macro_snapshots_table.c.observation_date), desc(macro_snapshots_table.c.id))
+                .limit(limit)
+            )
+            with self.database.connect() as connection:
+                return list(reversed(self._rows(connection.execute(stmt))))
+
         stmt = (
             select(macro_snapshots_table)
             .where(macro_snapshots_table.c.series_id == series_id)
