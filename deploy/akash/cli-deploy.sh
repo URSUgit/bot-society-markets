@@ -269,6 +269,8 @@ create_deployment() {
   # DSEQ creation with AKASH_CLI_CREATE_DSEQ.
   if [ -n "${AKASH_CLI_CREATE_DSEQ:-}" ]; then
     create_args+=(--dseq "$AKASH_CLI_CREATE_DSEQ")
+  else
+    unset AKASH_DSEQ
   fi
 
   local create_json
@@ -288,7 +290,7 @@ create_deployment() {
   bids_json="$(provider-services query market bid list --owner "$AKASH_OWNER_ADDRESS" --dseq "$dseq" --state open "${AKASH_QUERY_FLAGS[@]}")"
 
   local provider
-  provider="${AKASH_PROVIDER:-}"
+  provider="${AKASH_CLI_CREATE_PROVIDER:-}"
   if [ -z "$provider" ]; then
     provider="$(jq -r '(.bids // [])[0] | .bid.bid_id.provider // .bid.provider // .bid_id.provider // empty' <<<"$bids_json")"
   fi
