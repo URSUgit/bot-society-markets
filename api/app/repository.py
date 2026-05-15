@@ -171,27 +171,33 @@ class BotSocietyRepository:
             return self._row(connection.execute(stmt))
 
     def list_latest_market_snapshots(self) -> list[dict[str, Any]]:
-        latest = (
-            select(
-                market_snapshots_table.c.asset,
-                func.max(market_snapshots_table.c.as_of).label("max_as_of"),
-            )
-            .group_by(market_snapshots_table.c.asset)
-            .subquery()
-        )
-        stmt = (
-            select(market_snapshots_table)
-            .join(
-                latest,
-                and_(
-                    latest.c.asset == market_snapshots_table.c.asset,
-                    latest.c.max_as_of == market_snapshots_table.c.as_of,
-                ),
-            )
-            .order_by(market_snapshots_table.c.asset)
-        )
         with self.database.connect() as connection:
-            return self._rows(connection.execute(stmt))
+            assets = sorted(
+                {
+                    asset.strip().upper()
+                    for universe in connection.execute(select(bots_table.c.asset_universe)).scalars()
+                    for asset in str(universe or "").split(",")
+                    if asset.strip()
+                }
+            )
+            if not assets:
+                assets = list(
+                    connection.execute(
+                        select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
+                    ).scalars()
+                )
+            rows: list[dict[str, Any]] = []
+            for asset in assets:
+                stmt = (
+                    select(market_snapshots_table)
+                    .where(market_snapshots_table.c.asset == asset)
+                    .order_by(desc(market_snapshots_table.c.as_of), desc(market_snapshots_table.c.id))
+                    .limit(1)
+                )
+                row = self._row(connection.execute(stmt))
+                if row:
+                    rows.append(row)
+            return rows
 
     def list_market_history(self, asset: str) -> list[dict[str, Any]]:
         stmt = select(market_snapshots_table).where(market_snapshots_table.c.asset == asset).order_by(market_snapshots_table.c.as_of)
@@ -219,27 +225,24 @@ class BotSocietyRepository:
             connection.execute(stmt)
 
     def list_latest_macro_snapshots(self) -> list[dict[str, Any]]:
-        latest = (
-            select(
-                macro_snapshots_table.c.series_id,
-                func.max(macro_snapshots_table.c.observation_date).label("max_observation_date"),
-            )
-            .group_by(macro_snapshots_table.c.series_id)
-            .subquery()
-        )
-        stmt = (
-            select(macro_snapshots_table)
-            .join(
-                latest,
-                and_(
-                    latest.c.series_id == macro_snapshots_table.c.series_id,
-                    latest.c.max_observation_date == macro_snapshots_table.c.observation_date,
-                ),
-            )
-            .order_by(macro_snapshots_table.c.series_id)
-        )
         with self.database.connect() as connection:
-            return self._rows(connection.execute(stmt))
+            series_ids = list(
+                connection.execute(
+                    select(macro_snapshots_table.c.series_id).distinct().order_by(macro_snapshots_table.c.series_id)
+                ).scalars()
+            )
+            rows: list[dict[str, Any]] = []
+            for series_id in series_ids:
+                stmt = (
+                    select(macro_snapshots_table)
+                    .where(macro_snapshots_table.c.series_id == series_id)
+                    .order_by(desc(macro_snapshots_table.c.observation_date), desc(macro_snapshots_table.c.id))
+                    .limit(1)
+                )
+                row = self._row(connection.execute(stmt))
+                if row:
+                    rows.append(row)
+            return rows
 
     def list_macro_history(self, series_id: str) -> list[dict[str, Any]]:
         stmt = (
@@ -251,8 +254,18 @@ class BotSocietyRepository:
             return self._rows(connection.execute(stmt))
 
     def list_assets(self) -> list[str]:
-        stmt = select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
         with self.database.connect() as connection:
+            assets = sorted(
+                {
+                    asset.strip().upper()
+                    for universe in connection.execute(select(bots_table.c.asset_universe)).scalars()
+                    for asset in str(universe or "").split(",")
+                    if asset.strip()
+                }
+            )
+            if assets:
+                return assets
+            stmt = select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
             return list(connection.execute(stmt).scalars().all())
 
     def list_recent_signals(self, limit: int = 12, asset: str | None = None) -> list[dict[str, Any]]:

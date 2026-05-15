@@ -1805,14 +1805,16 @@ class BotSocietyService:
         force_refresh: bool = False,
         wallet_snapshot: WalletIntelligenceSnapshot | None = None,
         macro_snapshot: MacroSnapshot | None = None,
+        latest_assets: list[dict] | None = None,
+        recent_signals: list[dict] | None = None,
     ) -> EdgeSnapshot:
         if not force_refresh and self._cache_is_fresh(self.edge_snapshot_cache):
             return self.edge_snapshot_cache[1]
 
         active_repository = repository or BotSocietyRepository(self.database)
         tracked_assets = self._current_tracked_assets(active_repository)
-        latest_assets = {row["asset"]: row for row in active_repository.list_latest_market_snapshots()}
-        recent_signals = active_repository.list_recent_signals(limit=120)
+        latest_assets = {row["asset"]: row for row in (latest_assets or active_repository.list_latest_market_snapshots())}
+        recent_signals = recent_signals or active_repository.list_recent_signals(limit=120)
         macro_snapshot = macro_snapshot or self.get_macro_snapshot(active_repository)
         wallet_snapshot = wallet_snapshot or self.get_wallet_intelligence()
         market_intel_source = self.demo_market_intel_provider.source_name
@@ -3897,19 +3899,25 @@ class BotSocietyService:
         provider_status = self.get_provider_status()
         latest_assets = repository.list_latest_market_snapshots()
         latest_asset_map = {row["asset"]: row for row in latest_assets}
-        recent_signals = repository.list_recent_signals(limit=96)
+        recent_signals = repository.list_recent_signals(limit=120)
         recent_prediction_rows = repository.list_predictions(limit=10)
         all_predictions = repository.list_predictions(limit=500)
         pending_predictions = [row for row in all_predictions if row["status"] == "pending"]
         asset_symbols = sorted({str(row["asset"]) for row in latest_assets})
         latest_operation = self._latest_operation(repository)
-        leaderboard = self._build_bot_summaries(repository, user_slug)
+        leaderboard = self._build_bot_summaries(repository, user_slug, predictions=all_predictions)
         leaderboard_map = {bot.slug: bot for bot in leaderboard}
         notification_health = self.get_notification_health(user_slug)
         alert_inbox = self.get_alert_inbox(user_slug)
         macro_snapshot = self.get_macro_snapshot(repository)
         wallet_snapshot = self.get_wallet_intelligence()
-        edge_snapshot = self.get_edge_snapshot(repository, wallet_snapshot=wallet_snapshot, macro_snapshot=macro_snapshot)
+        edge_snapshot = self.get_edge_snapshot(
+            repository,
+            wallet_snapshot=wallet_snapshot,
+            macro_snapshot=macro_snapshot,
+            latest_assets=latest_assets,
+            recent_signals=recent_signals,
+        )
         system_pulse = self.get_system_pulse(
             repository,
             provider_status=provider_status,
@@ -3965,14 +3973,37 @@ class BotSocietyService:
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
         repository = BotSocietyRepository(self.database)
+        provider_status = self.get_provider_status()
+        latest_assets = repository.list_latest_market_snapshots()
+        recent_signals = repository.list_recent_signals(limit=96)
+        all_predictions = repository.list_predictions(limit=500)
+        pending_predictions = [row for row in all_predictions if row["status"] == "pending"]
+        asset_symbols = sorted({str(row["asset"]) for row in latest_assets})
+        latest_operation = self._latest_operation(repository)
+        leaderboard = self._build_bot_summaries(repository, user_slug, predictions=all_predictions)
+        macro_snapshot = self.get_macro_snapshot(repository)
         return LandingSnapshot(
-            summary=self.get_summary(user_slug),
-            assets=self.get_assets(),
-            leaderboard=self._build_bot_summaries(repository, user_slug)[:4],
-            recent_signals=[self._to_signal_model(row) for row in repository.list_recent_signals(limit=4)],
-            system_pulse=self.get_system_pulse(repository),
-            macro_snapshot=self.get_macro_snapshot(repository),
-            provider_status=self.get_provider_status(),
+            summary=self.get_summary(
+                user_slug,
+                repository=repository,
+                bot_summaries=leaderboard,
+                predictions=all_predictions,
+                assets=asset_symbols,
+                signals=recent_signals,
+                latest_run=latest_operation.model_dump() if latest_operation else None,
+            ),
+            assets=[self._to_asset_model(row) for row in latest_assets],
+            leaderboard=leaderboard[:4],
+            recent_signals=[self._to_signal_model(row) for row in recent_signals[:4]],
+            system_pulse=self.get_system_pulse(
+                repository,
+                provider_status=provider_status,
+                recent_signals=recent_signals,
+                latest_assets=latest_assets,
+                pending_predictions=pending_predictions,
+            ),
+            macro_snapshot=macro_snapshot,
+            provider_status=provider_status,
             business_model=self.get_business_model_strategy(),
         )
 
@@ -4255,9 +4286,15 @@ class BotSocietyService:
             total_events += repository.upsert_alert_delivery_events(events)
         return total_events
 
-    def _build_bot_summaries(self, repository: BotSocietyRepository, user_slug: str | None = None) -> list[BotSummary]:
+    def _build_bot_summaries(
+        self,
+        repository: BotSocietyRepository,
+        user_slug: str | None = None,
+        *,
+        predictions: list[dict] | None = None,
+    ) -> list[BotSummary]:
         bots = repository.list_bots()
-        predictions = repository.list_predictions(limit=500)
+        predictions = predictions if predictions is not None else repository.list_predictions(limit=500)
         followed_bot_slugs = {row["bot_slug"] for row in repository.list_user_follows(user_slug)} if user_slug else set()
         bot_predictions: dict[str, list[dict]] = {bot["slug"]: [] for bot in bots}
         signal_lookup = self._load_prediction_signal_lookup(repository, predictions)
