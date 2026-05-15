@@ -222,8 +222,11 @@ create_deployment() {
 
   log "Creating Akash deployment"
   local create_args=(tx deployment create "$AKASH_SDL_PATH" --deposit "$AKASH_DEPOSIT")
-  if [ -n "${AKASH_DSEQ:-}" ]; then
-    create_args+=(--dseq "$AKASH_DSEQ")
+  # Create mode must be able to recover from a closed/invalid prior lease. Do
+  # not inherit AKASH_DSEQ unless a caller explicitly asks for deterministic
+  # DSEQ creation with AKASH_CLI_CREATE_DSEQ.
+  if [ -n "${AKASH_CLI_CREATE_DSEQ:-}" ]; then
+    create_args+=(--dseq "$AKASH_CLI_CREATE_DSEQ")
   fi
 
   local create_json
