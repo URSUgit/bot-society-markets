@@ -198,6 +198,7 @@ jobs:
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
           BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
           BSM_SOCIAL_DISCOVERY_PROVIDER: ${{ steps.options.outputs.social_provider }}
+          AKASH_EXTRA_ACCEPT_HOSTS: ${{ vars.AKASH_EXTRA_ACCEPT_HOSTS }}
           IMAGE_REF: ${{ steps.options.outputs.image_ref }}
           WITH_WORKER: ${{ steps.options.outputs.with_worker }}
         run: |

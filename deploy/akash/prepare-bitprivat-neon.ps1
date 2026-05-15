@@ -22,6 +22,8 @@ param(
 
     [string]$YouTubeVideoLimit = $env:BSM_YOUTUBE_VIDEO_LIMIT,
 
+    [string]$ExtraAcceptHosts = $env:AKASH_EXTRA_ACCEPT_HOSTS,
+
     [ValidateSet("uact", "uakt")]
     [string]$PricingDenom = "uact",
 
@@ -99,6 +101,20 @@ $rendered = $rendered.Replace("api.bitprivat.com", $apiHostEscaped)
 $rendered = $rendered.Replace("app.bitprivat.com", $appHostEscaped)
 $rendered = $rendered.Replace("www.bitprivat.com", $wwwHostEscaped)
 $rendered = $rendered.Replace("bitprivat.com", $rootDomainEscaped)
+
+if ($ExtraAcceptHosts) {
+    $extraAcceptLines = @(
+        $ExtraAcceptHosts -split "," |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ } |
+            Select-Object -Unique |
+            ForEach-Object { "          - $_" }
+    )
+    if ($extraAcceptLines.Count -gt 0) {
+        $statusAcceptLine = "          - $statusHostEscaped"
+        $rendered = $rendered.Replace($statusAcceptLine, "$statusAcceptLine`n$($extraAcceptLines -join "`n")")
+    }
+}
 
 if ($EnableAppCanonicalRedirects) {
     $rendered = $rendered -replace "BSM_CANONICAL_HOST=[^`r`n]*", "BSM_CANONICAL_HOST=$canonicalHostEscaped"
