@@ -134,7 +134,18 @@ load_tx_flags() {
 
 extract_first_attr() {
   local key="$1"
-  jq -r --arg key "$key" '[.. | objects | select(has("key") and .key == $key) | .value] | first // empty'
+  jq -r --arg key "$key" '
+    [
+      .. | objects |
+      if has("key") and .key == $key then
+        .value
+      elif has("value") then
+        (.value | fromjson? | if type == "object" and has($key) then .[$key] else empty end)
+      else
+        empty
+      end
+    ] | first // empty
+  '
 }
 
 render_sdl() {
@@ -262,27 +273,37 @@ create_deployment() {
   render_sdl
   ensure_client_certificate
 
-  log "Creating Akash deployment"
+  local dseq=""
   local create_args=(tx deployment create "$AKASH_SDL_PATH" --deposit "$AKASH_DEPOSIT")
   # Create mode must be able to recover from a closed/invalid prior lease. Do
   # not inherit AKASH_DSEQ unless a caller explicitly asks for deterministic
   # DSEQ creation with AKASH_CLI_CREATE_DSEQ.
   if [ -n "${AKASH_CLI_CREATE_DSEQ:-}" ]; then
-    create_args+=(--dseq "$AKASH_CLI_CREATE_DSEQ")
+    if provider-services query deployment get \
+      --owner "$AKASH_OWNER_ADDRESS" \
+      --dseq "$AKASH_CLI_CREATE_DSEQ" \
+      "${AKASH_QUERY_FLAGS[@]}" >/dev/null 2>&1; then
+      dseq="$AKASH_CLI_CREATE_DSEQ"
+      log "Using existing Akash deployment DSEQ $dseq"
+    else
+      create_args+=(--dseq "$AKASH_CLI_CREATE_DSEQ")
+    fi
   else
     unset AKASH_DSEQ
   fi
 
-  local create_json
-  create_json="$(provider-services "${create_args[@]}" "${AKASH_TX_FLAGS[@]}")"
-  local dseq
-  dseq="$(extract_first_attr dseq <<<"$create_json")"
   if [ -z "$dseq" ]; then
-    echo "$create_json" | jq '.'
-    fail "Deployment create succeeded but DSEQ could not be parsed."
+    log "Creating Akash deployment"
+    local create_json
+    create_json="$(provider-services "${create_args[@]}" "${AKASH_TX_FLAGS[@]}")"
+    dseq="$(extract_first_attr dseq <<<"$create_json")"
+    if [ -z "$dseq" ]; then
+      echo "$create_json" | jq '.'
+      fail "Deployment create succeeded but DSEQ could not be parsed."
+    fi
+    log "Deployment created with DSEQ $dseq"
   fi
 
-  log "Deployment created with DSEQ $dseq"
   log "Waiting ${AKASH_BID_WAIT_SECONDS}s for marketplace bids"
   sleep "$AKASH_BID_WAIT_SECONDS"
 
