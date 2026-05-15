@@ -2115,55 +2115,31 @@ class BotSocietyService:
     def get_notification_health(self, user_slug: str) -> NotificationHealthSnapshot:
         repository = BotSocietyRepository(self.database)
         channels = repository.list_notification_channels(user_slug)
-        deliveries = repository.list_alert_deliveries(user_slug, limit=None)
         now = datetime.now(timezone.utc)
         since = now - timedelta(hours=24)
+        delivery_metrics = repository.get_alert_delivery_metrics(user_slug, to_timestamp(since))
+        channel_metrics = {
+            int(row["notification_channel_id"]): row
+            for row in repository.list_alert_delivery_channel_metrics(user_slug)
+            if row.get("notification_channel_id") is not None
+        }
 
-        delivered_last_24h = 0
-        retry_queue_depth = 0
-        exhausted_deliveries = 0
-        last_delivery_at: str | None = None
         channel_health_map: dict[int, dict[str, object]] = {}
 
         for channel in channels:
+            channel_id = int(channel["id"])
+            metrics = channel_metrics.get(channel_id, {})
             channel_health_map[int(channel["id"])] = {
-                "channel_id": int(channel["id"]),
+                "channel_id": channel_id,
                 "channel_type": channel["channel_type"],
                 "target": channel["target"],
                 "is_active": bool(channel["is_active"]),
-                "delivered_count": 0,
-                "retry_scheduled_count": 0,
-                "exhausted_count": 0,
-                "last_delivered_at": channel.get("last_delivered_at"),
+                "delivered_count": int(metrics.get("delivered_count") or 0),
+                "retry_scheduled_count": int(metrics.get("retry_scheduled_count") or 0),
+                "exhausted_count": int(metrics.get("exhausted_count") or 0),
+                "last_delivered_at": metrics.get("last_delivered_at") or channel.get("last_delivered_at"),
                 "last_error": channel.get("last_error"),
             }
-
-        for delivery in deliveries:
-            status = str(delivery["delivery_status"])
-            channel_id = delivery.get("notification_channel_id")
-            created_at = parse_timestamp(delivery["created_at"])
-            if channel_id is not None and status == "delivered" and created_at >= since:
-                delivered_last_24h += 1
-            if channel_id is not None and status == "retry_scheduled":
-                retry_queue_depth += 1
-            if channel_id is not None and status == "exhausted":
-                exhausted_deliveries += 1
-
-            last_attempt_at = delivery.get("last_attempt_at") or delivery["created_at"]
-            if channel_id is not None and status == "delivered" and (last_delivery_at is None or last_attempt_at > last_delivery_at):
-                last_delivery_at = last_attempt_at
-
-            if channel_id is None or channel_id not in channel_health_map:
-                continue
-            channel_health = channel_health_map[int(channel_id)]
-            if status == "delivered":
-                channel_health["delivered_count"] = int(channel_health["delivered_count"]) + 1
-            elif status == "retry_scheduled":
-                channel_health["retry_scheduled_count"] = int(channel_health["retry_scheduled_count"]) + 1
-            elif status == "exhausted":
-                channel_health["exhausted_count"] = int(channel_health["exhausted_count"]) + 1
-                if delivery.get("error_detail"):
-                    channel_health["last_error"] = delivery["error_detail"]
 
         channel_health = [
             NotificationChannelHealth(**payload)
@@ -2171,10 +2147,10 @@ class BotSocietyService:
         ]
         return NotificationHealthSnapshot(
             active_channels=sum(1 for channel in channels if bool(channel["is_active"])),
-            delivered_last_24h=delivered_last_24h,
-            retry_queue_depth=retry_queue_depth,
-            exhausted_deliveries=exhausted_deliveries,
-            last_delivery_at=last_delivery_at,
+            delivered_last_24h=int(delivery_metrics["delivered_last_24h"]),
+            retry_queue_depth=int(delivery_metrics["retry_queue_depth"]),
+            exhausted_deliveries=int(delivery_metrics["exhausted_deliveries"]),
+            last_delivery_at=delivery_metrics.get("last_delivery_at"),
             channels=channel_health,
         )
 

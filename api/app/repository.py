@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import and_, delete, desc, func, select, update
+from sqlalchemy import and_, case, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .database import (
@@ -908,6 +908,62 @@ class BotSocietyRepository:
         stmt = stmt.order_by(desc(alert_delivery_events_table.c.created_at), desc(alert_delivery_events_table.c.id))
         if limit is not None:
             stmt = stmt.limit(limit)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_alert_delivery_metrics(self, user_slug: str, since: str) -> dict[str, Any]:
+        table = alert_delivery_events_table
+        has_channel = table.c.notification_channel_id.is_not(None)
+        delivered_recent = and_(
+            has_channel,
+            table.c.delivery_status == "delivered",
+            table.c.created_at >= since,
+        )
+        retry_scheduled = and_(has_channel, table.c.delivery_status == "retry_scheduled")
+        exhausted = and_(has_channel, table.c.delivery_status == "exhausted")
+        last_delivery_at = case(
+            (
+                and_(has_channel, table.c.delivery_status == "delivered"),
+                func.coalesce(table.c.last_attempt_at, table.c.created_at),
+            ),
+            else_=None,
+        )
+        stmt = select(
+            func.coalesce(func.sum(case((delivered_recent, 1), else_=0)), 0).label("delivered_last_24h"),
+            func.coalesce(func.sum(case((retry_scheduled, 1), else_=0)), 0).label("retry_queue_depth"),
+            func.coalesce(func.sum(case((exhausted, 1), else_=0)), 0).label("exhausted_deliveries"),
+            func.max(last_delivery_at).label("last_delivery_at"),
+        ).where(table.c.user_slug == user_slug)
+        with self.database.connect() as connection:
+            row = self._row(connection.execute(stmt)) or {}
+        return {
+            "delivered_last_24h": int(row.get("delivered_last_24h") or 0),
+            "retry_queue_depth": int(row.get("retry_queue_depth") or 0),
+            "exhausted_deliveries": int(row.get("exhausted_deliveries") or 0),
+            "last_delivery_at": row.get("last_delivery_at"),
+        }
+
+    def list_alert_delivery_channel_metrics(self, user_slug: str) -> list[dict[str, Any]]:
+        table = alert_delivery_events_table
+        stmt = (
+            select(
+                table.c.notification_channel_id,
+                func.coalesce(func.sum(case((table.c.delivery_status == "delivered", 1), else_=0)), 0).label("delivered_count"),
+                func.coalesce(func.sum(case((table.c.delivery_status == "retry_scheduled", 1), else_=0)), 0).label("retry_scheduled_count"),
+                func.coalesce(func.sum(case((table.c.delivery_status == "exhausted", 1), else_=0)), 0).label("exhausted_count"),
+                func.max(
+                    case(
+                        (
+                            table.c.delivery_status == "delivered",
+                            func.coalesce(table.c.last_attempt_at, table.c.created_at),
+                        ),
+                        else_=None,
+                    )
+                ).label("last_delivered_at"),
+            )
+            .where(and_(table.c.user_slug == user_slug, table.c.notification_channel_id.is_not(None)))
+            .group_by(table.c.notification_channel_id)
+        )
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
