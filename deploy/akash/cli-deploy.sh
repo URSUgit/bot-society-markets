@@ -79,6 +79,32 @@ ensure_client_certificate() {
   provider-services tx cert generate client \
     --from "$AKASH_KEY_NAME" \
     --keyring-backend "$AKASH_KEYRING_BACKEND"
+  publish_client_certificate
+}
+
+publish_client_certificate() {
+  log "Publishing Akash client certificate"
+  local stderr_file
+  stderr_file="$(mktemp)"
+  if provider-services tx cert publish client "${AKASH_TX_FLAGS[@]}" >/dev/null 2>"$stderr_file"; then
+    rm -f "$stderr_file"
+    return
+  fi
+
+  if grep -qiE "overwrite|already|exists" "$stderr_file"; then
+    if provider-services tx cert publish client --override "${AKASH_TX_FLAGS[@]}" >/dev/null 2>"$stderr_file"; then
+      rm -f "$stderr_file"
+      return
+    fi
+    if provider-services tx cert publish client --overwrite "${AKASH_TX_FLAGS[@]}" >/dev/null 2>"$stderr_file"; then
+      rm -f "$stderr_file"
+      return
+    fi
+  fi
+
+  cat "$stderr_file" >&2
+  rm -f "$stderr_file"
+  fail "Could not publish Akash client certificate."
 }
 
 query_flags() {
