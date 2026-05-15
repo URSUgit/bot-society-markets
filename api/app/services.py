@@ -214,6 +214,10 @@ class BotSocietyService:
         self.edge_snapshot_cache: tuple[datetime, EdgeSnapshot] | None = None
         self.macro_snapshot_cache: tuple[datetime, MacroSnapshot] | None = None
         self.provider_status_cache: tuple[datetime, ProviderStatus] | None = None
+        self.system_pulse_cache: tuple[datetime, SystemPulseSnapshot] | None = None
+        self.assets_cache: tuple[datetime, list[AssetSnapshot]] | None = None
+        self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
+        self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
         self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
 
     def bootstrap(self) -> None:
@@ -247,6 +251,7 @@ class BotSocietyService:
                     ),
                 }
             )
+        self._warm_public_snapshot_caches()
 
     def resolve_user_slug(self, session_token: str | None, *, fallback_to_demo: bool = True) -> str | None:
         if not session_token:
@@ -1028,8 +1033,12 @@ class BotSocietyService:
         )
 
     def get_assets(self) -> list[AssetSnapshot]:
+        if self._cache_is_fresh(self.assets_cache, ttl_seconds=300):
+            return self.assets_cache[1]
         repository = BotSocietyRepository(self.database)
-        return [self._to_asset_model(row) for row in repository.list_latest_market_snapshots()]
+        assets = [self._to_asset_model(row) for row in repository.list_latest_market_snapshots()]
+        self.assets_cache = (datetime.now(timezone.utc), assets)
+        return assets
 
     def get_asset_history(self, asset: str) -> AssetHistoryEnvelope:
         repository = BotSocietyRepository(self.database)
@@ -1097,8 +1106,14 @@ class BotSocietyService:
         return self._build_prediction_views(repository, repository.list_predictions(limit=limit, status=status))
 
     def get_leaderboard(self, user_slug: str | None = None) -> list[BotSummary]:
+        cache_key = user_slug or self.settings.default_user_slug
+        cached = self.leaderboard_cache.get(cache_key)
+        if self._cache_is_fresh(cached, ttl_seconds=300):
+            return cached[1]
         repository = BotSocietyRepository(self.database)
-        return self._build_bot_summaries(repository, user_slug)
+        leaderboard = self._build_bot_summaries(repository, user_slug)
+        self.leaderboard_cache[cache_key] = (datetime.now(timezone.utc), leaderboard)
+        return leaderboard
 
     def get_bot_detail(self, slug: str, user_slug: str | None = None) -> BotDetail | None:
         repository = BotSocietyRepository(self.database)
@@ -3978,6 +3993,11 @@ class BotSocietyService:
         return snapshot
 
     def get_landing_snapshot(self, user_slug: str | None = None) -> LandingSnapshot:
+        cache_key = user_slug or self.settings.default_user_slug
+        cached_snapshot = self.landing_snapshot_cache.get(cache_key)
+        if self._cache_is_fresh(cached_snapshot, ttl_seconds=120):
+            return cached_snapshot[1]
+
         repository = BotSocietyRepository(self.database)
         provider_status = self.get_provider_status()
         latest_assets = repository.list_latest_market_snapshots()
@@ -3988,7 +4008,7 @@ class BotSocietyService:
         latest_operation = self._latest_operation(repository)
         leaderboard = self._build_bot_summaries(repository, user_slug, predictions=all_predictions)
         macro_snapshot = self.get_macro_snapshot(repository)
-        return LandingSnapshot(
+        snapshot = LandingSnapshot(
             summary=self.get_summary(
                 user_slug,
                 repository=repository,
@@ -4012,6 +4032,8 @@ class BotSocietyService:
             provider_status=provider_status,
             business_model=self.get_business_model_strategy(),
         )
+        self.landing_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_system_pulse(
         self,
@@ -4023,6 +4045,17 @@ class BotSocietyService:
         latest_assets: list[dict] | None = None,
         pending_predictions: list[dict] | None = None,
     ) -> SystemPulseSnapshot:
+        cacheable = (
+            repository is None
+            and provider_status is None
+            and notification_health is None
+            and recent_signals is None
+            and latest_assets is None
+            and pending_predictions is None
+        )
+        if cacheable and self._cache_is_fresh(self.system_pulse_cache, ttl_seconds=120):
+            return self.system_pulse_cache[1]
+
         active_repository = repository or BotSocietyRepository(self.database)
         recent_signals = recent_signals if recent_signals is not None else active_repository.list_recent_signals(limit=96)
         latest_assets = latest_assets if latest_assets is not None else active_repository.list_latest_market_snapshots()
@@ -4044,7 +4077,7 @@ class BotSocietyService:
             if pending_predictions is not None
             else len(active_repository.list_predictions(status="pending", limit=500))
         )
-        return SystemPulseSnapshot(
+        snapshot = SystemPulseSnapshot(
             generated_at=generated_at,
             live_provider_count=live_provider_count,
             total_recent_signals=len(recent_signals),
@@ -4055,6 +4088,9 @@ class BotSocietyService:
             signal_mix=self._build_signal_mix(recent_signals),
             venue_pulse=self._build_venue_pulse(recent_signals, latest_assets, provider_status),
         )
+        if cacheable:
+            self.system_pulse_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_latest_operation(self) -> OperationSnapshot | None:
         repository = BotSocietyRepository(self.database)
@@ -5600,7 +5636,25 @@ class BotSocietyService:
     def _clear_live_caches(self) -> None:
         self.provider_status_cache = None
         self.macro_snapshot_cache = None
+        self.system_pulse_cache = None
+        self.assets_cache = None
+        self.leaderboard_cache.clear()
+        self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
+
+    def _warm_public_snapshot_caches(self) -> None:
+        if self.settings.deployment_target != "akash" or not self.settings.database_url:
+            return
+        try:
+            user_slug = self.settings.default_user_slug
+            self.get_assets()
+            self.get_leaderboard(user_slug)
+            self.get_macro_snapshot()
+            self.get_system_pulse()
+            self.get_landing_snapshot(user_slug)
+            self.get_dashboard_snapshot(user_slug)
+        except Exception:
+            self._clear_live_caches()
 
     def _current_tracked_assets(self, repository: BotSocietyRepository | None = None) -> tuple[str, ...]:
         active_repository = repository or BotSocietyRepository(self.database)

@@ -47,17 +47,18 @@ export default {
     // Akash ingress validates the Host header against the SDL accept list.
     // Without this, Cloudflare fetches the origin using the random ingress host
     // and the provider returns 502 before the app receives the request.
-    headers.set("host", incomingUrl.host);
+    headers.set("Host", "app.bitprivat.com");
     headers.set("x-forwarded-host", incomingUrl.host);
     headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
 
     const upstreamMethod = request.method === "HEAD" ? "GET" : request.method;
-    const upstreamResponse = await fetch(upstreamUrl, {
+    const upstreamRequest = new Request(upstreamUrl, {
       method: upstreamMethod,
       headers,
       body: upstreamMethod === "GET" ? undefined : request.body,
       redirect: "manual",
     });
+    const upstreamResponse = await fetch(upstreamRequest);
 
     const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {
       status: upstreamResponse.status,
