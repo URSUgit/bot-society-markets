@@ -1,3 +1,15 @@
+import {
+  APP_JS,
+  DASHBOARD_HTML,
+  INDEX_HTML,
+  LIGHTWEIGHT_CHARTS_JS,
+  PRIVACY_HTML,
+  RISK_HTML,
+  SIMULATION_HTML,
+  STATUS_HTML,
+  STYLES_CSS,
+  TERMS_HTML,
+} from "./public-assets.js";
 import { DASHBOARD_SNAPSHOT, LANDING_SNAPSHOT, SYSTEM_PULSE } from "./public-snapshots.js";
 
 const RESERVED_ROOT_REWRITES = {
@@ -45,6 +57,15 @@ function jsonResponse(payload, status = 200) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
+function assetResponse(body, contentType) {
+  return new Response(body, {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": contentType.includes("html") ? "no-store" : "public, max-age=120",
     },
   });
 }
@@ -109,7 +130,40 @@ export default {
       });
     }
     if (incomingUrl.hostname === "status.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/status")) {
-      return statusPage(origin.origin);
+      return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
+    }
+    if (
+      (incomingUrl.hostname === "bitprivat.com" || incomingUrl.hostname === "www.bitprivat.com")
+      && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/landing" || incomingUrl.pathname === "/portfolio")
+    ) {
+      return assetResponse(INDEX_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/dashboard" || incomingUrl.pathname === "/dashboard/" || incomingUrl.pathname === "/app") {
+      return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/simulation" || incomingUrl.pathname === "/simulation/" || incomingUrl.pathname === "/lab") {
+      return assetResponse(SIMULATION_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/terms" || incomingUrl.pathname === "/terms-of-service" || incomingUrl.pathname === "/legal/terms") {
+      return assetResponse(TERMS_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/privacy" || incomingUrl.pathname === "/privacy-policy" || incomingUrl.pathname === "/legal/privacy") {
+      return assetResponse(PRIVACY_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/risk" || incomingUrl.pathname === "/risk-disclosure" || incomingUrl.pathname === "/legal/risk") {
+      return assetResponse(RISK_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/status" || incomingUrl.pathname === "/status/" || incomingUrl.pathname === "/ops") {
+      return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/static/styles.css") {
+      return assetResponse(STYLES_CSS, "text/css; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/static/app.js") {
+      return assetResponse(APP_JS, "application/javascript; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
+      return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
     }
     if (incomingUrl.pathname === "/api/landing" || incomingUrl.pathname === "/api/v1/landing/stats") {
       return publicSnapshotResponse(LANDING_SNAPSHOT);
