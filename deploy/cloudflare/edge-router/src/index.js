@@ -10,7 +10,7 @@ import {
   STYLES_CSS,
   TERMS_HTML,
 } from "./public-assets.js";
-import { DASHBOARD_SNAPSHOT, LANDING_SNAPSHOT, SYSTEM_PULSE } from "./public-snapshots.js";
+import { CONNECTOR_DIAGNOSTICS, DASHBOARD_SNAPSHOT, LANDING_SNAPSHOT, SYSTEM_PULSE } from "./public-snapshots.js";
 
 const RESERVED_ROOT_REWRITES = {
   "bitprivat.com": "/landing",
@@ -76,6 +76,11 @@ function publicSnapshotResponse(payload) {
     edge_generated_at: new Date().toISOString(),
     edge_source: "cloudflare-public-snapshot",
   });
+}
+
+function connectorDiagnosticFromSnapshot(connectorId) {
+  const diagnostics = CONNECTOR_DIAGNOSTICS?.connector_diagnostics || [];
+  return diagnostics.find((item) => item.connector_id === connectorId) || null;
 }
 
 function statusPage(originBaseUrl) {
@@ -173,6 +178,23 @@ export default {
     }
     if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
       return publicSnapshotResponse(SYSTEM_PULSE);
+    }
+    if (incomingUrl.pathname === "/api/paper-venues" || incomingUrl.pathname === "/api/v1/paper-venues" || incomingUrl.pathname === "/api/v1/trading/venues") {
+      return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
+    }
+    if (incomingUrl.pathname === "/api/system/connectors" || incomingUrl.pathname === "/api/v1/system/connectors") {
+      return publicSnapshotResponse({ connector_control: DASHBOARD_SNAPSHOT.connector_control });
+    }
+    if (incomingUrl.pathname === "/api/system/connectors/diagnostics" || incomingUrl.pathname === "/api/v1/system/connectors/diagnostics") {
+      return publicSnapshotResponse(CONNECTOR_DIAGNOSTICS);
+    }
+    const connectorDiagnosticMatch = incomingUrl.pathname.match(/^\/api(?:\/v1)?\/system\/connectors\/([^/]+)\/diagnostics$/);
+    if (connectorDiagnosticMatch) {
+      const connectorDiagnostic = connectorDiagnosticFromSnapshot(decodeURIComponent(connectorDiagnosticMatch[1]));
+      if (!connectorDiagnostic) {
+        return jsonResponse({ detail: "Connector not found" }, 404);
+      }
+      return publicSnapshotResponse({ connector_diagnostic: connectorDiagnostic });
     }
 
     const upstreamPath = rewritePath(incomingUrl.hostname, incomingUrl.pathname);
