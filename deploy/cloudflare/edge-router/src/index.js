@@ -125,7 +125,10 @@ function statusPage(originBaseUrl) {
 export default {
   async fetch(request, env) {
     const incomingUrl = new URL(request.url);
-    const origin = normalizeOrigin(env.ORIGIN_BASE_URL || "https://app.bitprivat.com");
+    const originBaseUrl = env.ORIGIN_RESOLVE_OVERRIDE
+      ? `https://${env.ORIGIN_RESOLVE_OVERRIDE}`
+      : (env.ORIGIN_BASE_URL || "https://app.bitprivat.com");
+    const origin = normalizeOrigin(originBaseUrl);
     if (incomingUrl.hostname === "api.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/health")) {
       return jsonResponse({
         status: "ok",
@@ -179,6 +182,12 @@ export default {
     if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
       return publicSnapshotResponse(SYSTEM_PULSE);
     }
+    if (incomingUrl.pathname === "/api/system/providers" || incomingUrl.pathname === "/api/v1/system/providers") {
+      return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
+    }
+    if (incomingUrl.pathname === "/api/assets" || incomingUrl.pathname === "/api/v1/assets") {
+      return jsonResponse(DASHBOARD_SNAPSHOT.assets);
+    }
     if (incomingUrl.pathname === "/api/paper-venues" || incomingUrl.pathname === "/api/v1/paper-venues" || incomingUrl.pathname === "/api/v1/trading/venues") {
       return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
     }
@@ -204,7 +213,10 @@ export default {
     // Akash ingress validates the Host header against the SDL accept list.
     // Without this, Cloudflare fetches the origin using the random ingress host
     // and the provider returns 502 before the app receives the request.
-    headers.set("Host", "app.bitprivat.com");
+    // Prefer the unique Akash ingress host when resolveOverride is active.
+    // Multiple active deployments may accept app.bitprivat.com, so using that
+    // Host header can route Cloudflare to an older lease.
+    headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE || origin.hostname);
     headers.set("x-forwarded-host", incomingUrl.host);
     headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
 
