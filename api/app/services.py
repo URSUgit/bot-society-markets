@@ -1384,6 +1384,21 @@ class BotSocietyService:
             self.settings.hyperliquid_testnet_wallet_address and self.settings.hyperliquid_testnet_private_key
         )
         lorem_ipsum_enabled = bool(self.settings.lorem_ipsum_trade_enabled)
+        ibkr_gateway_configured = self.settings.ibkr_connection_mode != "disabled" and (
+            bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
+            if self.settings.ibkr_connection_mode == "tws_gateway"
+            else bool(self.settings.ibkr_client_portal_base_url)
+        )
+        ibkr_account_configured = bool(self.settings.ibkr_account_id)
+        ibkr_order_gate_open = bool(ibkr_gateway_configured and ibkr_account_configured and not self.settings.ibkr_read_only)
+        ibkr_status = "ready" if ibkr_order_gate_open else ("watchlist" if ibkr_gateway_configured and ibkr_account_configured else "needs_credentials")
+        ibkr_endpoint = (
+            f"{self.settings.ibkr_tws_host}:{self.settings.ibkr_tws_port}"
+            if self.settings.ibkr_connection_mode == "tws_gateway"
+            else self.settings.ibkr_client_portal_base_url
+            if self.settings.ibkr_connection_mode == "client_portal"
+            else None
+        )
 
         venues = [
             PaperVenueView(
@@ -1601,10 +1616,61 @@ class BotSocietyService:
                 readiness_score=0.84 if hyperliquid_testnet_configured else 0.58,
             ),
             PaperVenueView(
+                id="ibkr_gateway",
+                name="Interactive Brokers Paper Gateway",
+                category="Brokerage API connector",
+                priority=6,
+                status=ibkr_status,
+                configured=ibkr_gateway_configured and ibkr_account_configured,
+                live_capable=True,
+                api_capable=True,
+                manual_capable=True,
+                historical_replay_capable=True,
+                supported_markets=["stocks", "ETFs", "options", "futures", "forex", "bonds", "funds"],
+                api_base_url=ibkr_endpoint,
+                app_url="https://www.interactivebrokers.com/en/trading/ibgateway-stable.php",
+                docs_url="https://ibkrcampus.com/campus/ibkr-api-page/twsapi-doc/",
+                capability_summary="Paper-first bridge to an Interactive Brokers account through TWS/IB Gateway or Client Portal Gateway.",
+                capabilities=[
+                    PaperVenueCapability(label="Brokerage account visibility", detail="Designed for account, position, order, and portfolio checks before execution is enabled."),
+                    PaperVenueCapability(label="Paper account first", detail="Defaults to TWS paper port 7497 and read-only mode so setup can be verified safely."),
+                    PaperVenueCapability(label="Future live rail", detail="Can become a live brokerage execution rail only after legal, risk, and explicit user approval gates."),
+                ],
+                setup_steps=[
+                    "Log in to your IBKR paper account in Trader Workstation or IB Gateway.",
+                    "Enable API socket access in TWS or use Client Portal Gateway after browser login and 2FA.",
+                    "Set BSM_IBKR_CONNECTION_MODE=tws_gateway, BSM_IBKR_TWS_HOST, BSM_IBKR_TWS_PORT, and BSM_IBKR_ACCOUNT_ID.",
+                    "Keep BSM_IBKR_READ_ONLY=true until account and market-data diagnostics pass.",
+                    "Only set BSM_IBKR_READ_ONLY=false for paper execution tests; keep BSM_IBKR_LIVE_TRADING_ENABLED=false until legal and risk gates are approved.",
+                ],
+                limitations=[
+                    "TWS and IB Gateway require an authenticated user session; credentials are never stored in BITprivat.",
+                    "Market data may require IBKR subscriptions and some snapshot requests can create account charges.",
+                    "No live order submission is enabled by this connector without explicit platform configuration.",
+                ],
+                env_keys=[
+                    "BSM_IBKR_CONNECTION_MODE",
+                    "BSM_IBKR_ACCOUNT_ID",
+                    "BSM_IBKR_TWS_HOST",
+                    "BSM_IBKR_TWS_PORT",
+                    "BSM_IBKR_CLIENT_ID",
+                    "BSM_IBKR_CLIENT_PORTAL_BASE_URL",
+                    "BSM_IBKR_READ_ONLY",
+                    "BSM_IBKR_LIVE_TRADING_ENABLED",
+                ],
+                next_action=(
+                    "Connector is configured for paper execution tests. Add the IBKR adapter smoke test before routing orders."
+                    if ibkr_order_gate_open
+                    else "Configure TWS/IB Gateway in paper mode and keep the connector read-only until diagnostics pass."
+                ),
+                safety_note="Never send or store your IBKR password in the platform. Authenticate directly inside TWS, IB Gateway, or Client Portal Gateway.",
+                readiness_score=0.86 if ibkr_order_gate_open else (0.67 if ibkr_gateway_configured and ibkr_account_configured else 0.46),
+            ),
+            PaperVenueView(
                 id="papermarket",
                 name="PaperMarket",
                 category="Manual Polymarket paper terminal",
-                priority=6,
+                priority=7,
                 status="manual_only",
                 configured=True,
                 live_capable=True,
@@ -1661,11 +1727,13 @@ class BotSocietyService:
                 "Activate Polysandbox first for Polymarket-style API paper orders.",
                 "Add Kalshi Demo once event ticker mapping is explicit.",
                 "Use Hyperliquid Testnet for execution plumbing and crypto hedge tests, not for prediction-market PnL claims.",
+                "Add Interactive Brokers in read-only paper mode for equities, options, futures, and FX account visibility.",
                 "Promote any adapter to live trading only after kill switches, position limits, and audit logs exist.",
             ],
             safety_rules=[
                 "Paper mode only until an explicit human approval gate is implemented.",
                 "Never store seed phrases. Use API keys or testnet-only private keys in .env.local.",
+                "Never store IBKR username, password, or 2FA secrets; the authenticated broker session must live in IBKR software.",
                 "Use separate wallets and credentials for demo, testnet, sandbox, and production.",
                 "Treat paper PnL as research telemetry, not proof of live profitability.",
             ],
@@ -2452,6 +2520,17 @@ class BotSocietyService:
         desktop_ready = self.settings.desktop_app_framework != "none" and bool(self.settings.desktop_bundle_id)
         social_fallback_active = provider_status.social_discovery_fallback_active
         hyperliquid_enabled = self.settings.market_provider_mode in {"auto", "hyperliquid"}
+        ibkr_endpoint_configured = self.settings.ibkr_connection_mode != "disabled" and (
+            bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
+            if self.settings.ibkr_connection_mode == "tws_gateway"
+            else bool(self.settings.ibkr_client_portal_base_url)
+        )
+        ibkr_configured = bool(ibkr_endpoint_configured and self.settings.ibkr_account_id)
+        ibkr_live_ready = bool(
+            ibkr_configured
+            and not self.settings.ibkr_read_only
+            and self.settings.ibkr_live_trading_enabled
+        )
 
         connectors = [
             self._connector_item(
@@ -2494,6 +2573,38 @@ class BotSocietyService:
                     "Pair the live feed with testnet credentials before any execution-adjacent work.",
                 ],
                 app_url=self.settings.hyperliquid_testnet_app_url,
+            ),
+            self._connector_item(
+                connector_id="ibkr-brokerage-gateway",
+                label="Interactive Brokers Gateway",
+                category="Brokerage",
+                mode=self.settings.ibkr_connection_mode,
+                source="IBKR TWS API, IB Gateway, or Client Portal Gateway",
+                configured=ibkr_configured,
+                live_capable=True,
+                ready=ibkr_live_ready,
+                fallback_active=ibkr_endpoint_configured and not ibkr_live_ready,
+                activation_phase="Brokerage account connection",
+                owner="Trading Integrations",
+                risk_level="high",
+                target_surface="paper account verification, equities/options/futures/FX research, and future broker execution",
+                env_keys=[
+                    "BSM_IBKR_CONNECTION_MODE",
+                    "BSM_IBKR_ACCOUNT_ID",
+                    "BSM_IBKR_TWS_HOST",
+                    "BSM_IBKR_TWS_PORT",
+                    "BSM_IBKR_CLIENT_ID",
+                    "BSM_IBKR_CLIENT_PORTAL_BASE_URL",
+                    "BSM_IBKR_READ_ONLY",
+                    "BSM_IBKR_LIVE_TRADING_ENABLED",
+                    "BSM_IBKR_MARKET_DATA_SUBSCRIBED",
+                ],
+                next_actions=[
+                    "Start with the IBKR paper account and keep BSM_IBKR_READ_ONLY=true while confirming account visibility.",
+                    "Do not store an IBKR password in BITprivat; log in through TWS, IB Gateway, or Client Portal Gateway.",
+                    "Only enable order submission after paper smoke tests, per-account limits, audit logs, and legal review are complete.",
+                ],
+                app_url="https://www.interactivebrokers.com/en/trading/ibgateway-stable.php",
             ),
             self._connector_item(
                 connector_id="signal-ingestion",
@@ -2968,6 +3079,91 @@ class BotSocietyService:
                         if hyperliquid_mode_active
                         else "Keep this in research mode until BSM_MARKET_PROVIDER=auto or hyperliquid is set."
                     ),
+                )
+            )
+
+        elif connector_id == "ibkr-brokerage-gateway":
+            endpoint_configured = self.settings.ibkr_connection_mode != "disabled" and (
+                bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
+                if self.settings.ibkr_connection_mode == "tws_gateway"
+                else bool(self.settings.ibkr_client_portal_base_url)
+            )
+            account_configured = bool(self.settings.ibkr_account_id)
+            endpoint_label = (
+                f"{self.settings.ibkr_tws_host}:{self.settings.ibkr_tws_port}"
+                if self.settings.ibkr_connection_mode == "tws_gateway"
+                else self.settings.ibkr_client_portal_base_url
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_connection_mode",
+                    label="IBKR connection mode",
+                    status="pass" if endpoint_configured else "fail",
+                    detail=(
+                        f"IBKR is configured for {self.settings.ibkr_connection_mode} at {endpoint_label}."
+                        if endpoint_configured
+                        else "Set BSM_IBKR_CONNECTION_MODE to tws_gateway or client_portal and configure the matching endpoint."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_account_id",
+                    label="IBKR account ID",
+                    status="pass" if account_configured else "fail",
+                    detail=(
+                        "An IBKR account ID is configured for routing account and position checks."
+                        if account_configured
+                        else "Set BSM_IBKR_ACCOUNT_ID after confirming the paper account shown by TWS, IB Gateway, or Client Portal Gateway."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_read_only_default",
+                    label="Read-only default",
+                    status="pass" if self.settings.ibkr_read_only else "warn",
+                    detail=(
+                        "Read-only mode is active; account diagnostics can be built without order submission."
+                        if self.settings.ibkr_read_only
+                        else "Read-only mode is off. Use this only for paper-account order smoke tests until live controls are approved."
+                    ),
+                    required=False,
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_live_trading_gate",
+                    label="Live trading gate",
+                    status="blocked" if not self.settings.ibkr_live_trading_enabled else "warn",
+                    detail=(
+                        "Live trading is disabled, which is the required default before legal, risk, and paper-trade verification."
+                        if not self.settings.ibkr_live_trading_enabled
+                        else "Live trading flag is enabled. Confirm this is intentional and backed by order limits, audit logs, and counsel-approved disclosures."
+                    ),
+                    required=False,
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_market_data",
+                    label="Market data entitlement",
+                    status="pass" if self.settings.ibkr_market_data_subscribed else "warn",
+                    detail=(
+                        "Market data subscription flag is set; still verify entitlements inside the IBKR account."
+                        if self.settings.ibkr_market_data_subscribed
+                        else "Market data entitlements are not marked as verified. IBKR data access can depend on subscriptions and exchange fees."
+                    ),
+                    required=False,
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="ibkr_secret_boundary",
+                    label="Credential boundary",
+                    status="pass",
+                    detail="BITprivat stores no IBKR password or 2FA secret; authentication must happen inside IBKR-operated software.",
+                    required=False,
                 )
             )
 

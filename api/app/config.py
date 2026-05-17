@@ -18,7 +18,15 @@ SocialDiscoveryProviderMode = Literal["demo", "youtube"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
 MacroProviderMode = Literal["demo", "fred"]
 WalletProviderMode = Literal["demo", "polymarket"]
-PaperExecutionProviderMode = Literal["internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"]
+PaperExecutionProviderMode = Literal[
+    "internal",
+    "polysandbox",
+    "kalshi_demo",
+    "hyperliquid_testnet",
+    "lorem_ipsum_trade",
+    "ibkr_gateway",
+]
+IbkrConnectionMode = Literal["disabled", "tws_gateway", "client_portal"]
 SiteHomePage = Literal["landing", "dashboard"]
 FiatBillingProvider = Literal["none", "stripe"]
 CryptoOnrampProvider = Literal["none", "coinbase", "moonpay"]
@@ -179,6 +187,15 @@ class Settings:
     lorem_ipsum_trade_clob_url: str = "https://clob.loremipsumtrade.com"
     lorem_ipsum_trade_app_url: str = "https://sandbox.loremipsumtrade.com"
     lorem_ipsum_trade_enabled: bool = False
+    ibkr_connection_mode: IbkrConnectionMode = "disabled"
+    ibkr_account_id: str | None = None
+    ibkr_tws_host: str = "127.0.0.1"
+    ibkr_tws_port: int = 7497
+    ibkr_client_id: int = 0
+    ibkr_client_portal_base_url: str = "https://localhost:5000/v1/api"
+    ibkr_read_only: bool = True
+    ibkr_live_trading_enabled: bool = False
+    ibkr_market_data_subscribed: bool = False
     simulation_live_history: bool = True
     simulation_cache_hours: int = 12
 
@@ -253,8 +270,12 @@ def get_settings() -> Settings:
         windows_distribution_channel = "direct"
 
     paper_execution_provider = os.getenv("BSM_PAPER_EXECUTION_PROVIDER", "internal").lower()
-    if paper_execution_provider not in {"internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade"}:
+    if paper_execution_provider not in {"internal", "polysandbox", "kalshi_demo", "hyperliquid_testnet", "lorem_ipsum_trade", "ibkr_gateway"}:
         paper_execution_provider = "internal"
+
+    ibkr_connection_mode = os.getenv("BSM_IBKR_CONNECTION_MODE", "disabled").lower()
+    if ibkr_connection_mode not in {"disabled", "tws_gateway", "client_portal"}:
+        ibkr_connection_mode = "disabled"
 
     venue_signal_providers = tuple(
         provider
@@ -410,6 +431,15 @@ def get_settings() -> Settings:
         lorem_ipsum_trade_clob_url=os.getenv("BSM_LOREM_IPSUM_TRADE_CLOB_URL", "https://clob.loremipsumtrade.com"),
         lorem_ipsum_trade_app_url=os.getenv("BSM_LOREM_IPSUM_TRADE_APP_URL", "https://sandbox.loremipsumtrade.com"),
         lorem_ipsum_trade_enabled=_env_bool("BSM_LOREM_IPSUM_TRADE_ENABLED", False),
+        ibkr_connection_mode=ibkr_connection_mode,
+        ibkr_account_id=os.getenv("BSM_IBKR_ACCOUNT_ID") or None,
+        ibkr_tws_host=os.getenv("BSM_IBKR_TWS_HOST", "127.0.0.1"),
+        ibkr_tws_port=max(1, int(os.getenv("BSM_IBKR_TWS_PORT", "7497"))),
+        ibkr_client_id=max(0, int(os.getenv("BSM_IBKR_CLIENT_ID", "0"))),
+        ibkr_client_portal_base_url=os.getenv("BSM_IBKR_CLIENT_PORTAL_BASE_URL", "https://localhost:5000/v1/api"),
+        ibkr_read_only=_env_bool("BSM_IBKR_READ_ONLY", True),
+        ibkr_live_trading_enabled=_env_bool("BSM_IBKR_LIVE_TRADING_ENABLED", False),
+        ibkr_market_data_subscribed=_env_bool("BSM_IBKR_MARKET_DATA_SUBSCRIBED", False),
         simulation_live_history=_env_bool("BSM_SIMULATION_LIVE_HISTORY", True),
         simulation_cache_hours=simulation_cache_hours,
     )

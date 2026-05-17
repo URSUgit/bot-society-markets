@@ -209,6 +209,7 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         connector_ids = {item["id"] for item in connectors_payload["connectors"]}
         assert "coingecko-market-data" in connector_ids
         assert "polymarket-intel" in connector_ids
+        assert "ibkr-brokerage-gateway" in connector_ids
         assert "youtube-social-discovery" in connector_ids
         assert "stripe-billing-rail" in connector_ids
         assert "coinbase-onramp-rail" in connector_ids
@@ -982,6 +983,8 @@ def test_paper_venue_endpoint_exposes_activation_map() -> None:
         assert venues["polysandbox"]["api_base_url"] == "https://api.polysandbox.trade/v1"
         assert venues["kalshi_demo"]["api_base_url"] == "https://demo-api.kalshi.co/trade-api/v2"
         assert venues["hyperliquid_testnet"]["api_base_url"] == "https://api.hyperliquid-testnet.xyz"
+        assert venues["ibkr_gateway"]["status"] == "needs_credentials"
+        assert "BSM_IBKR_ACCOUNT_ID" in venues["ibkr_gateway"]["env_keys"]
         assert payload["activation_sequence"]
         assert payload["safety_rules"]
 
@@ -1005,6 +1008,41 @@ def test_configured_paper_venues_become_api_ready() -> None:
         assert venues["polysandbox"]["configured"] is True
         assert venues["kalshi_demo"]["status"] == "ready"
         assert payload["api_ready_venues"] >= 3
+
+
+def test_ibkr_gateway_configuration_is_paper_first_and_guarded() -> None:
+    settings = Settings(
+        paper_execution_provider="ibkr_gateway",
+        ibkr_connection_mode="tws_gateway",
+        ibkr_account_id="DU1234567",
+        ibkr_tws_host="127.0.0.1",
+        ibkr_tws_port=7497,
+        ibkr_client_id=0,
+        ibkr_read_only=True,
+        ibkr_live_trading_enabled=False,
+    )
+    with build_client(settings) as client:
+        venue_response = client.get("/api/paper-venues")
+        assert venue_response.status_code == 200
+        venue_payload = venue_response.json()
+        venues = {venue["id"]: venue for venue in venue_payload["venues"]}
+        assert venue_payload["execution_provider_mode"] == "ibkr_gateway"
+        assert venue_payload["recommended_venue_id"] == "ibkr_gateway"
+        assert venues["ibkr_gateway"]["status"] == "watchlist"
+        assert venues["ibkr_gateway"]["configured"] is True
+        assert venues["ibkr_gateway"]["api_base_url"] == "127.0.0.1:7497"
+        assert "Never store IBKR username" in " ".join(venue_payload["safety_rules"])
+
+        connector_response = client.get("/api/system/connectors/ibkr-brokerage-gateway/diagnostics")
+        assert connector_response.status_code == 200
+        diagnostic = connector_response.json()["connector_diagnostic"]
+        check_lookup = {check["key"]: check for check in diagnostic["checks"]}
+        assert diagnostic["connector_id"] == "ibkr-brokerage-gateway"
+        assert diagnostic["overall_status"] in {"warn", "blocked"}
+        assert check_lookup["ibkr_connection_mode"]["status"] == "pass"
+        assert check_lookup["ibkr_account_id"]["status"] == "pass"
+        assert check_lookup["ibkr_read_only_default"]["status"] == "pass"
+        assert check_lookup["ibkr_live_trading_gate"]["status"] == "blocked"
 
 
 def test_trading_order_contract_records_internal_paper_order() -> None:
