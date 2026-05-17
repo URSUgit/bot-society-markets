@@ -1,3 +1,5 @@
+import { DASHBOARD_SNAPSHOT, LANDING_SNAPSHOT, SYSTEM_PULSE } from "./public-snapshots.js";
+
 const RESERVED_ROOT_REWRITES = {
   "bitprivat.com": "/landing",
   "www.bitprivat.com": "/landing",
@@ -44,6 +46,14 @@ function jsonResponse(payload, status = 200) {
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex, nofollow",
     },
+  });
+}
+
+function publicSnapshotResponse(payload) {
+  return jsonResponse({
+    ...payload,
+    edge_generated_at: new Date().toISOString(),
+    edge_source: "cloudflare-public-snapshot",
   });
 }
 
@@ -100,6 +110,15 @@ export default {
     }
     if (incomingUrl.hostname === "status.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/status")) {
       return statusPage(origin.origin);
+    }
+    if (incomingUrl.pathname === "/api/landing" || incomingUrl.pathname === "/api/v1/landing/stats") {
+      return publicSnapshotResponse(LANDING_SNAPSHOT);
+    }
+    if (incomingUrl.pathname === "/api/dashboard" || incomingUrl.pathname === "/api/v1/dashboard/summary") {
+      return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
+    }
+    if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
+      return publicSnapshotResponse(SYSTEM_PULSE);
     }
 
     const upstreamPath = rewritePath(incomingUrl.hostname, incomingUrl.pathname);
