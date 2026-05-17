@@ -4129,6 +4129,158 @@ function bindForms() {
   }
 }
 
+function initProfessionalTradingWorkspace() {
+  const workspace = document.getElementById("trading-workspace-section");
+  if (!workspace) {
+    return;
+  }
+
+  const livePrice = document.getElementById("trading-live-price");
+  const liveChange = document.getElementById("trading-live-change");
+  const selectedSymbol = document.getElementById("trading-selected-symbol");
+  const selectedVenue = document.getElementById("trading-selected-venue");
+  const ticketPrice = document.getElementById("ticket-price");
+  const confirmation = document.getElementById("simple-confirmation");
+
+  workspace.querySelectorAll("[data-trading-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.tradingMode || "pro";
+      workspace.dataset.mode = mode;
+      workspace.querySelectorAll("[data-trading-mode]").forEach((modeButton) => {
+        const isActive = modeButton === button;
+        modeButton.classList.toggle("active", isActive);
+        modeButton.setAttribute("aria-pressed", String(isActive));
+      });
+      setStatus(mode === "simple"
+        ? "Mod Simplu activ: chart mare, suma fiat si confirmare in doi pasi."
+        : "Mod Pro activ: watchlist, chart, order book, ticket si pozitii intr-un cockpit complet.");
+    });
+  });
+
+  workspace.querySelectorAll("[data-trading-symbol]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const symbol = row.dataset.tradingSymbol || "BTC-USD";
+      const numericPrice = Number(row.dataset.tradingPrice || 0);
+      const formattedPrice = numericPrice > 1 ? `$${numericPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `$${numericPrice.toFixed(2)}`;
+      workspace.querySelectorAll("[data-trading-symbol]").forEach((candidate) => candidate.classList.toggle("active", candidate === row));
+      if (selectedSymbol) {
+        selectedSymbol.textContent = symbol;
+      }
+      if (selectedVenue) {
+        selectedVenue.textContent = symbol.startsWith("POLY") ? "Prediction market" : symbol.includes("PERP") ? "Crypto perpetual" : "Crypto spot";
+      }
+      if (livePrice) {
+        livePrice.textContent = formattedPrice;
+        livePrice.classList.remove("price-flash-down");
+        livePrice.classList.add("price-flash-up");
+      }
+      if (liveChange) {
+        const tone = row.querySelector(".profit-text, .loss-text");
+        liveChange.textContent = tone?.textContent ? `${tone.textContent} / 24h` : "Live";
+        liveChange.classList.toggle("profit-text", tone?.classList.contains("profit-text"));
+        liveChange.classList.toggle("loss-text", tone?.classList.contains("loss-text"));
+      }
+      if (ticketPrice && numericPrice) {
+        ticketPrice.value = numericPrice.toFixed(numericPrice > 10 ? 2 : 4);
+      }
+      setStatus(`Workspace switched to ${symbol}. Ticket price and chart context updated.`);
+    });
+  });
+
+  workspace.querySelectorAll("[data-order-side]").forEach((button) => {
+    button.addEventListener("click", () => {
+      workspace.querySelectorAll("[data-order-side]").forEach((sideButton) => {
+        const isActive = sideButton === button;
+        sideButton.classList.toggle("active", isActive);
+        sideButton.setAttribute("aria-pressed", String(isActive));
+      });
+      setStatus(button.dataset.orderSide === "sell"
+        ? "Sell/Short selected. Destructive close actions still require confirmation."
+        : "Buy/Long selected. Preview updates before any order submission.");
+    });
+  });
+
+  workspace.querySelectorAll("[data-book-price]").forEach((row) => {
+    row.addEventListener("click", () => {
+      if (ticketPrice) {
+        ticketPrice.value = Number(row.dataset.bookPrice || 0).toFixed(2);
+        ticketPrice.focus({ preventScroll: true });
+      }
+      setStatus(`Order book price ${row.dataset.bookPrice} copied into the order ticket.`);
+    });
+  });
+
+  workspace.querySelectorAll("[data-trade-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = button.dataset.tradeTab;
+      workspace.querySelectorAll("[data-trade-tab]").forEach((tabButton) => {
+        const isActive = tabButton === button;
+        tabButton.classList.toggle("active", isActive);
+        tabButton.setAttribute("aria-selected", String(isActive));
+      });
+      workspace.querySelectorAll("[id^='trade-tab-']").forEach((panel) => {
+        panel.classList.toggle("hidden", panel.id !== `trade-tab-${tab}`);
+      });
+    });
+  });
+
+  const search = document.getElementById("trading-symbol-search");
+  let searchTimer = null;
+  if (search) {
+    search.addEventListener("input", () => {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        const query = search.value.trim().toLowerCase();
+        workspace.querySelectorAll("[data-trading-symbol]").forEach((row) => {
+          const text = row.textContent.toLowerCase();
+          row.hidden = Boolean(query) && !text.includes(query);
+        });
+      }, 160);
+    });
+  }
+
+  const previewButton = document.getElementById("ticket-preview-button");
+  if (previewButton) {
+    previewButton.addEventListener("click", () => {
+      const activeSide = workspace.querySelector("[data-order-side].active")?.dataset.orderSide || "buy";
+      const orderType = document.getElementById("ticket-order-type")?.value || "Market";
+      const quantity = document.getElementById("ticket-quantity")?.value || "0";
+      const price = ticketPrice?.value || "market";
+      setStatus(`Preview ${activeSide.toUpperCase()} ${quantity} ${selectedSymbol?.textContent || "BTC-USD"} via ${orderType} at ${price}. Est. fee and margin are visible in the ticket.`);
+    });
+  }
+
+  const closeAllButton = document.getElementById("ticket-close-all-button");
+  if (closeAllButton) {
+    closeAllButton.addEventListener("click", () => {
+      const confirmed = window.confirm("Esti pe cale sa inchizi toate pozitiile deschise. Actiunea necesita confirmare suplimentara in live trading.");
+      setStatus(confirmed
+        ? "Close-all confirmed in UI demo. Live execution remains disabled until legal, KYC and broker gates are active."
+        : "Close-all cancelled. Positions remain unchanged.");
+    });
+  }
+
+  workspace.querySelectorAll("[data-partial-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const symbol = button.dataset.partialClose;
+      const confirmed = window.confirm(`Inchidere partiala pentru ${symbol}. Confirma cantitatea in pasul urmator in live trading.`);
+      setStatus(confirmed
+        ? `Partial close modal accepted for ${symbol}. Demo does not submit live orders.`
+        : `Partial close cancelled for ${symbol}.`);
+    });
+  });
+
+  workspace.querySelectorAll("[data-simple-order]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const side = button.dataset.simpleOrder === "sell" ? "Sell" : "Buy";
+      if (confirmation) {
+        confirmation.innerHTML = `<strong>${side} preview pregatit</strong><span>Pasul 2: confirma suma, fee-ul estimat si riscul. Ordinul tau nu pleaca fara confirmare explicita.</span>`;
+      }
+      setStatus(`${side} simple preview prepared with two-step confirmation.`);
+    });
+  });
+}
+
 function bindInteractions() {
   document.addEventListener("click", async (event) => {
     const target = event.target;
@@ -4329,6 +4481,7 @@ function bindInteractions() {
 async function boot() {
   bindInteractions();
   bindForms();
+  initProfessionalTradingWorkspace();
   initDashboardSectionObserver();
   window.addEventListener("beforeunload", clearRefreshTimers);
   window.addEventListener("resize", () => {

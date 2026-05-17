@@ -20,6 +20,7 @@
       <nav class="sidebar-nav">
         <span class="sidebar-nav-label">Operate</span>
         <a class="active" href="#market-console-section">Overview</a>
+        <a href="#trading-workspace-section">Trading Workspace</a>
         <a href="#social-trader-section">Social Traders</a>
         <a href="#intelligence-section">Markets</a>
         <a href="#paper-section">Paper Trade</a>
@@ -353,6 +354,296 @@
 
       <section class="metrics-row" id="dashboard-metrics"></section>
       <p class="notice" id="cycle-status"></p>
+
+      <section class="trading-workspace-pro card" id="trading-workspace-section" aria-labelledby="trading-workspace-title" data-mode="pro">
+        <div class="trading-workspace-head">
+          <div>
+            <p class="eyebrow">Trading workspace</p>
+            <h3 id="trading-workspace-title">Professional execution cockpit with clear risk labels</h3>
+            <p class="panel-note">Dark-first trading UI with explicit units, direction, margin, fee, liquidation and order confirmation states.</p>
+          </div>
+          <div class="trading-head-actions" role="group" aria-label="Workspace controls">
+            <span class="status-pill status-pill-connected" aria-label="Connection status live">Live</span>
+            <span class="status-pill status-pill-delayed" aria-label="Data status delayed backup">Delayed 15m backup</span>
+            <button class="ds-button ghost active" type="button" data-trading-mode="pro" aria-pressed="true">Pro</button>
+            <button class="ds-button ghost" type="button" data-trading-mode="simple" aria-pressed="false">Simplu</button>
+          </div>
+        </div>
+
+        <div class="trading-simple-panel" aria-label="Simplified trading flow">
+          <div class="simple-trade-hero">
+            <div>
+              <span class="status-pill status-pill-connected">BTC-USD live</span>
+              <h4>Buy/Sell in 2 pasi</h4>
+              <p>Selecteaza suma in fiat, verifica impactul, confirma ordinul. Perfect pentru utilizatori noi.</p>
+            </div>
+            <div class="simple-price-block" aria-live="polite">
+              <span>BTC-USD pret live</span>
+              <strong class="finance-number price-flash-up">$103,842.20</strong>
+              <small class="profit-text">+1.84% 24h</small>
+            </div>
+          </div>
+          <div class="simple-order-grid">
+            <label class="ds-field">
+              <span>Simbol</span>
+              <select class="ds-select" aria-label="Selecteaza simbol simplu">
+                <option>BTC-USD</option>
+                <option>ETH-USD</option>
+                <option>POLY: Fed cut June</option>
+              </select>
+            </label>
+            <label class="ds-field">
+              <span>Suma fiat</span>
+              <input class="ds-input finance-number" type="number" value="250" min="10" aria-label="Suma fiat pentru ordin">
+            </label>
+            <button class="ds-button primary" type="button" data-simple-order="buy" aria-label="Preview ordin buy simplu">Buy</button>
+            <button class="ds-button danger" type="button" data-simple-order="sell" aria-label="Preview ordin sell simplu">Sell</button>
+          </div>
+          <div class="simple-confirmation" id="simple-confirmation" aria-live="polite">
+            <strong>Confirmare in 2 pasi</strong>
+            <span>Alege Buy/Sell pentru previzualizare. Ordinul live cere confirmare suplimentara si 2FA.</span>
+          </div>
+        </div>
+
+        <div class="trading-shell-grid">
+          <aside class="trading-panel watchlist-panel" aria-label="Watchlist and symbol search">
+            <div class="panel-topline">
+              <div>
+                <p class="eyebrow">Watchlist</p>
+                <h4>Markets</h4>
+              </div>
+              <span class="status-pill status-pill-connected">Live</span>
+            </div>
+            <label class="ds-field">
+              <span class="sr-only">Search symbol</span>
+              <input class="ds-input" id="trading-symbol-search" type="search" placeholder="Search BTC, AAPL, EUR..." autocomplete="off" aria-label="Search symbols">
+            </label>
+            <div class="watchlist-filter-row" role="group" aria-label="Asset class filters">
+              <button class="ds-button chip active" type="button">Crypto</button>
+              <button class="ds-button chip" type="button">Stocks</button>
+              <button class="ds-button chip" type="button">Forex</button>
+              <button class="ds-button chip" type="button">Prediction</button>
+            </div>
+            <div class="watchlist-group-label">Core</div>
+            <button class="watchlist-row active" type="button" data-trading-symbol="BTC-USD" data-trading-price="103842.20" aria-label="BTC USD up 1.84 percent">
+              <span><strong>BTC-USD</strong><small>Bitcoin spot</small></span>
+              <span class="watchlist-price"><strong class="finance-number">$103,842.20</strong><small class="profit-text">+1.84%</small></span>
+            </button>
+            <button class="watchlist-row" type="button" data-trading-symbol="ETH-USD" data-trading-price="4894.11" aria-label="ETH USD down 0.42 percent">
+              <span><strong>ETH-USD</strong><small>Ethereum spot</small></span>
+              <span class="watchlist-price"><strong class="finance-number">$4,894.11</strong><small class="loss-text">-0.42%</small></span>
+            </button>
+            <button class="watchlist-row" type="button" data-trading-symbol="HYPE-PERP" data-trading-price="38.44" aria-label="Hyperliquid perpetual up 3.12 percent">
+              <span><strong>HYPE-PERP</strong><small>Hyperliquid perp</small></span>
+              <span class="watchlist-price"><strong class="finance-number">$38.44</strong><small class="profit-text">+3.12%</small></span>
+            </button>
+            <div class="watchlist-group-label">Prediction markets</div>
+            <button class="watchlist-row" type="button" data-trading-symbol="POLY-FEDCUT" data-trading-price="0.62" aria-label="Polymarket Fed cut yes 62 cents">
+              <span><strong>POLY-FEDCUT</strong><small>Fed cut by June: Yes</small></span>
+              <span class="watchlist-price"><strong class="finance-number">$0.62</strong><small class="profit-text">+5.6c</small></span>
+            </button>
+            <div class="market-card-stack">
+              <article class="market-discover-card">
+                <span>Trending</span>
+                <strong>Gainers: HYPE, SOL, Fed Cut YES</strong>
+                <small>Volume, volatility and social velocity ranked.</small>
+              </article>
+            </div>
+          </aside>
+
+          <section class="trading-panel chart-trading-panel" aria-label="Trading chart">
+            <div class="chart-command-bar">
+              <div>
+                <p class="eyebrow" id="trading-selected-venue">Crypto spot</p>
+                <h4 id="trading-selected-symbol">BTC-USD</h4>
+              </div>
+              <div class="live-price-cluster">
+                <span>Pret live</span>
+                <strong class="finance-number price-flash-up" id="trading-live-price">$103,842.20</strong>
+                <small class="profit-text" id="trading-live-change">+1.84% / 24h</small>
+              </div>
+              <div class="unrealized-cluster">
+                <span>uPnL unrealized</span>
+                <strong class="finance-number profit-text">+$1,284.44 USD</strong>
+                <small>Long 0.42 BTC @ avg $100,786.10</small>
+              </div>
+            </div>
+            <div class="chart-toolbar" role="toolbar" aria-label="Chart controls">
+              <button class="ds-button chip active" type="button">1m</button>
+              <button class="ds-button chip" type="button">5m</button>
+              <button class="ds-button chip" type="button">1h</button>
+              <button class="ds-button chip" type="button">1D</button>
+              <button class="ds-button chip" type="button">1W</button>
+              <button class="ds-button secondary" type="button">Indicators</button>
+              <button class="ds-button secondary" type="button">Drawings</button>
+              <button class="ds-button secondary" type="button">Fullscreen</button>
+            </div>
+            <div class="pro-chart-surface" role="img" aria-label="Candlestick chart placeholder with volume and moving average">
+              <div class="chart-gridlines"></div>
+              <div class="candles" aria-hidden="true">
+                <i style="--h:42%;--y:35%;--c:var(--color-profit)"></i>
+                <i style="--h:58%;--y:25%;--c:var(--color-profit)"></i>
+                <i style="--h:36%;--y:48%;--c:var(--color-loss)"></i>
+                <i style="--h:67%;--y:20%;--c:var(--color-profit)"></i>
+                <i style="--h:52%;--y:30%;--c:var(--color-profit)"></i>
+                <i style="--h:74%;--y:18%;--c:var(--color-loss)"></i>
+                <i style="--h:44%;--y:42%;--c:var(--color-profit)"></i>
+                <i style="--h:61%;--y:26%;--c:var(--color-profit)"></i>
+                <i style="--h:38%;--y:46%;--c:var(--color-loss)"></i>
+                <i style="--h:69%;--y:22%;--c:var(--color-profit)"></i>
+                <i style="--h:56%;--y:28%;--c:var(--color-profit)"></i>
+                <i style="--h:48%;--y:36%;--c:var(--color-loss)"></i>
+              </div>
+              <svg class="chart-line-overlay" viewBox="0 0 800 220" role="presentation" aria-hidden="true">
+                <path d="M0 168 C90 126 132 150 200 112 C282 64 330 86 408 72 C504 54 548 98 620 62 C700 22 744 48 800 30" />
+              </svg>
+              <div class="liquidation-band" aria-hidden="true">
+                <span>Liq warning band $91,200</span>
+              </div>
+            </div>
+            <div class="portfolio-summary-strip" aria-label="Account summary">
+              <div><span>Equity</span><strong class="finance-number">$24,810.44 USD</strong></div>
+              <div><span>Cash</span><strong class="finance-number">$8,420.00 USD</strong></div>
+              <div><span>Margin used</span><strong class="finance-number warning-text">31.4%</strong></div>
+              <div><span>Buying power</span><strong class="finance-number">$16,390.44 USD</strong></div>
+            </div>
+          </section>
+
+          <aside class="trading-panel order-ticket-panel" aria-label="Order ticket and order book">
+            <div class="panel-topline">
+              <div>
+                <p class="eyebrow">Order ticket</p>
+                <h4>Preview before submit</h4>
+              </div>
+              <span class="status-pill status-pill-connected">Connected</span>
+            </div>
+            <form class="order-ticket" id="professional-order-ticket">
+              <div class="side-switch" role="group" aria-label="Order side">
+                <button class="side-buy active" type="button" data-order-side="buy" aria-pressed="true">Buy / Long</button>
+                <button class="side-sell" type="button" data-order-side="sell" aria-pressed="false">Sell / Short</button>
+              </div>
+              <label class="ds-field">
+                <span>Order type</span>
+                <select class="ds-select" id="ticket-order-type" aria-label="Order type">
+                  <option>Market</option>
+                  <option>Limit</option>
+                  <option>Stop</option>
+                  <option>Stop-Limit</option>
+                  <option>Trailing</option>
+                </select>
+              </label>
+              <div class="ticket-two-col">
+                <label class="ds-field">
+                  <span>Quantity BTC</span>
+                  <input class="ds-input finance-number" id="ticket-quantity" type="number" min="0" step="0.001" value="0.05" aria-label="Quantity in asset units">
+                </label>
+                <label class="ds-field">
+                  <span>Price USD</span>
+                  <input class="ds-input finance-number" id="ticket-price" type="number" min="0" step="0.01" value="103842.20" aria-label="Limit or reference price in US dollars">
+                </label>
+              </div>
+              <label class="ds-field">
+                <span>% balance</span>
+                <input class="balance-slider" id="ticket-balance-slider" type="range" min="1" max="100" value="18" aria-label="Percent of available balance">
+              </label>
+              <div class="ticket-two-col">
+                <label class="ds-field">
+                  <span>Time in force</span>
+                  <select class="ds-select" aria-label="Time in force">
+                    <option>GTC</option>
+                    <option>IOC</option>
+                    <option>FOK</option>
+                  </select>
+                </label>
+                <label class="ds-field">
+                  <span>Leverage</span>
+                  <select class="ds-select" aria-label="Leverage selector">
+                    <option>1x spot</option>
+                    <option>2x</option>
+                    <option>5x</option>
+                    <option>10x</option>
+                  </select>
+                </label>
+              </div>
+              <div class="ticket-checks">
+                <label><input type="checkbox" checked> Reduce-only</label>
+                <label><input type="checkbox"> Post-only</label>
+                <label><input type="checkbox"> Attach TP/SL</label>
+              </div>
+              <div class="ticket-estimates" aria-label="Order estimates">
+                <div><span>Est. fee</span><strong class="finance-number">$3.94 USD</strong></div>
+                <div><span>Est. margin</span><strong class="finance-number">$5,192.11 USD</strong></div>
+                <div><span>Preview impact</span><strong>Long +0.05 BTC, avg entry recalculated</strong></div>
+              </div>
+              <button class="ds-button primary" type="button" id="ticket-preview-button">Preview order</button>
+              <button class="ds-button danger" type="button" id="ticket-close-all-button" aria-label="Close all positions requires confirmation">Close all positions</button>
+            </form>
+
+            <div class="order-book-panel" aria-label="Order book depth">
+              <div class="panel-topline">
+                <p class="eyebrow">Order book</p>
+                <span class="status-pill status-pill-connected">Agg 0.5</span>
+              </div>
+              <div class="orderbook-head"><span>Price USD</span><span>Size BTC</span><span>Total</span></div>
+              <button class="orderbook-row ask" type="button" data-book-price="103855.00"><span>103,855.00</span><span>1.28</span><span>8.44</span></button>
+              <button class="orderbook-row ask" type="button" data-book-price="103850.50"><span>103,850.50</span><span>0.74</span><span>7.16</span></button>
+              <button class="orderbook-row ask" type="button" data-book-price="103846.00"><span>103,846.00</span><span>2.11</span><span>6.42</span></button>
+              <div class="spread-row"><span>Spread</span><strong class="finance-number">$4.80 / 0.0046%</strong></div>
+              <button class="orderbook-row bid" type="button" data-book-price="103841.20"><span>103,841.20</span><span>1.94</span><span>5.89</span></button>
+              <button class="orderbook-row bid" type="button" data-book-price="103837.00"><span>103,837.00</span><span>0.91</span><span>3.95</span></button>
+              <button class="orderbook-row bid" type="button" data-book-price="103831.50"><span>103,831.50</span><span>1.33</span><span>3.04</span></button>
+            </div>
+          </aside>
+        </div>
+
+        <div class="trading-bottom-panel">
+          <div class="trade-tab-bar" role="tablist" aria-label="Trading tables">
+            <button class="active" type="button" role="tab" aria-selected="true" data-trade-tab="positions">Open Positions</button>
+            <button type="button" role="tab" aria-selected="false" data-trade-tab="orders">Open Orders</button>
+            <button type="button" role="tab" aria-selected="false" data-trade-tab="history">Order History</button>
+            <button type="button" role="tab" aria-selected="false" data-trade-tab="funding">Funding</button>
+          </div>
+          <div class="pro-data-table" id="trade-tab-positions" role="tabpanel" aria-label="Open positions">
+            <div class="pro-table-head">
+              <span>Symbol</span><span>Side</span><span>Size</span><span>Entry</span><span>Mark</span><span>uPnL</span><span>Liq price</span><span>Actions</span>
+            </div>
+            <div class="position-row" aria-label="BTC long position unrealized profit">
+              <span><strong>BTC-USD</strong><small>Spot margin</small></span><span class="side-long">Long</span><span class="finance-number">0.42 BTC</span><span class="finance-number">$100,786.10</span><span class="finance-number">$103,842.20</span><span class="finance-number profit-text">+$1,284.44</span><span class="finance-number warning-text">$91,200.00</span><span><button class="ds-button secondary small" type="button" data-partial-close="BTC-USD">Close partial</button></span>
+            </div>
+            <div class="position-row" aria-label="ETH short position unrealized loss">
+              <span><strong>ETH-PERP</strong><small>Futures 2x</small></span><span class="side-short">Short</span><span class="finance-number">1.80 ETH</span><span class="finance-number">$4,832.40</span><span class="finance-number">$4,894.11</span><span class="finance-number loss-text">-$111.08</span><span class="finance-number warning-text">$5,412.20</span><span><button class="ds-button secondary small" type="button" data-partial-close="ETH-PERP">Close partial</button></span>
+            </div>
+          </div>
+          <div class="pro-data-table hidden" id="trade-tab-orders" role="tabpanel" aria-label="Open orders">
+            <div class="pro-table-head">
+              <span>Symbol</span><span>Side</span><span>Type</span><span>Quantity</span><span>Limit</span><span>Fee est.</span><span>Status</span><span>Actions</span>
+            </div>
+            <div class="position-row">
+              <span><strong>POLY-FEDCUT</strong><small>Prediction market</small></span><span class="side-long">Buy Yes</span><span>Limit + TP/SL</span><span class="finance-number">400 shares</span><span class="finance-number">$0.58</span><span class="finance-number">$1.20</span><span>Working</span><span><button class="ds-button danger small" type="button">Cancel</button></span>
+            </div>
+          </div>
+          <div class="pro-data-table hidden" id="trade-tab-history" role="tabpanel" aria-label="Order history">
+            <div class="state-card neutral">
+              <strong>Ordinul tau a fost executat partial: 0.5 / 1.0 BTC</strong>
+              <span>Partial fill keeps the remaining quantity visible in Open Orders with average fill price and fees.</span>
+            </div>
+          </div>
+          <div class="pro-data-table hidden" id="trade-tab-funding" role="tabpanel" aria-label="Funding history">
+            <div class="state-card neutral">
+              <strong>Funding crypto perps</strong>
+              <span>Next funding estimate: +0.006% in 03:41:22, timezone Europe/Bucharest.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="trading-state-grid" aria-label="Special states">
+          <div class="state-card skeleton-card"><span class="skeleton-line"></span><strong>Loading initial</strong><small>Skeleton loaders keep layout stable.</small></div>
+          <div class="state-card warning"><strong>Reconnect WebSocket</strong><span>Live feed reconnecting. Orders are protected by confirmation.</span></div>
+          <div class="state-card neutral"><strong>Market closed</strong><span>Stocks closed. Crypto and prediction markets remain available.</span></div>
+          <div class="state-card warning"><strong>Insufficient margin</strong><span>Marja disponibila insuficienta. Adauga fonduri sau reduce leverage.</span></div>
+          <div class="state-card danger"><strong>Liquidation warning</strong><span>Reduce position or add collateral before maintenance margin breach.</span></div>
+        </div>
+      </section>
 
       <section class="content-grid" id="intelligence-section">
         <article class="card wide-card">
