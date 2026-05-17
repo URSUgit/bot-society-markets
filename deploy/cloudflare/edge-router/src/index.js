@@ -179,6 +179,12 @@ export default {
     if (incomingUrl.pathname === "/api/dashboard" || incomingUrl.pathname === "/api/v1/dashboard/summary") {
       return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
     }
+    if (incomingUrl.pathname === "/api/social-trading" || incomingUrl.pathname === "/api/v1/social-trading") {
+      return publicSnapshotResponse({ social_trading: DASHBOARD_SNAPSHOT.social_trading });
+    }
+    if (incomingUrl.pathname === "/api/social-traders" || incomingUrl.pathname === "/api/v1/social-traders") {
+      return jsonResponse(DASHBOARD_SNAPSHOT.social_trading?.top_traders || []);
+    }
     if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
       return publicSnapshotResponse(SYSTEM_PULSE);
     }
