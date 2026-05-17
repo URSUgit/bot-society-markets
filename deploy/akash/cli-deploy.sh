@@ -189,7 +189,7 @@ render_sdl() {
 
 require_spend_confirmation() {
   case "$AKASH_CLI_MODE" in
-    create|update)
+    create|update|close)
       if [ "$(bool_env "${AKASH_CLI_CONFIRM_SPEND:-false}")" != "true" ]; then
         fail "Set AKASH_CLI_CONFIRM_SPEND=true for '$AKASH_CLI_MODE'. This path signs blockchain transactions and can spend AKT."
       fi
@@ -401,6 +401,20 @@ update_deployment() {
   log "Akash CLI update completed"
 }
 
+close_deployment() {
+  if [ -z "${AKASH_DSEQ:-}" ]; then
+    fail "AKASH_DSEQ is required for close mode."
+  fi
+
+  log "Closing Akash deployment DSEQ $AKASH_DSEQ"
+  provider-services tx deployment close \
+    --dseq "$AKASH_DSEQ" \
+    "${AKASH_TX_FLAGS[@]}" >/dev/null
+
+  write_result_env "$AKASH_DSEQ" "${AKASH_PROVIDER:-}"
+  log "Akash CLI close completed"
+}
+
 main() {
   AKASH_CLI_MODE="${AKASH_CLI_MODE:-update}"
   AKASH_KEY_NAME="${AKASH_KEY_NAME:-bitprivat-deployer}"
@@ -440,8 +454,11 @@ main() {
     update)
       update_deployment
       ;;
+    close)
+      close_deployment
+      ;;
     *)
-      fail "Unsupported AKASH_CLI_MODE '$AKASH_CLI_MODE'. Use status, manifest, create, or update."
+      fail "Unsupported AKASH_CLI_MODE '$AKASH_CLI_MODE'. Use status, manifest, create, update, or close."
       ;;
   esac
 }

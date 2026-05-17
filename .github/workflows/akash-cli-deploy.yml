@@ -20,6 +20,7 @@ on:
           - manifest
           - update
           - create
+          - close
       image_ref:
         description: Optional image ref. Defaults to ghcr.io/<repo>:sha-<current-sha>.
         required: false
@@ -156,13 +157,13 @@ jobs:
           missing=()
           [ -z "$AKASH_CLI_MNEMONIC" ] && missing+=("AKASH_CLI_MNEMONIC")
 
-          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "manifest" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "manifest" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
             missing+=("AKASH_CLI_DSEQ")
           fi
-          if [ "${{ steps.options.outputs.mode }}" != "status" ] && [ -z "$BSM_DATABASE_URL" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.mode }}" != "close" ]; } && [ -z "$BSM_DATABASE_URL" ]; then
             missing+=("BSM_DATABASE_URL")
           fi
-          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "create" ]; } && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "create" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
             missing+=("confirm_spend=true")
           fi
           if [ "${{ steps.options.outputs.social_provider }}" = "youtube" ] && [ -z "$BSM_YOUTUBE_API_KEY" ]; then
@@ -212,7 +213,7 @@ jobs:
           fi
 
       - name: Verify production
-        if: steps.secrets.outputs.configured == 'true' && steps.options.outputs.mode != 'status' && steps.options.outputs.verify == 'true'
+        if: steps.secrets.outputs.configured == 'true' && steps.options.outputs.mode != 'status' && steps.options.outputs.mode != 'close' && steps.options.outputs.verify == 'true'
         shell: pwsh
         run: |
           Start-Sleep -Seconds ([int]"${{ steps.options.outputs.wait_seconds }}")
