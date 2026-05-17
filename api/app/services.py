@@ -1012,7 +1012,7 @@ class BotSocietyService:
         signals = signals if signals is not None else active_repository.list_recent_signals(limit=100)
         latest_run = latest_run if latest_run is not None else active_repository.get_latest_pipeline_run()
         latest_signal_time = parse_timestamp(signals[0]["observed_at"]) if signals else None
-        signals_last_24h = (
+        signals_last_24h = len(signals) if signals is not None else (
             active_repository.count_signals_since(to_timestamp(latest_signal_time.replace(hour=0, minute=0, second=0)))
             if latest_signal_time
             else 0
@@ -2073,6 +2073,19 @@ class BotSocietyService:
         return AlertInbox(
             unread_count=repository.count_unread_alert_deliveries(user_slug),
             alerts=alerts,
+        )
+
+    def _lightweight_alert_inbox(self) -> AlertInbox:
+        return AlertInbox(unread_count=0, alerts=[])
+
+    def _lightweight_notification_health(self) -> NotificationHealthSnapshot:
+        return NotificationHealthSnapshot(
+            active_channels=0,
+            delivered_last_24h=0,
+            retry_queue_depth=0,
+            exhausted_deliveries=0,
+            last_delivery_at=None,
+            channels=[],
         )
 
     def mark_alert_read(self, user_slug: str, alert_id: int) -> AlertInbox:
@@ -3926,10 +3939,14 @@ class BotSocietyService:
         pending_predictions = [row for row in all_predictions if row["status"] == "pending"]
         asset_symbols = sorted({str(row["asset"]) for row in latest_assets})
         latest_operation = self._latest_operation(repository)
-        leaderboard = self._build_bot_summaries(repository, user_slug, predictions=all_predictions)
+        leaderboard = self.get_leaderboard(user_slug)
         leaderboard_map = {bot.slug: bot for bot in leaderboard}
-        notification_health = self.get_notification_health(user_slug)
-        alert_inbox = self.get_alert_inbox(user_slug)
+        if self._use_fast_public_snapshots():
+            notification_health = self._lightweight_notification_health()
+            alert_inbox = self._lightweight_alert_inbox()
+        else:
+            notification_health = self.get_notification_health(user_slug)
+            alert_inbox = self.get_alert_inbox(user_slug)
         macro_snapshot = self.get_macro_snapshot(repository)
         wallet_snapshot = self.get_wallet_intelligence()
         edge_snapshot = self.get_edge_snapshot(
@@ -4006,7 +4023,7 @@ class BotSocietyService:
         pending_predictions = [row for row in all_predictions if row["status"] == "pending"]
         asset_symbols = sorted({str(row["asset"]) for row in latest_assets})
         latest_operation = self._latest_operation(repository)
-        leaderboard = self._build_bot_summaries(repository, user_slug, predictions=all_predictions)
+        leaderboard = self.get_leaderboard(user_slug)
         macro_snapshot = self.get_macro_snapshot(repository)
         snapshot = LandingSnapshot(
             summary=self.get_summary(
@@ -4060,7 +4077,11 @@ class BotSocietyService:
         recent_signals = recent_signals if recent_signals is not None else active_repository.list_recent_signals(limit=96)
         latest_assets = latest_assets if latest_assets is not None else active_repository.list_latest_market_snapshots()
         provider_status = provider_status or self.get_provider_status()
-        notification_health = notification_health or self.get_notification_health(self.settings.default_user_slug)
+        notification_health = notification_health or (
+            self._lightweight_notification_health()
+            if self._use_fast_public_snapshots()
+            else self.get_notification_health(self.settings.default_user_slug)
+        )
         generated_at = self._now()
         average_quality = mean(float(signal.get("source_quality_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
         average_freshness = mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals) if recent_signals else 0.0
@@ -5642,8 +5663,11 @@ class BotSocietyService:
         self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
 
+    def _use_fast_public_snapshots(self) -> bool:
+        return self.settings.deployment_target == "akash" and bool(self.settings.database_url)
+
     def _warm_public_snapshot_caches(self) -> None:
-        if self.settings.deployment_target != "akash" or not self.settings.database_url:
+        if not self._use_fast_public_snapshots():
             return
         try:
             user_slug = self.settings.default_user_slug

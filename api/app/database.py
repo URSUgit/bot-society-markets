@@ -649,6 +649,8 @@ class Database:
 
     def _ensure_performance_indexes(self) -> None:
         """Create indexes that may be absent on long-lived production databases."""
+        if self.dialect_name != "postgresql":
+            return
         statements = [
             "CREATE INDEX IF NOT EXISTS idx_market_snapshots_asset_as_of ON market_snapshots (asset, as_of DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_macro_snapshots_series_date ON macro_snapshots (series_id, observation_date DESC, id DESC)",

@@ -186,6 +186,19 @@ class BotSocietyRepository:
                         select(market_snapshots_table.c.asset).distinct().order_by(market_snapshots_table.c.asset)
                     ).scalars()
                 )
+            if self.database.dialect_name == "postgresql" and assets:
+                stmt = (
+                    select(market_snapshots_table)
+                    .where(market_snapshots_table.c.asset.in_(assets))
+                    .distinct(market_snapshots_table.c.asset)
+                    .order_by(
+                        market_snapshots_table.c.asset,
+                        desc(market_snapshots_table.c.as_of),
+                        desc(market_snapshots_table.c.id),
+                    )
+                )
+                return self._rows(connection.execute(stmt))
+
             rows: list[dict[str, Any]] = []
             for asset in assets:
                 stmt = (
@@ -231,6 +244,19 @@ class BotSocietyRepository:
                     select(macro_snapshots_table.c.series_id).distinct().order_by(macro_snapshots_table.c.series_id)
                 ).scalars()
             )
+            if self.database.dialect_name == "postgresql" and series_ids:
+                stmt = (
+                    select(macro_snapshots_table)
+                    .where(macro_snapshots_table.c.series_id.in_(series_ids))
+                    .distinct(macro_snapshots_table.c.series_id)
+                    .order_by(
+                        macro_snapshots_table.c.series_id,
+                        desc(macro_snapshots_table.c.observation_date),
+                        desc(macro_snapshots_table.c.id),
+                    )
+                )
+                return self._rows(connection.execute(stmt))
+
             rows: list[dict[str, Any]] = []
             for series_id in series_ids:
                 stmt = (
