@@ -4,7 +4,8 @@
   "compatibility_date": "2026-04-28",
   "workers_dev": false,
   "vars": {
-    "ORIGIN_BASE_URL": "https://app.bitprivat.com"
+    "ORIGIN_BASE_URL": "http://app.bitprivat.com",
+    "ORIGIN_RESOLVE_OVERRIDE": "hegdt6m2gd8mh3dns747utfbt8.ingress.jjozzietech.com.au"
   },
   "routes": [
     {

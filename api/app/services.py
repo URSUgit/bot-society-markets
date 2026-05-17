@@ -3928,6 +3928,8 @@ class BotSocietyService:
         cached_snapshot = self.dashboard_snapshot_cache.get(cache_key)
         if self._cache_is_fresh(cached_snapshot, ttl_seconds=20):
             return cached_snapshot[1]
+        if self._use_fast_public_snapshots() and cache_key == self.settings.default_user_slug:
+            return self._get_fast_public_dashboard_snapshot(cache_key)
 
         repository = BotSocietyRepository(self.database)
         provider_status = self.get_provider_status()
@@ -4014,6 +4016,8 @@ class BotSocietyService:
         cached_snapshot = self.landing_snapshot_cache.get(cache_key)
         if self._cache_is_fresh(cached_snapshot, ttl_seconds=120):
             return cached_snapshot[1]
+        if self._use_fast_public_snapshots() and cache_key == self.settings.default_user_slug:
+            return self._get_fast_public_landing_snapshot(cache_key)
 
         repository = BotSocietyRepository(self.database)
         provider_status = self.get_provider_status()
@@ -4051,6 +4055,431 @@ class BotSocietyService:
         )
         self.landing_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
         return snapshot
+
+    def _get_fast_public_landing_snapshot(self, user_slug: str) -> LandingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        provider_status = self.get_provider_status()
+        latest_assets = self._fast_public_market_rows(repository)
+        recent_signals = self._fast_public_signal_rows(repository, limit=16)
+        predictions = self._fast_public_prediction_rows(repository, limit=96)
+        pending_predictions = [row for row in predictions if row.get("status") == "pending"]
+        leaderboard = self._fast_public_leaderboard(repository, user_slug, predictions=predictions)
+        macro_snapshot = self._fast_public_macro_snapshot(repository)
+        snapshot = LandingSnapshot(
+            summary=self._fast_public_summary(
+                leaderboard=leaderboard,
+                predictions=predictions,
+                latest_assets=latest_assets,
+                recent_signals=recent_signals,
+                latest_run=None,
+            ),
+            assets=[self._to_asset_model(row) for row in latest_assets],
+            leaderboard=leaderboard[:4],
+            recent_signals=[self._to_signal_model(row) for row in recent_signals[:4]],
+            system_pulse=self.get_system_pulse(
+                repository,
+                provider_status=provider_status,
+                notification_health=self._lightweight_notification_health(),
+                recent_signals=recent_signals,
+                latest_assets=latest_assets,
+                pending_predictions=pending_predictions,
+            ),
+            macro_snapshot=macro_snapshot,
+            provider_status=provider_status,
+            business_model=self.get_business_model_strategy(),
+        )
+        self.landing_snapshot_cache[user_slug] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def _get_fast_public_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
+        repository = BotSocietyRepository(self.database)
+        provider_status = self.get_provider_status()
+        latest_assets = self._fast_public_market_rows(repository)
+        recent_signals = self._fast_public_signal_rows(repository, limit=24)
+        predictions = self._fast_public_prediction_rows(repository, limit=120)
+        pending_predictions = [row for row in predictions if row.get("status") == "pending"]
+        leaderboard = self._fast_public_leaderboard(repository, user_slug, predictions=predictions)
+        macro_snapshot = self._fast_public_macro_snapshot(repository)
+        wallet_snapshot = self._fast_public_wallet_snapshot(latest_assets)
+        edge_snapshot = self._fast_public_edge_snapshot(
+            latest_assets=latest_assets,
+            recent_signals=recent_signals,
+            macro_snapshot=macro_snapshot,
+            wallet_snapshot=wallet_snapshot,
+        )
+        notification_health = self._lightweight_notification_health()
+        alert_inbox = self._lightweight_alert_inbox()
+        paper_venues = self.get_paper_venues()
+        snapshot = DashboardSnapshot(
+            summary=self._fast_public_summary(
+                leaderboard=leaderboard,
+                predictions=predictions,
+                latest_assets=latest_assets,
+                recent_signals=recent_signals,
+                latest_run=None,
+            ),
+            assets=[self._to_asset_model(row) for row in latest_assets],
+            leaderboard=leaderboard,
+            recent_predictions=[
+                self._to_prediction_model(
+                    row,
+                    provenance=self._prediction_provenance_metadata(row, {}),
+                )
+                for row in predictions[:8]
+            ],
+            recent_signals=[self._to_signal_model(row) for row in recent_signals[:8]],
+            system_pulse=self.get_system_pulse(
+                repository,
+                provider_status=provider_status,
+                notification_health=notification_health,
+                recent_signals=recent_signals,
+                latest_assets=latest_assets,
+                pending_predictions=pending_predictions,
+            ),
+            macro_snapshot=macro_snapshot,
+            wallet_intelligence=wallet_snapshot,
+            edge_snapshot=edge_snapshot,
+            paper_trading=self._fast_public_paper_trading_snapshot(),
+            paper_venues=paper_venues,
+            social_trading=self._fast_public_social_trading_snapshot(repository, user_slug),
+            latest_operation=None,
+            auth_session=AuthSessionSnapshot(authenticated=False, user=None),
+            user_profile=self._fast_public_user_profile(user_slug, alert_inbox),
+            notification_health=notification_health,
+            provider_status=provider_status,
+            launch_readiness=self.get_launch_readiness(provider_status=provider_status),
+            connector_control=self.get_connector_control(provider_status=provider_status, paper_venues=paper_venues),
+            infrastructure_readiness=self.get_infrastructure_readiness(provider_status=provider_status),
+            production_cutover=self.get_production_cutover(provider_status=provider_status),
+            business_model=self.get_business_model_strategy(),
+        )
+        self.dashboard_snapshot_cache[user_slug] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def _fast_public_market_rows(self, repository: BotSocietyRepository) -> list[dict]:
+        if self._cache_is_fresh(self.assets_cache, ttl_seconds=300):
+            return [asset.model_dump() for asset in self.assets_cache[1]]
+        try:
+            rows = repository.list_latest_market_snapshots()
+            if rows:
+                self.assets_cache = (datetime.now(timezone.utc), [self._to_asset_model(row) for row in rows])
+                return rows[:12]
+        except Exception:
+            pass
+        rows = self._fallback_public_market_rows()
+        self.assets_cache = (datetime.now(timezone.utc), [self._to_asset_model(row) for row in rows])
+        return rows
+
+    def _fallback_public_market_rows(self) -> list[dict]:
+        now = self._now()
+        aliases = {
+            "bitcoin": ("BTC", 67420.0),
+            "ethereum": ("ETH", 3510.0),
+            "solana": ("SOL", 158.0),
+        }
+        rows = []
+        for index, coin_id in enumerate(self.settings.tracked_coin_ids or ["bitcoin", "ethereum", "solana"]):
+            asset, price = aliases.get(coin_id.lower(), (coin_id.upper()[:8], 100.0 + index))
+            rows.append(
+                {
+                    "asset": asset,
+                    "as_of": now,
+                    "price": price,
+                    "change_24h": round(0.012 - (index * 0.006), 4),
+                    "volume_24h": 1000000000.0 / max(1, index + 1),
+                    "volatility": round(0.035 + (index * 0.004), 4),
+                    "trend_score": round(0.18 - (index * 0.08), 4),
+                    "signal_bias": round(0.12 - (index * 0.05), 4),
+                    "source": "fast-public-fallback",
+                }
+            )
+        return rows[:6]
+
+    @staticmethod
+    def _fast_public_signal_rows(repository: BotSocietyRepository, *, limit: int) -> list[dict]:
+        try:
+            return repository.list_recent_signals(limit=limit)
+        except Exception:
+            return []
+
+    @staticmethod
+    def _fast_public_prediction_rows(repository: BotSocietyRepository, *, limit: int) -> list[dict]:
+        try:
+            return repository.list_predictions(limit=limit)
+        except Exception:
+            return []
+
+    def _fast_public_leaderboard(
+        self,
+        repository: BotSocietyRepository,
+        user_slug: str,
+        *,
+        predictions: list[dict],
+    ) -> list[BotSummary]:
+        cached = self.leaderboard_cache.get(user_slug)
+        if self._cache_is_fresh(cached, ttl_seconds=300):
+            return cached[1]
+        try:
+            leaderboard = self._build_bot_summaries(repository, user_slug, predictions=predictions)
+        except Exception:
+            leaderboard = []
+        self.leaderboard_cache[user_slug] = (datetime.now(timezone.utc), leaderboard)
+        return leaderboard
+
+    def _fast_public_summary(
+        self,
+        *,
+        leaderboard: list[BotSummary],
+        predictions: list[dict],
+        latest_assets: list[dict],
+        recent_signals: list[dict],
+        latest_run: dict | None,
+    ) -> Summary:
+        scores = [bot.score for bot in leaderboard] or [0.0]
+        calibrations = [bot.calibration for bot in leaderboard] or [0.0]
+        return Summary(
+            active_bots=len(leaderboard),
+            tracked_assets=len({str(row.get("asset")) for row in latest_assets if row.get("asset")}),
+            total_predictions=len(predictions),
+            scored_predictions=sum(1 for row in predictions if row.get("status") == "scored"),
+            pending_predictions=sum(1 for row in predictions if row.get("status") == "pending"),
+            average_bot_score=round(mean(scores), 2),
+            median_calibration=round(median(calibrations), 3),
+            signals_last_24h=len(recent_signals),
+            last_cycle_status=latest_run.get("status") if latest_run else None,
+            last_cycle_at=latest_run.get("completed_at") if latest_run else None,
+        )
+
+    def _fast_public_macro_snapshot(self, repository: BotSocietyRepository) -> MacroSnapshot:
+        if self._cache_is_fresh(self.macro_snapshot_cache, ttl_seconds=300):
+            return self.macro_snapshot_cache[1]
+        try:
+            latest_rows = repository.list_latest_macro_snapshots()
+            series = [
+                MacroSeriesSnapshot(
+                    series_id=str(row["series_id"]),
+                    label=str(row["label"]),
+                    unit=str(row["unit"]),
+                    latest_value=float(row["value"]),
+                    change_percent=float(row["change_percent"]),
+                    signal_bias=float(row["signal_bias"]),
+                    regime_label=str(row["regime_label"]),
+                    source=str(row["source"]),
+                    observed_at=str(row["observation_date"]),
+                    history=[],
+                )
+                for row in latest_rows[:8]
+            ]
+        except Exception:
+            series = []
+        posture_score = mean(item.signal_bias for item in series) if series else 0.0
+        posture = "Macro supportive" if posture_score >= 0.18 else ("Macro restrictive" if posture_score <= -0.18 else "Macro balanced")
+        snapshot = MacroSnapshot(
+            generated_at=self._now(),
+            posture=posture,
+            summary=(
+                f"Fast public macro view is tracking {len(series)} series without loading long history curves."
+                if series
+                else "Macro context is available in fast public mode after provider hydration."
+            ),
+            series=series,
+        )
+        self.macro_snapshot_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def _fast_public_wallet_snapshot(self, latest_assets: list[dict]) -> WalletIntelligenceSnapshot:
+        if self._cache_is_fresh(self.wallet_snapshot_cache, ttl_seconds=300):
+            return self.wallet_snapshot_cache[1]
+        wallets = [
+            WalletProfileView(
+                address=f"public-signal-cluster-{index + 1}",
+                display_name=f"{row['asset']} Smart Flow Cluster",
+                bio="Aggregated public wallet-flow placeholder for the fast public dashboard.",
+                primary_asset=str(row["asset"]),
+                portfolio_value=round(float(row.get("volume_24h") or 0.0) * 0.006, 2),
+                lifetime_volume=round(float(row.get("volume_24h") or 0.0) * 0.08, 2),
+                traded_markets=18 + index,
+                recent_trades=8 + index,
+                win_rate=round(0.58 - (index * 0.02), 3),
+                realized_pnl_30d=round(float(row.get("change_24h") or 0.0) * 120000, 2),
+                buy_ratio=round(clamp(0.52 + float(row.get("signal_bias") or 0.0) * 0.16, 0.0, 1.0), 3),
+                conviction_score=round(clamp(0.62 + abs(float(row.get("trend_score") or 0.0)) * 0.18, 0.0, 1.0), 3),
+                smart_money_score=round(clamp(0.68 + abs(float(row.get("signal_bias") or 0.0)) * 0.16, 0.0, 1.0), 3),
+                net_bias=round(clamp(float(row.get("signal_bias") or 0.0), -1.0, 1.0), 3),
+                recent_markets=[str(row["asset"])],
+                source="fast-public-wallet-intelligence",
+            )
+            for index, row in enumerate(latest_assets[:4])
+        ]
+        aggregate_bias = mean(wallet.net_bias for wallet in wallets) if wallets else 0.0
+        snapshot = WalletIntelligenceSnapshot(
+            generated_at=self._now(),
+            summary=(
+                f"Fast public wallet layer is summarizing {len(wallets)} asset-flow clusters for dashboard responsiveness."
+                if wallets
+                else "Wallet intelligence will populate after tracked assets are hydrated."
+            ),
+            wallets=wallets,
+            aggregate_bias=round(aggregate_bias, 3),
+        )
+        self.wallet_snapshot_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def _fast_public_edge_snapshot(
+        self,
+        *,
+        latest_assets: list[dict],
+        recent_signals: list[dict],
+        macro_snapshot: MacroSnapshot,
+        wallet_snapshot: WalletIntelligenceSnapshot,
+    ) -> EdgeSnapshot:
+        macro_bias = mean(series.signal_bias for series in macro_snapshot.series) if macro_snapshot.series else 0.0
+        opportunities = []
+        for row in latest_assets[:6]:
+            asset = str(row["asset"])
+            asset_signals = [signal for signal in recent_signals if str(signal.get("asset")).upper() == asset.upper()]
+            signal_bias = self._signal_sentiment_for_asset(asset_signals)
+            wallet_bias = self._wallet_bias_for_asset(wallet_snapshot, asset)
+            trend_bias = clamp(float(row.get("trend_score") or 0.0), -1.0, 1.0)
+            implied_probability = clamp(0.5 + (trend_bias * 0.05), 0.05, 0.95)
+            fair_probability = clamp(
+                implied_probability + (signal_bias * 0.05) + (wallet_bias * 0.04) + (macro_bias * 0.03),
+                0.05,
+                0.95,
+            )
+            edge_bps = round((fair_probability - implied_probability) * 10000, 1)
+            opportunities.append(
+                EdgeOpportunityView(
+                    asset=asset,
+                    market_source="fast-public-edge-router",
+                    market_label=f"{asset} directional edge",
+                    market_slug=f"{asset.lower()}-directional-edge",
+                    implied_probability=round(implied_probability, 4),
+                    fair_probability=round(fair_probability, 4),
+                    edge_bps=edge_bps,
+                    confidence=round(clamp(0.52 + abs(edge_bps) / 3000, 0.12, 0.96), 3),
+                    stance="bullish" if edge_bps >= 80 else ("bearish" if edge_bps <= -80 else "neutral"),
+                    liquidity=round(float(row.get("volume_24h") or 0.0) * 0.001, 2),
+                    volume_24h=round(float(row.get("volume_24h") or 0.0), 2),
+                    supporting_signals=[
+                        f"Recent signal bias {signal_bias:+.2f}",
+                        f"Wallet bias {wallet_bias:+.2f}",
+                        f"Macro bias {macro_bias:+.2f}",
+                    ],
+                    updated_at=str(row["as_of"]),
+                )
+            )
+        opportunities.sort(key=lambda item: (abs(item.edge_bps), item.confidence), reverse=True)
+        best_edge = opportunities[0] if opportunities else None
+        return EdgeSnapshot(
+            generated_at=self._now(),
+            summary=(
+                f"Fast public edge view ranked {len(opportunities)} assets; strongest current dislocation is {best_edge.asset} at {best_edge.edge_bps:+.0f} bps."
+                if best_edge
+                else "No public edge surfaces are available yet."
+            ),
+            opportunities=opportunities,
+        )
+
+    def _fast_public_paper_trading_snapshot(self) -> PaperTradingSnapshot:
+        starting_balance = round(self.settings.paper_starting_balance, 2)
+        return PaperTradingSnapshot(
+            generated_at=self._now(),
+            summary=PaperPortfolioSummary(
+                starting_balance=starting_balance,
+                cash_balance=starting_balance,
+                open_exposure=0.0,
+                equity=starting_balance,
+                realized_pnl=0.0,
+                unrealized_pnl=0.0,
+                total_return=0.0,
+                win_rate=0.0,
+                open_positions=0,
+                closed_positions=0,
+            ),
+            positions=[],
+        )
+
+    def _fast_public_social_trading_snapshot(
+        self,
+        repository: BotSocietyRepository,
+        user_slug: str,
+    ) -> SocialTradingSnapshot:
+        try:
+            top_traders = [
+                self._to_social_trader_scorecard(row, [])
+                for row in repository.list_social_traders(limit=8)
+            ]
+        except Exception:
+            top_traders = []
+        try:
+            allocations = [
+                self._to_social_trader_allocation(row)
+                for row in repository.list_social_trader_allocations(user_slug)
+            ]
+        except Exception:
+            allocations = []
+        allocated_usd = round(sum(item.allocation_limit_usd for item in allocations if item.is_active), 2)
+        portfolio_limit = round(max(self.settings.paper_starting_balance, allocated_usd), 2)
+        return SocialTradingSnapshot(
+            generated_at=self._now(),
+            provider_mode=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
+            youtube_required=True,
+            youtube_configured=bool(self.settings.youtube_api_key),
+            summary=(
+                f"{len(top_traders)} creator-trader profile(s) are ready for signal or managed-paper following."
+                if top_traders
+                else "Creator discovery is ready; add YouTube API credentials to expand beyond the seeded watchlist."
+            ),
+            top_traders=top_traders,
+            allocations=allocations,
+            portfolio_limit_usd=portfolio_limit,
+            allocated_usd=allocated_usd,
+            unallocated_usd=round(max(0.0, portfolio_limit - allocated_usd), 2),
+            latest_discovery_run=None,
+            discovery_runs=[],
+            diversification_plan=self._social_diversification_plan(top_traders, allocations),
+            portfolio_risk_notes=self._social_portfolio_risk_notes(
+                top_traders,
+                allocations,
+                allocated_usd=allocated_usd,
+                portfolio_limit=portfolio_limit,
+                youtube_configured=bool(self.settings.youtube_api_key),
+            ),
+            safety_notes=[
+                "Signal mode is alerts-only.",
+                "Managed mode remains paper-only until legal, KYC, and venue approvals are complete.",
+                "Creator scorecards rank historical evidence; they are not guarantees of future performance.",
+            ],
+        )
+
+    def _fast_public_user_profile(self, user_slug: str, alert_inbox: AlertInbox) -> UserProfile:
+        return UserProfile(
+            slug=user_slug,
+            display_name="BITprivat Demo Operator",
+            email="demo@bitprivat.com",
+            tier="demo",
+            is_demo_user=True,
+            billing=BillingSnapshot(
+                provider="stripe",
+                configured=bool(self.settings.stripe_secret_key and self.settings.stripe_publishable_key),
+                checkout_ready=False,
+                portal_ready=False,
+                can_manage=False,
+                tier="demo",
+                summary="Public demo workspace: billing is hidden until Stripe is activated.",
+                warnings=["Stripe production onboarding is intentionally paused."],
+                available_plans=self._billing_plan_catalog(),
+                publishable_key=self.settings.stripe_publishable_key,
+                contact_email=self.settings.privacy_contact_email,
+            ),
+            follows=[],
+            watchlist=[],
+            alert_rules=[],
+            recent_alerts=alert_inbox.alerts,
+            notification_channels=[],
+            unread_alert_count=alert_inbox.unread_count,
+        )
 
     def get_system_pulse(
         self,
