@@ -200,6 +200,7 @@ jobs:
           BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
           BSM_SOCIAL_DISCOVERY_PROVIDER: ${{ steps.options.outputs.social_provider }}
           AKASH_EXTRA_ACCEPT_HOSTS: ${{ vars.AKASH_EXTRA_ACCEPT_HOSTS }}
+          AKASH_BID_WAIT_SECONDS: ${{ vars.AKASH_BID_WAIT_SECONDS || '120' }}
           IMAGE_REF: ${{ steps.options.outputs.image_ref }}
           WITH_WORKER: ${{ steps.options.outputs.with_worker }}
         run: |
