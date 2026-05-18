@@ -55,6 +55,7 @@ from .models import (
     SignalView,
     SocialDiscoveryRunResult,
     SocialPortfolioDiversifyRequest,
+    SocialTraderAnalyzeRequest,
     SocialTraderFollowRequest,
     SocialTraderScorecard,
     SocialTradingEnvelope,
@@ -409,6 +410,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             action="social_trader.discovery",
             resource_type="social_trader",
             after_state={
+                "provider": result.provider,
+                "updated": result.updated,
+                "youtube_configured": result.youtube_configured,
+            },
+        )
+        return result
+
+    @app.post("/api/v1/social-traders/analyze", response_model=SocialDiscoveryRunResult)
+    @app.post("/api/social-traders/analyze", response_model=SocialDiscoveryRunResult)
+    def analyze_social_trader(
+        payload: SocialTraderAnalyzeRequest,
+        request: Request,
+    ) -> SocialDiscoveryRunResult:
+        result = run_validated(lambda: get_service(request).analyze_social_trader_target(payload))
+        audit_event(
+            request,
+            action="social_trader.analyze",
+            resource_type="social_trader",
+            after_state={
+                "query": payload.query,
+                "video_limit": payload.video_limit,
                 "provider": result.provider,
                 "updated": result.updated,
                 "youtube_configured": result.youtube_configured,

@@ -7549,6 +7549,73 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
 }
 
 /* Social trader operating layer: creator monitoring, paper deployment, and decision transparency. */
+.bit-engine-product-ui.command-os .social-analyze-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.35fr);
+  gap: 14px;
+  align-items: end;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(15, 23, 42, 0.2)),
+    rgba(2, 6, 23, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.bit-engine-product-ui.command-os .social-analyze-form label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-form p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  gap: 10px;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-row input,
+.bit-engine-product-ui.command-os .social-analyze-row select {
+  width: 100%;
+  min-height: 40px;
+  color: var(--color-text);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.34);
+  outline: none;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-row input {
+  padding: 0 13px;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-row select {
+  padding: 0 10px;
+}
+
+.bit-engine-product-ui.command-os .social-analyze-row input:focus,
+.bit-engine-product-ui.command-os .social-analyze-row select:focus {
+  border-color: rgba(45, 212, 191, 0.64);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+}
+
+.bit-engine-product-ui.command-os .social-analyze-form.is-running {
+  opacity: 0.76;
+}
+
 .bit-engine-product-ui.command-os .social-trader-card {
   position: relative;
   overflow: hidden;
@@ -7783,6 +7850,11 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
 }
 
 @media (max-width: 1080px) {
+  .bit-engine-product-ui.command-os .social-analyze-form,
+  .bit-engine-product-ui.command-os .social-analyze-row {
+    grid-template-columns: 1fr;
+  }
+
   .bit-engine-product-ui.command-os .social-trader-head,
   .bit-engine-product-ui.command-os .social-thesis-grid,
   .bit-engine-product-ui.command-os .social-roi-strip {

@@ -7,7 +7,7 @@ import json
 import math
 import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from .models import Direction, SocialPlatform
@@ -327,6 +327,37 @@ class DemoSocialDiscoveryProvider:
             ],
         )
 
+    def discover_target(self, target: str, video_limit: int | None = None) -> SocialDiscoveryResult:
+        target_text = re.sub(r"\s+", " ", target or "").strip()
+        normalized = target_text.lower().lstrip("@")
+        result = self.discover()
+        matches = [
+            trader
+            for trader in result.traders
+            if normalized
+            and normalized
+            in " ".join(
+                [
+                    trader.display_name,
+                    trader.handle,
+                    trader.source_url,
+                    trader.description,
+                    " ".join(trader.primary_assets),
+                    " ".join(trader.style_tags),
+                ]
+            ).lower()
+        ]
+        if not matches:
+            matches = result.traders[:1]
+            result.warnings.append(
+                f"No exact demo match for '{target_text}', so BITprivat returned the closest deterministic trader profile."
+            )
+        limit = min(30, max(3, int(video_limit or 8)))
+        for trader in matches:
+            trader.evidence = trader.evidence[:limit]
+        result.traders = matches
+        return result
+
 
 class YouTubeSocialDiscoveryProvider:
     source_name = "youtube-data-api"
@@ -375,6 +406,52 @@ class YouTubeSocialDiscoveryProvider:
             warnings=warnings,
         )
 
+    def discover_target(self, target: str, video_limit: int | None = None) -> SocialDiscoveryResult:
+        cleaned_target = re.sub(r"\s+", " ", target or "").strip()
+        if not cleaned_target:
+            return SocialDiscoveryResult(
+                provider=self.source_name,
+                youtube_configured=bool(self.api_key),
+                traders=[],
+                warnings=["Enter a YouTube channel, video URL, @handle, or trader name before running analysis."],
+            )
+        limit = min(30, max(3, int(video_limit or self.video_limit)))
+        if not self.api_key:
+            fallback = DemoSocialDiscoveryProvider().discover_target(cleaned_target, video_limit=limit)
+            fallback.provider = self.source_name
+            fallback.youtube_configured = False
+            return fallback
+
+        warnings: list[str] = []
+        try:
+            videos = self._videos_from_target(cleaned_target, limit=limit)
+            channel_meta = self._hydrate_channels(videos)
+            traders = self._aggregate_channels(videos, channel_meta)
+        except Exception as exc:
+            fallback = DemoSocialDiscoveryProvider().discover_target(cleaned_target, video_limit=limit)
+            fallback.provider = self.source_name
+            fallback.youtube_configured = True
+            fallback.warnings = [
+                f"YouTube target analysis failed ({exc.__class__.__name__}: {exc}); using deterministic fallback.",
+                *fallback.warnings,
+            ]
+            return fallback
+
+        if traders:
+            warnings.append(
+                f"Analyzed '{cleaned_target}' from up to {limit} latest public YouTube video(s); profile is ready for signal or managed-paper deployment."
+            )
+        else:
+            warnings.append(
+                f"No usable public market-analysis videos were found for '{cleaned_target}'. Try a channel URL, @handle, or a more specific trader name."
+            )
+        return SocialDiscoveryResult(
+            provider=self.source_name,
+            youtube_configured=True,
+            traders=traders,
+            warnings=warnings,
+        )
+
     def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         params = {**params, "key": self.api_key}
         request = Request(f"{url}?{urlencode(params)}", headers={"User-Agent": "BITprivatSocialDiscovery/1.0"})
@@ -385,30 +462,72 @@ class YouTubeSocialDiscoveryProvider:
         items: list[dict[str, Any]] = []
         max_results = min(50, max(3, self.video_limit))
         for query in self.queries:
-            payload = self._get_json(
-                "https://www.googleapis.com/youtube/v3/search",
-                {
-                    "part": "snippet",
-                    "type": "video",
-                    "order": "date",
-                    "maxResults": max_results,
-                    "q": query,
-                },
-            )
-            items.extend(payload.get("items", []))
+            items.extend(self._search_videos_for_query(query, limit=max_results))
         for channel_id in self.channel_ids:
-            payload = self._get_json(
-                "https://www.googleapis.com/youtube/v3/search",
-                {
-                    "part": "snippet",
-                    "type": "video",
-                    "order": "date",
-                    "maxResults": max_results,
-                    "channelId": channel_id,
-                },
-            )
-            items.extend(payload.get("items", []))
+            items.extend(self._search_channel_videos(channel_id, limit=max_results))
+        return self._dedupe_search_items(items)[: self.video_limit * max(1, len(self.queries) + len(self.channel_ids))]
 
+    def _videos_from_target(self, target: str, *, limit: int) -> list[dict[str, Any]]:
+        video_ids = self._video_ids_from_target(target)
+        if video_ids:
+            return self._hydrate_video_ids(video_ids[:limit])
+
+        items: list[dict[str, Any]] = []
+        channel_ids = self._channel_ids_from_target(target)
+        if not channel_ids:
+            channel_ids = self._search_channels(self._target_query(target), limit=3)
+        for channel_id in channel_ids[:3]:
+            items.extend(self._search_channel_videos(channel_id, limit=limit))
+        if not items:
+            items.extend(self._search_videos_for_query(self._target_query(target), limit=limit))
+        return self._hydrate_videos(self._dedupe_search_items(items)[: limit * max(1, len(channel_ids) or 1)])
+
+    def _search_videos_for_query(self, query: str, *, limit: int) -> list[dict[str, Any]]:
+        payload = self._get_json(
+            "https://www.googleapis.com/youtube/v3/search",
+            {
+                "part": "snippet",
+                "type": "video",
+                "order": "date",
+                "maxResults": min(50, max(3, limit)),
+                "q": query,
+            },
+        )
+        return list(payload.get("items", []))
+
+    def _search_channel_videos(self, channel_id: str, *, limit: int) -> list[dict[str, Any]]:
+        payload = self._get_json(
+            "https://www.googleapis.com/youtube/v3/search",
+            {
+                "part": "snippet",
+                "type": "video",
+                "order": "date",
+                "maxResults": min(50, max(3, limit)),
+                "channelId": channel_id,
+            },
+        )
+        return list(payload.get("items", []))
+
+    def _search_channels(self, query: str, *, limit: int) -> list[str]:
+        payload = self._get_json(
+            "https://www.googleapis.com/youtube/v3/search",
+            {
+                "part": "snippet",
+                "type": "channel",
+                "order": "relevance",
+                "maxResults": min(10, max(1, limit)),
+                "q": query,
+            },
+        )
+        channel_ids: list[str] = []
+        for item in payload.get("items", []):
+            channel_id = str(item.get("id", {}).get("channelId") or "")
+            if channel_id and channel_id not in channel_ids:
+                channel_ids.append(channel_id)
+        return channel_ids
+
+    @staticmethod
+    def _dedupe_search_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen: set[str] = set()
         unique_items: list[dict[str, Any]] = []
         for item in items:
@@ -416,10 +535,13 @@ class YouTubeSocialDiscoveryProvider:
             if video_id and video_id not in seen:
                 seen.add(video_id)
                 unique_items.append(item)
-        return unique_items[: self.video_limit * max(1, len(self.queries) + len(self.channel_ids))]
+        return unique_items
 
     def _hydrate_videos(self, search_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ids = [str(item.get("id", {}).get("videoId")) for item in search_items if item.get("id", {}).get("videoId")]
+        return self._hydrate_video_ids(ids)
+
+    def _hydrate_video_ids(self, ids: list[str]) -> list[dict[str, Any]]:
         if not ids:
             return []
         hydrated: list[dict[str, Any]] = []
@@ -434,6 +556,55 @@ class YouTubeSocialDiscoveryProvider:
             )
             hydrated.extend(payload.get("items", []))
         return hydrated
+
+    @staticmethod
+    def _parse_maybe_youtube_url(target: str):
+        candidate = target.strip()
+        if "youtube.com" not in candidate and "youtu.be" not in candidate:
+            return None
+        if "://" not in candidate:
+            candidate = f"https://{candidate}"
+        return urlparse(candidate)
+
+    def _video_ids_from_target(self, target: str) -> list[str]:
+        parsed = self._parse_maybe_youtube_url(target)
+        if not parsed:
+            return []
+        query_video = parse_qs(parsed.query).get("v", [""])[0]
+        if query_video:
+            return [query_video]
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if parsed.netloc.endswith("youtu.be") and segments:
+            return [segments[0]]
+        for marker in ("shorts", "embed", "live"):
+            if marker in segments:
+                index = segments.index(marker)
+                if len(segments) > index + 1:
+                    return [segments[index + 1]]
+        return []
+
+    def _channel_ids_from_target(self, target: str) -> list[str]:
+        candidate = target.strip()
+        if re.fullmatch(r"UC[a-zA-Z0-9_-]{10,}", candidate):
+            return [candidate]
+        parsed = self._parse_maybe_youtube_url(candidate)
+        if not parsed:
+            return []
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if "channel" in segments:
+            index = segments.index("channel")
+            if len(segments) > index + 1 and segments[index + 1].startswith("UC"):
+                return [segments[index + 1]]
+        return []
+
+    def _target_query(self, target: str) -> str:
+        parsed = self._parse_maybe_youtube_url(target)
+        if parsed:
+            segments = [segment for segment in parsed.path.split("/") if segment]
+            for segment in reversed(segments):
+                if segment not in {"c", "user", "channel", "watch", "videos"} and not segment.startswith("UC"):
+                    return re.sub(r"[@_-]+", " ", segment).strip() or target
+        return re.sub(r"\s+", " ", target.lstrip("@").replace("_", " ").replace("-", " ")).strip()
 
     def _hydrate_channels(self, videos: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         channel_ids = sorted(

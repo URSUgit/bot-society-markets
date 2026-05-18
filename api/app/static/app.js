@@ -3924,6 +3924,51 @@ async function runSocialDiscovery(button = null) {
   }
 }
 
+async function analyzeSocialTraderTarget(form = null) {
+  const activeForm = form || document.getElementById("social-analyze-form");
+  const input = document.getElementById("social-analyze-input");
+  const limitSelect = document.getElementById("social-analyze-limit");
+  const button = document.getElementById("social-analyze-button");
+  const query = input?.value?.trim() || "";
+  const videoLimit = Number(limitSelect?.value || 12);
+  if (query.length < 2) {
+    setStatus("Add a YouTube trader name, @handle, channel URL, or video URL before analysis.");
+    input?.focus();
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Analyzing...";
+  }
+  if (activeForm) {
+    activeForm.classList.add("is-running");
+  }
+  setStatus(`Analyzing YouTube trader target: ${query}`);
+  try {
+    const result = await fetchJson("/api/social-traders/analyze", {
+      method: "POST",
+      body: JSON.stringify({ query, video_limit: videoLimit }),
+    });
+    await loadDashboard({ silent: true });
+    const analyzedNames = (result.traders || []).slice(0, 2).map((trader) => trader.display_name).filter(Boolean);
+    const warning = result.warnings?.length ? ` ${result.warnings[0]}` : "";
+    if (input) {
+      input.value = "";
+    }
+    setStatus(`Trader analysis updated ${result.updated} profile(s), ${result.discovered} new${analyzedNames.length ? `: ${analyzedNames.join(", ")}` : ""}.${warning}`);
+  } catch (error) {
+    setStatus(`Trader analysis failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Analyze Trader";
+    }
+    if (activeForm) {
+      activeForm.classList.remove("is-running");
+    }
+  }
+}
+
 async function configureSocialTrader(traderId, mode) {
   const allocationInput = document.querySelector(`[data-social-allocation-id="${traderId}"]`);
   const positionSelect = document.querySelector(`[data-social-position-id="${traderId}"]`);
@@ -4078,6 +4123,7 @@ function bindForms() {
   const loginForm = document.getElementById("login-form");
   const registerForm = document.getElementById("register-form");
   const notificationChannelForm = document.getElementById("notification-channel-form");
+  const socialAnalyzeForm = document.getElementById("social-analyze-form");
 
   if (simulationForm) {
     simulationForm.addEventListener("submit", async (event) => {
@@ -4115,6 +4161,13 @@ function bindForms() {
   const simulationStrategyInput = document.getElementById("simulation-strategy-input");
   if (simulationStrategyInput) {
     simulationStrategyInput.addEventListener("change", syncStrategyCreatorPanel);
+  }
+
+  if (socialAnalyzeForm) {
+    socialAnalyzeForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await analyzeSocialTraderTarget(socialAnalyzeForm);
+    });
   }
 
   if (watchlistForm) {

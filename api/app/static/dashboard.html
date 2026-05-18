@@ -150,6 +150,22 @@
           </div>
         </div>
         <p class="panel-note" id="social-trader-summary">Loading social trader discovery, evidence, and paper allocation limits...</p>
+        <form class="social-analyze-form" id="social-analyze-form">
+          <div>
+            <label for="social-analyze-input">Analyze a YouTube trader</label>
+            <p>Paste a channel, video URL, @handle, or creator name. BITprivat will read recent public videos, infer signals, score ROI history, and make the trader deployable.</p>
+          </div>
+          <div class="social-analyze-row">
+            <input id="social-analyze-input" type="search" autocomplete="off" placeholder="Example: Crypto Banter, @traderhandle, or youtube.com/@channel" aria-label="YouTube trader name, handle, channel URL, or video URL">
+            <select id="social-analyze-limit" aria-label="Number of recent videos to analyze">
+              <option value="8">8 videos</option>
+              <option value="12" selected>12 videos</option>
+              <option value="20">20 videos</option>
+              <option value="30">30 videos</option>
+            </select>
+            <button class="button primary small-button" id="social-analyze-button" type="submit">Analyze Trader</button>
+          </div>
+        </form>
         <div class="social-kpi-grid" id="social-trader-kpis"></div>
         <div class="social-trader-layout">
           <div>

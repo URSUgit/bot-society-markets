@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -1139,6 +1140,16 @@ class SocialDiscoveryRunResult(BaseModel):
     youtube_configured: bool
     traders: list[SocialTraderScorecard] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class SocialTraderAnalyzeRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=240)
+    video_limit: int = Field(default=12, ge=3, le=30)
+
+    @model_validator(mode="after")
+    def normalize_query(self) -> "SocialTraderAnalyzeRequest":
+        self.query = re.sub(r"\s+", " ", self.query).strip()
+        return self
 
 
 class SocialTraderFollowRequest(BaseModel):

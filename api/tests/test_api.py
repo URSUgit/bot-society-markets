@@ -454,10 +454,21 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert social_signals
         assert social_signals[0]["source_type"] == "social"
 
+        analyze_response = client.post(
+            "/api/social-traders/analyze",
+            json={"query": "CycleCraft Crypto", "video_limit": 5},
+        )
+        assert analyze_response.status_code == 200
+        analyze_payload = analyze_response.json()
+        assert analyze_payload["updated"] >= 1
+        assert analyze_payload["traders"]
+        assert any(trader["platform"] == "youtube" for trader in analyze_payload["traders"])
+        assert any("normalized social signal" in warning for warning in analyze_payload["warnings"])
+
         refreshed_response = client.get("/api/social-trading")
         refreshed_snapshot = refreshed_response.json()["social_trading"]
         assert len(refreshed_snapshot["discovery_runs"]) >= 2
-        assert refreshed_snapshot["latest_discovery_run"]["provider"] == discovery_payload["provider"]
+        assert refreshed_snapshot["latest_discovery_run"]["provider"] == analyze_payload["provider"]
         assert refreshed_snapshot["latest_discovery_run"]["status"] in {"completed", "completed_with_warnings"}
 
         register_response = client.post(
