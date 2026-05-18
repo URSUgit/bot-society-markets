@@ -173,43 +173,48 @@ export default {
     if (incomingUrl.pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
       return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
     }
-    if (incomingUrl.pathname === "/api/landing" || incomingUrl.pathname === "/api/v1/landing/stats") {
-      return publicSnapshotResponse(LANDING_SNAPSHOT);
-    }
-    if (incomingUrl.pathname === "/api/dashboard" || incomingUrl.pathname === "/api/v1/dashboard/summary") {
-      return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
-    }
-    if (incomingUrl.pathname === "/api/social-trading" || incomingUrl.pathname === "/api/v1/social-trading") {
-      return publicSnapshotResponse({ social_trading: DASHBOARD_SNAPSHOT.social_trading });
-    }
-    if (incomingUrl.pathname === "/api/social-traders" || incomingUrl.pathname === "/api/v1/social-traders") {
-      return jsonResponse(DASHBOARD_SNAPSHOT.social_trading?.top_traders || []);
-    }
-    if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
-      return publicSnapshotResponse(SYSTEM_PULSE);
-    }
-    if (incomingUrl.pathname === "/api/system/providers" || incomingUrl.pathname === "/api/v1/system/providers") {
-      return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
-    }
-    if (incomingUrl.pathname === "/api/assets" || incomingUrl.pathname === "/api/v1/assets") {
-      return jsonResponse(DASHBOARD_SNAPSHOT.assets);
-    }
-    if (incomingUrl.pathname === "/api/paper-venues" || incomingUrl.pathname === "/api/v1/paper-venues" || incomingUrl.pathname === "/api/v1/trading/venues") {
-      return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
-    }
-    if (incomingUrl.pathname === "/api/system/connectors" || incomingUrl.pathname === "/api/v1/system/connectors") {
-      return publicSnapshotResponse({ connector_control: DASHBOARD_SNAPSHOT.connector_control });
-    }
-    if (incomingUrl.pathname === "/api/system/connectors/diagnostics" || incomingUrl.pathname === "/api/v1/system/connectors/diagnostics") {
-      return publicSnapshotResponse(CONNECTOR_DIAGNOSTICS);
-    }
-    const connectorDiagnosticMatch = incomingUrl.pathname.match(/^\/api(?:\/v1)?\/system\/connectors\/([^/]+)\/diagnostics$/);
-    if (connectorDiagnosticMatch) {
-      const connectorDiagnostic = connectorDiagnosticFromSnapshot(decodeURIComponent(connectorDiagnosticMatch[1]));
-      if (!connectorDiagnostic) {
-        return jsonResponse({ detail: "Connector not found" }, 404);
+    // The edge snapshot is a fallback for static demos. When a live Akash
+    // origin is configured, API reads should proxy so the dashboard reflects
+    // live provider state, worker refreshes, and YouTube discovery results.
+    if (!env.ORIGIN_RESOLVE_OVERRIDE) {
+      if (incomingUrl.pathname === "/api/landing" || incomingUrl.pathname === "/api/v1/landing/stats") {
+        return publicSnapshotResponse(LANDING_SNAPSHOT);
       }
-      return publicSnapshotResponse({ connector_diagnostic: connectorDiagnostic });
+      if (incomingUrl.pathname === "/api/dashboard" || incomingUrl.pathname === "/api/v1/dashboard/summary") {
+        return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
+      }
+      if (incomingUrl.pathname === "/api/social-trading" || incomingUrl.pathname === "/api/v1/social-trading") {
+        return publicSnapshotResponse({ social_trading: DASHBOARD_SNAPSHOT.social_trading });
+      }
+      if (incomingUrl.pathname === "/api/social-traders" || incomingUrl.pathname === "/api/v1/social-traders") {
+        return jsonResponse(DASHBOARD_SNAPSHOT.social_trading?.top_traders || []);
+      }
+      if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
+        return publicSnapshotResponse(SYSTEM_PULSE);
+      }
+      if (incomingUrl.pathname === "/api/system/providers" || incomingUrl.pathname === "/api/v1/system/providers") {
+        return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
+      }
+      if (incomingUrl.pathname === "/api/assets" || incomingUrl.pathname === "/api/v1/assets") {
+        return jsonResponse(DASHBOARD_SNAPSHOT.assets);
+      }
+      if (incomingUrl.pathname === "/api/paper-venues" || incomingUrl.pathname === "/api/v1/paper-venues" || incomingUrl.pathname === "/api/v1/trading/venues") {
+        return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
+      }
+      if (incomingUrl.pathname === "/api/system/connectors" || incomingUrl.pathname === "/api/v1/system/connectors") {
+        return publicSnapshotResponse({ connector_control: DASHBOARD_SNAPSHOT.connector_control });
+      }
+      if (incomingUrl.pathname === "/api/system/connectors/diagnostics" || incomingUrl.pathname === "/api/v1/system/connectors/diagnostics") {
+        return publicSnapshotResponse(CONNECTOR_DIAGNOSTICS);
+      }
+      const connectorDiagnosticMatch = incomingUrl.pathname.match(/^\/api(?:\/v1)?\/system\/connectors\/([^/]+)\/diagnostics$/);
+      if (connectorDiagnosticMatch) {
+        const connectorDiagnostic = connectorDiagnosticFromSnapshot(decodeURIComponent(connectorDiagnosticMatch[1]));
+        if (!connectorDiagnostic) {
+          return jsonResponse({ detail: "Connector not found" }, 404);
+        }
+        return publicSnapshotResponse({ connector_diagnostic: connectorDiagnostic });
+      }
     }
 
     const upstreamPath = rewritePath(incomingUrl.hostname, incomingUrl.pathname);
