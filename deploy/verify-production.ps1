@@ -108,7 +108,7 @@ if ($ExpectSocialTrading) {
         @{
             Name = "Dashboard social section"
             Url = "$RootUrl/dashboard?v=$cacheBust"
-            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social-trader-section*" -and $r.Content -like "*Run YouTube Discovery*" }
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social-trader-section*" -and ($r.Content -like "*Run YouTube Discovery*" -or $r.Content -like "*Scan New Videos*") }
         }
     )
 }

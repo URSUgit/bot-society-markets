@@ -83,8 +83,12 @@ from .models import (
     SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
     SocialEvidenceItem,
+    SocialMonitoringStatus,
     SocialPortfolioDiversifyRequest,
+    SocialRoiWindow,
     SocialTraderAllocation,
+    SocialTraderAssetExposure,
+    SocialTraderDecision,
     SocialTraderFollowRequest,
     SocialTraderScorecard,
     SocialTradingSnapshot,
@@ -400,6 +404,12 @@ class BotSocietyService:
                     continue
                 event_payloads.extend(self._social_event_payloads(trader_id, trader.evidence, now=now))
             active_repository.upsert_social_trader_events(event_payloads)
+            signal_payloads = self._social_signal_payloads(
+                result.traders,
+                provider=result.provider,
+                ingest_batch_id=f"social-discovery:{started_at}",
+            )
+            social_signals_created = active_repository.upsert_signals(signal_payloads)
 
             discovered_count = len([payload for payload in trader_payloads if str(payload["slug"]) not in before_slugs])
             updated_count = len(trader_payloads)
@@ -430,7 +440,10 @@ class BotSocietyService:
                 provider=result.provider,
                 youtube_configured=result.youtube_configured,
                 traders=visible_scorecards,
-                warnings=result.warnings,
+                warnings=[
+                    *result.warnings,
+                    f"Created {social_signals_created} normalized social signal(s) for bot scoring.",
+                ],
             )
         except Exception as exc:
             completed_at = self._now()
@@ -468,6 +481,14 @@ class BotSocietyService:
             self._to_social_trader_allocation(row)
             for row in active_repository.list_social_trader_allocations(user_slug)
         ]
+        allocation_by_trader = {allocation.trader_id: allocation for allocation in allocations}
+        for trader in top_traders:
+            allocation = allocation_by_trader.get(trader.id)
+            if allocation and allocation.is_active:
+                trader.is_deployed = True
+                trader.deployment_mode = allocation.mode
+                trader.delegated_usd = allocation.allocation_limit_usd
+                trader.deployed_max_position_pct = allocation.max_position_pct
         discovery_runs = [
             self._to_social_discovery_run(row)
             for row in active_repository.list_social_discovery_runs(limit=6)
@@ -511,6 +532,12 @@ class BotSocietyService:
                 "Live copy trading requires KYC/suitability review, exchange authorization, risk controls, audit logging, and legal sign-off.",
                 "YouTube ingestion uses the official YouTube Data API when BSM_YOUTUBE_API_KEY is configured.",
             ],
+            monitoring=self._social_monitoring_status(discovery_runs),
+            decision_feed=[
+                decision
+                for trader in top_traders[:6]
+                for decision in trader.decision_feed[:2]
+            ][:10],
         )
 
     def follow_social_trader(
@@ -5072,6 +5099,14 @@ class BotSocietyService:
 
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored_predictions = scorer.score_available_predictions()
+        social_updated = 0
+        social_evidence_count = 0
+        try:
+            social_refresh = self.refresh_social_trader_discovery(repository=repository)
+            social_updated = social_refresh.updated
+            social_evidence_count = sum(len(trader.evidence) for trader in social_refresh.traders)
+        except Exception as exc:
+            message_prefixes.append(f"Social discovery fallback after {exc.__class__.__name__}: {exc}.")
 
         cycle_type = "live-cycle" if live_market_active or live_signal_active else "demo-cycle"
         if self.market_provider_fallback or self.signal_provider_fallback:
@@ -5089,7 +5124,7 @@ class BotSocietyService:
                 "message": " ".join(
                     [
                         *message_prefixes,
-                        f"Ingested {ingested_signals} signals, generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, delivered {delivered_alerts} alerts, and refreshed {macro_observations} macro observations.",
+                        f"Ingested {ingested_signals} market/news signals, monitored {social_updated} social trader profile(s), indexed {social_evidence_count} creator evidence item(s), generated {created_predictions} fresh predictions, scored {scored_predictions} eligible predictions, delivered {delivered_alerts} alerts, and refreshed {macro_observations} macro observations.",
                     ]
                 ).strip(),
             }
@@ -6728,6 +6763,69 @@ class BotSocietyService:
             for item in evidence
         ]
 
+    def _social_signal_payloads(
+        self,
+        traders: list[DiscoveredSocialTrader],
+        *,
+        provider: str,
+        ingest_batch_id: str,
+    ) -> list[dict[str, object]]:
+        payloads: list[dict[str, object]] = []
+        for trader in traders:
+            for item in trader.evidence:
+                sentiment = self._direction_to_sentiment(item.direction, item.confidence)
+                payloads.append(
+                    {
+                        "external_id": f"social-signal-{item.external_id}",
+                        "asset": item.asset[:16],
+                        "source": trader.source_url,
+                        "provider_name": provider,
+                        "source_type": "social",
+                        "author_handle": trader.handle,
+                        "engagement_score": item.engagement_score,
+                        "provider_trust_score": round(min(0.96, 0.58 + trader.composite_score / 240), 6),
+                        "freshness_score": self._freshness_score(item.observed_at),
+                        "source_quality_score": round(
+                            min(
+                                0.98,
+                                max(
+                                    0.2,
+                                    (item.confidence * 0.48)
+                                    + (item.engagement_score * 0.18)
+                                    + (trader.consistency_score * 0.2)
+                                    + (trader.recency_score * 0.14),
+                                ),
+                            ),
+                            6,
+                        ),
+                        "channel": "social",
+                        "title": item.title[:255],
+                        "summary": (
+                            f"{trader.display_name} produced a {item.direction} {item.asset} creator signal. "
+                            f"{item.summary}"
+                        ),
+                        "sentiment": sentiment,
+                        "relevance": round(min(0.98, max(0.35, item.confidence * 0.72 + item.engagement_score * 0.28)), 6),
+                        "url": item.url,
+                        "observed_at": item.observed_at,
+                        "ingest_batch_id": ingest_batch_id,
+                    }
+                )
+        return payloads
+
+    @staticmethod
+    def _direction_to_sentiment(direction: str, confidence: float) -> float:
+        if direction == "bullish":
+            return round(min(1.0, max(0.05, confidence)), 6)
+        if direction == "bearish":
+            return round(max(-1.0, min(-0.05, -confidence)), 6)
+        return 0.0
+
+    @staticmethod
+    def _freshness_score(observed_at: str | None) -> float:
+        age_days = max(0, (datetime.now(timezone.utc) - parse_timestamp(observed_at)).days) if observed_at else 365
+        return round(max(0.08, min(1.0, 1 - (age_days / 180))), 6)
+
     def _to_social_trader_scorecard(
         self,
         row: dict,
@@ -6736,6 +6834,8 @@ class BotSocietyService:
         evidence = [self._to_social_evidence_item(event_row) for event_row in (event_rows or [])]
         risk_level = self._social_trader_risk_level(row)
         copy_trade_readiness = self._social_copy_trade_readiness(row, risk_level)
+        primary_assets = self._decode_string_list(row.get("primary_assets_json"))
+        style_tags = self._decode_string_list(row.get("style_tags_json"))
         return SocialTraderScorecard(
             id=int(row["id"]),
             slug=str(row["slug"]),
@@ -6746,8 +6846,8 @@ class BotSocietyService:
             avatar_seed=str(row["avatar_seed"]),
             avatar_url=row.get("avatar_url"),
             description=str(row["description"]),
-            primary_assets=self._decode_string_list(row.get("primary_assets_json")),
-            style_tags=self._decode_string_list(row.get("style_tags_json")),
+            primary_assets=primary_assets,
+            style_tags=style_tags,
             signal_count=int(row.get("signal_count") or 0),
             tracked_years=round(float(row.get("tracked_years") or 0), 2),
             win_rate=round(float(row.get("win_rate") or 0), 3),
@@ -6769,6 +6869,12 @@ class BotSocietyService:
             risk_notes=self._social_risk_notes(row, evidence, risk_level),
             allocation_guidance=self._social_allocation_guidance(row, risk_level, copy_trade_readiness),
             evidence=evidence,
+            strategy_profile=self._social_strategy_profile(row, evidence, style_tags),
+            current_market_view=self._social_current_market_view(row, evidence),
+            pnl_history_summary=self._social_pnl_history_summary(row, evidence),
+            roi_windows=self._social_roi_windows(row, evidence),
+            decision_feed=self._social_decision_feed(row, evidence),
+            asset_exposure=self._social_asset_exposure(evidence, primary_assets),
         )
 
     @staticmethod
@@ -6791,6 +6897,152 @@ class BotSocietyService:
             risk_flag=BotSocietyService._social_evidence_risk_flag(confidence, derived_return),
             observed_at=str(row["observed_at"]),
             derived_return=derived_return,
+        )
+
+    def _social_roi_windows(self, row: dict, evidence: list[SocialEvidenceItem]) -> list[SocialRoiWindow]:
+        risk_level = self._social_trader_risk_level(row)
+        readiness = self._social_copy_trade_readiness(row, risk_level)
+        allocation = self._social_allocation_guidance(row, risk_level, readiness)
+        base_capital = max(1000.0, float(allocation.get("suggested_allocation_usd") or 1000.0))
+        now = datetime.now(timezone.utc)
+        windows = [
+            ("1W", 7),
+            ("1M", 30),
+            ("1Y", 365),
+            ("10Y", 3650),
+            ("Overall", 0),
+        ]
+        results: list[SocialRoiWindow] = []
+        for label, days in windows:
+            selected = evidence
+            if days:
+                selected = [
+                    item for item in evidence
+                    if (now - parse_timestamp(item.observed_at)).days <= days
+                ]
+            if not selected and label != "Overall":
+                results.append(
+                    SocialRoiWindow(
+                        label=label,
+                        period_days=days,
+                        return_pct=0.0,
+                        pnl_usd=0.0,
+                        signal_count=0,
+                        win_rate=0.0,
+                    )
+                )
+                continue
+            compounded = 1.0
+            for item in selected:
+                compounded *= 1 + float(item.derived_return or 0)
+            return_pct = compounded - 1 if selected else float(row.get("roi_if_followed") or 0)
+            win_rate = len([item for item in selected if float(item.derived_return or 0) > 0]) / len(selected) if selected else float(row.get("win_rate") or 0)
+            results.append(
+                SocialRoiWindow(
+                    label=label,
+                    period_days=days,
+                    return_pct=round(return_pct, 4),
+                    pnl_usd=round(base_capital * return_pct, 2),
+                    signal_count=len(selected) if selected else int(row.get("signal_count") or 0),
+                    win_rate=round(win_rate, 3),
+                )
+            )
+        return results
+
+    @staticmethod
+    def _social_decision_feed(row: dict, evidence: list[SocialEvidenceItem]) -> list[SocialTraderDecision]:
+        display_name = str(row.get("display_name") or "This trader")
+        decisions: list[SocialTraderDecision] = []
+        for item in evidence[:5]:
+            if item.direction == "bullish":
+                action = "paper_buy_or_watch"
+                posture = "watch for a long setup"
+            elif item.direction == "bearish":
+                action = "reduce_or_short_watch"
+                posture = "avoid longs or watch for downside"
+            else:
+                action = "hold_research_only"
+                posture = "wait for confirmation"
+            decisions.append(
+                SocialTraderDecision(
+                    asset=item.asset,
+                    direction=item.direction,
+                    action=action,
+                    confidence=item.confidence,
+                    rationale=(
+                        f"{display_name} published a {item.direction} {item.asset} thesis; "
+                        f"BITprivat would {posture} with evidence weight {item.evidence_weight:.0%}."
+                    ),
+                    source_title=item.title,
+                    source_url=item.url,
+                    observed_at=item.observed_at,
+                )
+            )
+        return decisions
+
+    @staticmethod
+    def _social_asset_exposure(evidence: list[SocialEvidenceItem], primary_assets: list[str]) -> list[SocialTraderAssetExposure]:
+        grouped: dict[str, list[SocialEvidenceItem]] = defaultdict(list)
+        for item in evidence:
+            grouped[item.asset].append(item)
+        if not grouped:
+            for asset in primary_assets[:4]:
+                grouped[asset] = []
+        exposures: list[SocialTraderAssetExposure] = []
+        for asset, items in sorted(grouped.items(), key=lambda pair: len(pair[1]), reverse=True)[:6]:
+            bullish = len([item for item in items if item.direction == "bullish"])
+            bearish = len([item for item in items if item.direction == "bearish"])
+            if bullish > bearish:
+                bias = "bullish"
+            elif bearish > bullish:
+                bias = "bearish"
+            else:
+                bias = "neutral"
+            average_return = mean(float(item.derived_return or 0) for item in items) if items else 0.0
+            exposures.append(
+                SocialTraderAssetExposure(
+                    asset=asset,
+                    signal_count=len(items),
+                    bias=bias,
+                    average_return=round(average_return, 4),
+                )
+            )
+        return exposures
+
+    @staticmethod
+    def _social_strategy_profile(row: dict, evidence: list[SocialEvidenceItem], style_tags: list[str]) -> str:
+        tags = ", ".join(style_tags[:3]) if style_tags else "creator signals"
+        assets = sorted({item.asset for item in evidence})[:4]
+        asset_text = ", ".join(assets) if assets else "tracked assets"
+        win_rate = float(row.get("win_rate") or 0)
+        if win_rate >= 0.6:
+            posture = "follow-strength"
+        elif win_rate < 0.5:
+            posture = "confirmation-required"
+        else:
+            posture = "selective-follow"
+        return f"{posture} strategy using {tags}; focuses on {asset_text}, with public calls converted into paper-only signals."
+
+    @staticmethod
+    def _social_current_market_view(row: dict, evidence: list[SocialEvidenceItem]) -> str:
+        if not evidence:
+            return "No fresh creator view is indexed yet; run YouTube discovery to update the thesis."
+        latest = evidence[0]
+        return (
+            f"Latest view: {latest.direction} {latest.asset} from '{latest.title}'. "
+            f"Confidence {latest.confidence:.0%}; BITprivat action is {('watch long setups' if latest.direction == 'bullish' else 'protect downside' if latest.direction == 'bearish' else 'stay neutral')}."
+        )
+
+    @staticmethod
+    def _social_pnl_history_summary(row: dict, evidence: list[SocialEvidenceItem]) -> str:
+        if not evidence:
+            return "No simulated follow history is available yet."
+        roi = float(row.get("roi_if_followed") or 0)
+        avg = float(row.get("average_roi") or 0)
+        drawdown = float(row.get("max_drawdown") or 0)
+        return (
+            f"If BITprivat had paper-followed the indexed calls, proxy ROI is {roi:+.1%}, "
+            f"average call return {avg:+.1%}, max drawdown {drawdown:.1%}, across {int(row.get('signal_count') or len(evidence))} signal(s)."
         )
 
     @staticmethod
@@ -6969,6 +7221,40 @@ class BotSocietyService:
             warnings=warnings,
             started_at=str(row["started_at"]),
             completed_at=str(row["completed_at"]),
+        )
+
+    def _social_monitoring_status(self, discovery_runs: list[SocialDiscoveryRunView]) -> SocialMonitoringStatus:
+        latest = discovery_runs[0] if discovery_runs else None
+        live_ready = self.settings.social_discovery_provider == "youtube" and bool(self.settings.youtube_api_key)
+        if live_ready:
+            mode = "continuous-youtube-api"
+            next_action = "Worker cycle will search new YouTube videos by configured title/query terms, hydrate metadata, and create bot signals."
+        else:
+            mode = "demo-youtube-watchlist"
+            next_action = "Add BSM_YOUTUBE_API_KEY and set BSM_SOCIAL_DISCOVERY_PROVIDER=youtube to monitor live creators."
+        return SocialMonitoringStatus(
+            mode=mode,
+            cadence_seconds=int(self.settings.worker_interval_seconds),
+            provider=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
+            youtube_configured=bool(self.settings.youtube_api_key),
+            query_terms=list(self.settings.youtube_discovery_queries),
+            channel_ids=list(self.settings.youtube_channel_ids),
+            title_filter=", ".join(self.settings.youtube_discovery_queries)
+            or "configured channel uploads ordered by newest videos",
+            analysis_pipeline=[
+                "YouTube search.list ordered by date",
+                "videos.list snippet/statistics hydration",
+                "channels.list public avatar metadata",
+                "title and description asset/direction extraction",
+                "normalized social signals for bot scoring",
+                "paper-only allocation/deployment controls",
+            ],
+            auto_signal_creation=True,
+            next_action=(
+                f"{next_action} Last run: {latest.status} {latest.completed_at}."
+                if latest
+                else next_action
+            ),
         )
 
     def _social_diversification_plan(

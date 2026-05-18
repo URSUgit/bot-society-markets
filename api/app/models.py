@@ -993,6 +993,33 @@ class SocialTraderAllocationGuidance(BaseModel):
     rationale: str
 
 
+class SocialRoiWindow(BaseModel):
+    label: str
+    period_days: int = Field(ge=0)
+    return_pct: float
+    pnl_usd: float
+    signal_count: int = Field(ge=0)
+    win_rate: float = Field(ge=0, le=1)
+
+
+class SocialTraderDecision(BaseModel):
+    asset: str
+    direction: Direction
+    action: str
+    confidence: float = Field(ge=0, le=1)
+    rationale: str
+    source_title: str
+    source_url: str
+    observed_at: str
+
+
+class SocialTraderAssetExposure(BaseModel):
+    asset: str
+    signal_count: int = Field(ge=0)
+    bias: Direction
+    average_return: float
+
+
 class SocialTraderScorecard(BaseModel):
     id: int
     slug: str
@@ -1026,6 +1053,18 @@ class SocialTraderScorecard(BaseModel):
     risk_notes: list[str] = Field(default_factory=list)
     allocation_guidance: SocialTraderAllocationGuidance
     evidence: list[SocialEvidenceItem] = Field(default_factory=list)
+    is_deployed: bool = False
+    deployment_mode: SocialTradeMode | None = None
+    delegated_usd: float = Field(default=0, ge=0)
+    deployed_max_position_pct: float = Field(default=0, ge=0, le=1)
+    avatar_animation: str = "youtube-pulse"
+    analysis_basis: str = "YouTube title, description, channel metadata, engagement, and market-context heuristics"
+    strategy_profile: str = "Strategy profile will be inferred from the trader's indexed public evidence."
+    current_market_view: str = "Current market view will appear after the latest monitored video is analyzed."
+    pnl_history_summary: str = "PnL history is calculated from extracted public calls and simulated paper-follow outcomes."
+    roi_windows: list[SocialRoiWindow] = Field(default_factory=list)
+    decision_feed: list[SocialTraderDecision] = Field(default_factory=list)
+    asset_exposure: list[SocialTraderAssetExposure] = Field(default_factory=list)
 
 
 class SocialTraderAllocation(BaseModel):
@@ -1056,6 +1095,19 @@ class SocialDiscoveryRunView(BaseModel):
     completed_at: str
 
 
+class SocialMonitoringStatus(BaseModel):
+    mode: str
+    cadence_seconds: int = Field(ge=0)
+    provider: str
+    youtube_configured: bool
+    query_terms: list[str] = Field(default_factory=list)
+    channel_ids: list[str] = Field(default_factory=list)
+    title_filter: str
+    analysis_pipeline: list[str] = Field(default_factory=list)
+    auto_signal_creation: bool = True
+    next_action: str
+
+
 class SocialTradingSnapshot(BaseModel):
     generated_at: str
     provider_mode: str
@@ -1072,6 +1124,8 @@ class SocialTradingSnapshot(BaseModel):
     diversification_plan: list[str] = Field(default_factory=list)
     portfolio_risk_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    monitoring: SocialMonitoringStatus | None = None
+    decision_feed: list[SocialTraderDecision] = Field(default_factory=list)
 
 
 class SocialTradingEnvelope(BaseModel):

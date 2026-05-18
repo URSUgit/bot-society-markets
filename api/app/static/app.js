@@ -1353,6 +1353,55 @@ function socialAvatarStyle(seed) {
   return `--avatar-hue:${score % 360}deg`;
 }
 
+function socialAvatarMarkup(trader) {
+  const animation = escapeHtml(trader.avatar_animation || "youtube-pulse");
+  const name = escapeHtml(trader.display_name || "Social trader");
+  if (trader.avatar_url) {
+    return `
+      <div class="social-avatar-bust has-photo ${animation}" style="${socialAvatarStyle(trader.avatar_seed)}">
+        <img src="${escapeHtml(trader.avatar_url)}" alt="${name} YouTube profile picture" loading="lazy">
+      </div>
+    `;
+  }
+  return `
+    <div class="social-avatar-bust ${animation}" style="${socialAvatarStyle(trader.avatar_seed)}">
+      <span>${escapeHtml(socialInitials(trader.display_name))}</span>
+    </div>
+  `;
+}
+
+function socialRoiWindowsMarkup(trader) {
+  return (trader.roi_windows || []).map((window) => `
+    <div>
+      <span>${escapeHtml(window.label)}</span>
+      <strong class="${Number(window.return_pct || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(window.return_pct || 0)}</strong>
+      <small>${fmtUsd(window.pnl_usd || 0)} · ${window.signal_count || 0} signal(s)</small>
+    </div>
+  `).join("");
+}
+
+function socialDecisionFeedMarkup(trader) {
+  return (trader.decision_feed || []).slice(0, 3).map((decision) => `
+    <li>
+      <div>
+        <strong>${escapeHtml(decision.asset)} · ${escapeHtml(humanizeKey(decision.action || "watch"))}</strong>
+        <p>${escapeHtml(decision.rationale)}</p>
+        <small>${escapeHtml(decision.source_title || "YouTube evidence")} · ${fmtRelativeTime(decision.observed_at)}</small>
+      </div>
+      <span data-tone="${decision.direction === "bearish" ? "danger" : decision.direction === "bullish" ? "positive" : "warning"}">${escapeHtml(decision.direction)} · ${fmtPercent(decision.confidence || 0)}</span>
+    </li>
+  `).join("") || "<li><p>No live decision feed yet. Run YouTube discovery to create fresh decisions.</p></li>";
+}
+
+function socialAssetExposureMarkup(trader) {
+  return (trader.asset_exposure || []).slice(0, 5).map((asset) => `
+    <span>
+      <strong>${escapeHtml(asset.asset)}</strong>
+      ${escapeHtml(asset.bias)} · ${asset.signal_count} call(s) · ${fmtSignedPercent(asset.average_return || 0)}
+    </span>
+  `).join("");
+}
+
 function socialRiskTone(level) {
   if (level === "low") {
     return "positive";
@@ -1406,6 +1455,8 @@ function renderSocialTrading(socialTrading) {
     ? traders.reduce((total, trader) => total + Number(trader.roi_if_followed || 0), 0) / traders.length
     : 0;
   const latestRun = socialTrading.latest_discovery_run || socialTrading.discovery_runs?.[0];
+  const monitoring = socialTrading.monitoring || {};
+  const decisionCount = (socialTrading.decision_feed || []).length;
 
   summary.textContent = socialTrading.summary;
   badge.textContent = socialTrading.youtube_configured ? "YouTube API live" : "Demo YouTube watchlist";
@@ -1437,6 +1488,11 @@ function renderSocialTrading(socialTrading) {
       <strong>${latestRun ? fmtRelativeTime(latestRun.completed_at) : "Waiting"}</strong>
       <small>${latestRun ? `${latestRun.updated} profiles · ${latestRun.evidence_count} evidence items` : "Run YouTube discovery to create the first ledger entry"}</small>
     </article>
+    <article>
+      <span>Monitor cadence</span>
+      <strong>${monitoring.cadence_seconds ? `${Math.round(monitoring.cadence_seconds / 60)}m` : "Manual"}</strong>
+      <small>${escapeHtml(monitoring.mode || "YouTube watchlist")} · ${decisionCount} bot decision(s)</small>
+    </article>
   `;
 
   grid.innerHTML = traders.map((trader) => {
@@ -1456,25 +1512,49 @@ function renderSocialTrading(socialTrading) {
     return `
       <article class="social-trader-card">
         <div class="social-trader-head">
-          <div class="social-avatar-bust" style="${socialAvatarStyle(trader.avatar_seed)}">
-            <span>${escapeHtml(socialInitials(trader.display_name))}</span>
-          </div>
+          ${socialAvatarMarkup(trader)}
           <div>
             <p class="eyebrow">${escapeHtml(humanizeKey(trader.platform))} · ${escapeHtml(trader.handle)}</p>
             <h4>${escapeHtml(trader.display_name)}</h4>
             <p>${escapeHtml(trader.description)}</p>
+          </div>
+          <div class="social-deploy-state">
+            <span class="status-pill" data-variant="${trader.is_deployed ? "positive" : "neutral"}">${trader.is_deployed ? "Deployed" : "Not deployed"}</span>
+            <strong>${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}</strong>
+            <small>${escapeHtml(humanizeKey(trader.deployment_mode || allocation?.mode || guidance.recommended_mode || "signals"))}</small>
           </div>
         </div>
         <div class="social-intel-strip">
           <span data-tone="${socialRiskTone(trader.risk_level)}">Risk: ${escapeHtml(humanizeKey(trader.risk_level || "medium"))}</span>
           <span>${escapeHtml(trader.conviction_label || "Signal watchlist")}</span>
           <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
+          <span>${escapeHtml(trader.analysis_basis || "YouTube metadata analysis")}</span>
         </div>
         <div class="social-score-strip">
           <div><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong></div>
           <div><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong></div>
           <div><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
           <div><span>Drawdown</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
+        </div>
+        <div class="social-roi-strip">
+          ${socialRoiWindowsMarkup(trader)}
+        </div>
+        <div class="social-thesis-grid">
+          <article>
+            <span>Strategy</span>
+            <p>${escapeHtml(trader.strategy_profile || "Strategy profile pending.")}</p>
+          </article>
+          <article>
+            <span>Current market view</span>
+            <p>${escapeHtml(trader.current_market_view || "Run discovery to update current view.")}</p>
+          </article>
+          <article>
+            <span>PnL history</span>
+            <p>${escapeHtml(trader.pnl_history_summary || "PnL history pending.")}</p>
+          </article>
+        </div>
+        <div class="social-asset-exposure">
+          ${socialAssetExposureMarkup(trader)}
         </div>
         <div class="social-decision-box">
           <p>${escapeHtml(trader.watch_mode_recommendation || "Start in signal mode, then validate with paper tracking.")}</p>
@@ -1484,6 +1564,13 @@ function renderSocialTrading(socialTrading) {
             <span>Mode <strong>${escapeHtml(humanizeKey(guidance.recommended_mode || "signals"))}</strong></span>
           </div>
           <small>${escapeHtml(guidance.rationale || trader.evidence_summary || "")}</small>
+        </div>
+        <div class="social-bot-decisions">
+          <div class="workspace-head">
+            <h5>What the bot would do now</h5>
+            <span class="badge">Decision ledger</span>
+          </div>
+          <ul>${socialDecisionFeedMarkup(trader)}</ul>
         </div>
         <div class="social-tag-row">
           ${(trader.primary_assets || []).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
@@ -1510,7 +1597,7 @@ function renderSocialTrading(socialTrading) {
               ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
             </button>
             <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-              ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Managed paper"}
+              ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Deploy with delegation"}
             </button>
           </div>
         </div>
@@ -1545,9 +1632,10 @@ function renderSocialTrading(socialTrading) {
   }
 
   safetyList.innerHTML = [
+    monitoring.next_action,
     ...(socialTrading.portfolio_risk_notes || []),
     ...(socialTrading.safety_notes || []),
-  ].map((note) => `<li>${escapeHtml(note)}</li>`).join("");
+  ].filter(Boolean).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {

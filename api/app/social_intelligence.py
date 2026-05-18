@@ -18,6 +18,12 @@ ASSET_KEYWORDS: dict[str, tuple[str, ...]] = {
     "ETH": ("eth", "ethereum"),
     "SOL": ("sol", "solana"),
     "HYPE": ("hyperliquid", "hype"),
+    "XRP": ("xrp", "ripple"),
+    "DOGE": ("doge", "dogecoin"),
+    "NVDA": ("nvda", "nvidia"),
+    "TSLA": ("tsla", "tesla"),
+    "GOLD": ("gold", "xau"),
+    "DXY": ("dxy", "dollar index", "us dollar"),
     "POLYMARKET": ("polymarket", "prediction market", "prediction-market"),
     "KALSHI": ("kalshi", "event contract", "event market"),
     "SPX": ("s&p", "spx", "spy", "stocks"),
@@ -33,6 +39,9 @@ BULLISH_TERMS = (
     "rally",
     "higher",
     "risk-on",
+    "liquidity",
+    "rotation",
+    "support",
 )
 BEARISH_TERMS = (
     "bearish",
@@ -43,6 +52,9 @@ BEARISH_TERMS = (
     "crash",
     "lower",
     "risk-off",
+    "liquidation",
+    "resistance",
+    "hedge",
 )
 
 
@@ -149,6 +161,7 @@ def score_from_events(
     handle: str,
     platform: SocialPlatform,
     source_url: str,
+    avatar_url: str | None = None,
     description: str,
     style_tags: list[str],
     events: list[SocialEvidenceRecord],
@@ -195,7 +208,7 @@ def score_from_events(
         platform=platform,
         source_url=source_url,
         avatar_seed=hashlib.sha1(slug.encode("utf-8")).hexdigest()[:12],
-        avatar_url=None,
+        avatar_url=avatar_url,
         description=description,
         primary_assets=assets[:5],
         style_tags=style_tags[:6],
@@ -341,7 +354,8 @@ class YouTubeSocialDiscoveryProvider:
         try:
             search_items = self._search_videos()
             video_items = self._hydrate_videos(search_items)
-            traders = self._aggregate_channels(video_items)
+            channel_meta = self._hydrate_channels(video_items)
+            traders = self._aggregate_channels(video_items, channel_meta)
         except Exception as exc:
             fallback = DemoSocialDiscoveryProvider().discover()
             fallback.provider = self.source_name
@@ -421,7 +435,37 @@ class YouTubeSocialDiscoveryProvider:
             hydrated.extend(payload.get("items", []))
         return hydrated
 
-    def _aggregate_channels(self, videos: list[dict[str, Any]]) -> list[DiscoveredSocialTrader]:
+    def _hydrate_channels(self, videos: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        channel_ids = sorted(
+            {
+                str(video.get("snippet", {}).get("channelId") or "")
+                for video in videos
+                if video.get("snippet", {}).get("channelId")
+            }
+        )
+        if not channel_ids:
+            return {}
+        metadata: dict[str, dict[str, Any]] = {}
+        for start in range(0, len(channel_ids), 50):
+            batch = channel_ids[start : start + 50]
+            payload = self._get_json(
+                "https://www.googleapis.com/youtube/v3/channels",
+                {
+                    "part": "snippet,statistics",
+                    "id": ",".join(batch),
+                },
+            )
+            for item in payload.get("items", []):
+                channel_id = str(item.get("id") or "")
+                if channel_id:
+                    metadata[channel_id] = item
+        return metadata
+
+    def _aggregate_channels(
+        self,
+        videos: list[dict[str, Any]],
+        channel_meta: dict[str, dict[str, Any]] | None = None,
+    ) -> list[DiscoveredSocialTrader]:
         by_channel: dict[str, list[dict[str, Any]]] = {}
         for video in videos:
             snippet = video.get("snippet", {})
@@ -432,7 +476,11 @@ class YouTubeSocialDiscoveryProvider:
         traders: list[DiscoveredSocialTrader] = []
         for channel_id, channel_videos in by_channel.items():
             snippet = channel_videos[0].get("snippet", {})
-            channel_title = str(snippet.get("channelTitle") or "YouTube Trader")
+            meta_snippet = (channel_meta or {}).get(channel_id, {}).get("snippet", {})
+            channel_title = str(meta_snippet.get("title") or snippet.get("channelTitle") or "YouTube Trader")
+            channel_description = str(meta_snippet.get("description") or "")
+            thumbnails = meta_snippet.get("thumbnails", {}) if isinstance(meta_snippet, dict) else {}
+            avatar_url = self._best_thumbnail_url(thumbnails)
             handle = f"@{slugify(channel_title).replace('-', '')[:24]}"
             events = [self._event_from_video(video) for video in channel_videos]
             meaningful_events = [event for event in events if event.confidence >= 0.45]
@@ -441,8 +489,10 @@ class YouTubeSocialDiscoveryProvider:
             source_url = f"https://www.youtube.com/channel/{channel_id}"
             assets = sorted({event.asset for event in meaningful_events})
             description = (
-                f"YouTube-first social trader detected from {len(meaningful_events)} recent market videos. "
-                f"Main coverage: {', '.join(assets[:4])}."
+                (channel_description[:180] + " " if channel_description else "")
+                + f"YouTube-first social trader detected from {len(meaningful_events)} recent market videos. "
+                + f"Main coverage: {', '.join(assets[:4])}. "
+                + "Analysis uses video title, description, engagement, and recency."
             )
             traders.append(
                 score_from_events(
@@ -450,12 +500,22 @@ class YouTubeSocialDiscoveryProvider:
                     handle=handle,
                     platform="youtube",
                     source_url=source_url,
+                    avatar_url=avatar_url,
                     description=description,
                     style_tags=["youtube", "creator signals", "live monitoring"],
                     events=meaningful_events,
                 )
             )
         return sorted(traders, key=lambda trader: trader.composite_score, reverse=True)
+
+    @staticmethod
+    def _best_thumbnail_url(thumbnails: dict[str, Any]) -> str | None:
+        for key in ("high", "medium", "default"):
+            candidate = thumbnails.get(key, {}) if isinstance(thumbnails, dict) else {}
+            url = candidate.get("url") if isinstance(candidate, dict) else None
+            if url:
+                return str(url)
+        return None
 
     def _event_from_video(self, video: dict[str, Any]) -> SocialEvidenceRecord:
         video_id = str(video.get("id") or "")
@@ -469,7 +529,9 @@ class YouTubeSocialDiscoveryProvider:
         engagement_score = clamp_value((math.log10(view_count + 10) / 7) * 0.75 + (math.log10(like_count + 3) / 6) * 0.25, 0.1, 0.98)
         direction = infer_direction(text)
         asset = extract_asset(text)
-        summary = description.strip().replace("\n", " ")[:220] or f"YouTube market video covering {asset}."
+        title_terms = self._matched_title_terms(title)
+        title_note = f" Title match: {', '.join(title_terms[:4])}." if title_terms else ""
+        summary = (description.strip().replace("\n", " ")[:190] + title_note).strip() or f"YouTube market video covering {asset}.{title_note}"
         observed_at = str(snippet.get("publishedAt") or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         return SocialEvidenceRecord(
             external_id=f"youtube-{video_id}",
@@ -484,6 +546,15 @@ class YouTubeSocialDiscoveryProvider:
             observed_at=observed_at,
             derived_return=deterministic_return(f"{video_id}:{asset}:{direction}", direction),
         )
+
+    def _matched_title_terms(self, title: str) -> list[str]:
+        lowered = title.lower()
+        terms: list[str] = []
+        for query in self.queries:
+            for token in re.findall(r"[a-zA-Z0-9]{3,}", query.lower()):
+                if token in lowered and token not in terms:
+                    terms.append(token)
+        return terms
 
 
 def safe_float(value: object) -> float:

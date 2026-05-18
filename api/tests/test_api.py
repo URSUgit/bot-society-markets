@@ -332,7 +332,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-discovery-run-list"' in dashboard_response.text
-        assert "Run YouTube Discovery" in dashboard_response.text
+        assert "Scan New Videos" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
@@ -424,6 +424,17 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert initial_snapshot["top_traders"][0]["evidence"]
         assert initial_snapshot["top_traders"][0]["watch_mode_recommendation"]
         assert initial_snapshot["top_traders"][0]["allocation_guidance"]["suggested_allocation_usd"] >= 0
+        assert initial_snapshot["monitoring"]["auto_signal_creation"] is True
+        assert initial_snapshot["monitoring"]["query_terms"]
+        assert initial_snapshot["decision_feed"]
+        first_trader = initial_snapshot["top_traders"][0]
+        assert first_trader["roi_windows"]
+        assert {window["label"] for window in first_trader["roi_windows"]} >= {"1W", "1M", "1Y", "10Y", "Overall"}
+        assert first_trader["decision_feed"]
+        assert first_trader["asset_exposure"]
+        assert first_trader["strategy_profile"]
+        assert first_trader["current_market_view"]
+        assert first_trader["pnl_history_summary"]
         assert initial_snapshot["latest_discovery_run"]["updated"] >= 4
         assert initial_snapshot["latest_discovery_run"]["evidence_count"] >= 20
         assert initial_snapshot["discovery_runs"]
@@ -435,6 +446,13 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert discovery_payload["traders"][0]["platform"] == "youtube"
         assert discovery_payload["traders"][0]["conviction_label"]
         assert discovery_payload["traders"][0]["evidence"][0]["impact_label"]
+        assert any("normalized social signal" in warning for warning in discovery_payload["warnings"])
+
+        signals_response = client.get("/api/signals", params={"limit": 20})
+        assert signals_response.status_code == 200
+        social_signals = [signal for signal in signals_response.json() if signal["provider_name"] == discovery_payload["provider"]]
+        assert social_signals
+        assert social_signals[0]["source_type"] == "social"
 
         refreshed_response = client.get("/api/social-trading")
         refreshed_snapshot = refreshed_response.json()["social_trading"]
@@ -470,6 +488,10 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
             allocation["trader_id"] == trader_id and allocation["mode"] == "managed_paper"
             for allocation in follow_snapshot["allocations"]
         )
+        deployed_trader = next(trader for trader in follow_snapshot["top_traders"] if trader["id"] == trader_id)
+        assert deployed_trader["is_deployed"] is True
+        assert deployed_trader["delegated_usd"] == 750
+        assert deployed_trader["deployment_mode"] == "managed_paper"
         assert follow_snapshot["allocated_usd"] >= 750
 
         diversify_response = client.post(
