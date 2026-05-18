@@ -46,7 +46,7 @@ on:
       with_worker:
         description: Deploy the web + worker SDL instead of single web service.
         required: false
-        default: false
+        default: true
         type: boolean
       confirm_spend:
         description: Required for create/update because CLI signs blockchain transactions and spends AKT.
@@ -87,6 +87,7 @@ jobs:
         env:
           BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
           AKASH_CLI_AUTO_CONFIRM_SPEND: ${{ vars.AKASH_CLI_AUTO_CONFIRM_SPEND }}
+          AKASH_CLI_WITH_WORKER: ${{ vars.AKASH_CLI_WITH_WORKER || 'true' }}
         run: |
           set -euo pipefail
           image_ref="${{ github.event.inputs.image_ref }}"
@@ -114,7 +115,10 @@ jobs:
 
           with_worker="${{ github.event.inputs.with_worker }}"
           if [ -z "$with_worker" ]; then
-            with_worker="false"
+            with_worker="$AKASH_CLI_WITH_WORKER"
+          fi
+          if [ -z "$with_worker" ]; then
+            with_worker="true"
           fi
 
           confirm_spend="${{ github.event.inputs.confirm_spend }}"
