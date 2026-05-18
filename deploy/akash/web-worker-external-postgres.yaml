@@ -108,10 +108,10 @@ profiles:
       pricing:
         web:
           denom: uact
-          amount: 250
+          amount: 900
         worker:
           denom: uact
-          amount: 180
+          amount: 600
 
 deployment:
   web:
