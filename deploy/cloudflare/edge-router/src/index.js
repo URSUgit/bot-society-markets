@@ -125,9 +125,10 @@ function statusPage(originBaseUrl) {
 export default {
   async fetch(request, env) {
     const incomingUrl = new URL(request.url);
+    const configuredOrigin = normalizeOrigin(env.ORIGIN_BASE_URL || "https://app.bitprivat.com");
     const originBaseUrl = env.ORIGIN_RESOLVE_OVERRIDE
-      ? `https://${env.ORIGIN_RESOLVE_OVERRIDE}`
-      : (env.ORIGIN_BASE_URL || "https://app.bitprivat.com");
+      ? `${configuredOrigin.protocol}//${env.ORIGIN_RESOLVE_OVERRIDE}`
+      : configuredOrigin.href;
     const origin = normalizeOrigin(originBaseUrl);
     if (incomingUrl.hostname === "api.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/health")) {
       return jsonResponse({
@@ -222,12 +223,9 @@ export default {
 
     const headers = new Headers(request.headers);
     // Akash ingress validates the Host header against the SDL accept list.
-    // Without this, Cloudflare fetches the origin using the random ingress host
-    // and the provider returns 502 before the app receives the request.
-    // Prefer the unique Akash ingress host when resolveOverride is active.
-    // Multiple active deployments may accept app.bitprivat.com, so using that
-    // Host header can route Cloudflare to an older lease.
-    headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE || origin.hostname);
+    // Connect to the pinned random ingress, but keep the accepted app host so
+    // nginx routes the request to this deployment instead of returning 502.
+    headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE ? configuredOrigin.hostname : origin.hostname);
     headers.set("x-forwarded-host", incomingUrl.host);
     headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
 
