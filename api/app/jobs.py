@@ -125,6 +125,19 @@ def main() -> None:
             )
         return
 
+    if args.command == "worker":
+        service = build_service(bootstrap=False)
+        service.database.initialize()
+        settings = service.settings
+        interval_seconds = max(30, args.interval_seconds or settings.worker_interval_seconds)
+        max_cycles = max(0, args.cycles if args.cycles is not None else settings.worker_max_cycles)
+        worker = PipelineWorker(service, interval_seconds=interval_seconds)
+        summary = worker.run(max_cycles=max_cycles)
+        print(
+            f"Worker completed {summary.completed_cycles} cycle(s) at {summary.interval_seconds}-second intervals."
+        )
+        return
+
     service = build_service()
     settings = service.settings
 
@@ -226,15 +239,6 @@ def main() -> None:
             for url in report.verification_urls:
                 print(f"  {url}")
         return
-
-    if args.command == "worker":
-        interval_seconds = max(30, args.interval_seconds or settings.worker_interval_seconds)
-        max_cycles = max(0, args.cycles if args.cycles is not None else settings.worker_max_cycles)
-        worker = PipelineWorker(service, interval_seconds=interval_seconds)
-        summary = worker.run(max_cycles=max_cycles)
-        print(
-            f"Worker completed {summary.completed_cycles} cycle(s) at {summary.interval_seconds}-second intervals."
-        )
 
 
 if __name__ == "__main__":
