@@ -11,6 +11,7 @@ import shutil
 from tempfile import TemporaryDirectory
 import tempfile
 import time
+from urllib.error import HTTPError
 from unittest.mock import patch
 import zipfile
 
@@ -20,6 +21,7 @@ from api.app.config import Settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.main import create_app
+from api.app.social_intelligence import YouTubeSocialDiscoveryProvider
 
 
 @contextmanager
@@ -462,6 +464,7 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         analyze_payload = analyze_response.json()
         assert analyze_payload["updated"] >= 1
         assert analyze_payload["traders"]
+        assert analyze_payload["traders"][0]["display_name"] == "CycleCraft Crypto"
         assert any(trader["platform"] == "youtube" for trader in analyze_payload["traders"])
         assert any("normalized social signal" in warning for warning in analyze_payload["warnings"])
 
@@ -518,6 +521,46 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert audit_response.status_code == 200
         actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
         assert {"social_trader.follow", "social_trader.diversify"}.issubset(actions)
+
+
+def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> None:
+    provider = YouTubeSocialDiscoveryProvider(
+        api_key="bad-key",
+        queries=("crypto market analysis",),
+        channel_ids=(),
+        video_limit=3,
+    )
+
+    def fail_official_api(target: str, *, limit: int):
+        raise HTTPError(
+            "https://youtube.googleapis.test",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=BytesIO(
+                b'{"error":{"message":"quota exceeded","errors":[{"reason":"quotaExceeded"}],"status":"PERMISSION_DENIED"}}'
+            ),
+        )
+
+    def fake_public_json(url: str, params: dict[str, object]):
+        return {
+            "title": "Bitcoin liquidity breakout thesis",
+            "author_name": "Fallback Creator",
+            "author_url": "https://www.youtube.com/@fallbackcreator",
+            "thumbnail_url": "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+        }
+
+    provider._videos_from_target = fail_official_api  # type: ignore[method-assign]
+    provider._get_public_json = fake_public_json  # type: ignore[method-assign]
+
+    result = provider.discover_target("https://www.youtube.com/watch?v=abc", video_limit=3)
+
+    assert result.youtube_configured is True
+    assert result.traders[0].display_name == "Fallback Creator"
+    assert result.traders[0].primary_assets == ["BTC"]
+    assert result.traders[0].evidence[0].external_id == "youtube-oembed-abc"
+    assert "quotaExceeded" in result.warnings[0]
+    assert "public YouTube metadata fallback" in result.warnings[0]
 
 
 def test_v1_routes_and_audit_log_capture_mutations() -> None:

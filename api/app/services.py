@@ -444,6 +444,7 @@ class BotSocietyService:
                 started_at=started_at,
                 before_slugs=before_slugs,
                 ingest_batch_prefix="social-target",
+                focus_slugs=[trader.slug for trader in result.traders],
             )
         except Exception as exc:
             completed_at = self._now()
@@ -474,6 +475,7 @@ class BotSocietyService:
         started_at: str,
         before_slugs: set[str],
         ingest_batch_prefix: str,
+        focus_slugs: list[str] | None = None,
     ) -> SocialDiscoveryRunResult:
         now = self._now()
         trader_payloads = [self._social_trader_payload(trader, now=now) for trader in result.traders]
@@ -513,7 +515,11 @@ class BotSocietyService:
         )
         self._clear_live_caches()
 
-        visible_rows = active_repository.list_social_traders(limit=12)
+        visible_rows = self._social_discovery_visible_rows(
+            active_repository,
+            focus_slugs=focus_slugs,
+            limit=12,
+        )
         visible_scorecards = [
             self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=6))
             for row in visible_rows
@@ -529,6 +535,23 @@ class BotSocietyService:
                 f"Created {social_signals_created} normalized social signal(s) for bot scoring.",
             ],
         )
+
+    def _social_discovery_visible_rows(
+        self,
+        active_repository: BotSocietyRepository,
+        *,
+        focus_slugs: list[str] | None,
+        limit: int,
+    ) -> list[dict[str, object]]:
+        if not focus_slugs:
+            return active_repository.list_social_traders(limit=limit)
+
+        all_rows = active_repository.list_social_traders(limit=500)
+        rows_by_slug = {str(row["slug"]): row for row in all_rows}
+        focused_rows = [rows_by_slug[slug] for slug in focus_slugs if slug in rows_by_slug]
+        focused_ids = {int(row["id"]) for row in focused_rows}
+        remaining_rows = [row for row in active_repository.list_social_traders(limit=limit) if int(row["id"]) not in focused_ids]
+        return [*focused_rows, *remaining_rows][:limit]
 
     def get_social_trading_snapshot(
         self,

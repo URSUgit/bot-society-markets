@@ -7,6 +7,8 @@ import json
 import math
 import re
 from typing import Any
+import xml.etree.ElementTree as ET
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -242,7 +244,7 @@ def parse_iso_timestamp(value: str | None) -> datetime:
 class DemoSocialDiscoveryProvider:
     source_name = "demo-social-discovery"
 
-    def discover(self) -> SocialDiscoveryResult:
+    def discover(self, *, include_key_warning: bool = True) -> SocialDiscoveryResult:
         now = datetime.now(timezone.utc)
         profiles = [
             (
@@ -317,20 +319,21 @@ class DemoSocialDiscoveryProvider:
                     events=events,
                 )
             )
-        return SocialDiscoveryResult(
-            provider=self.source_name,
-            youtube_configured=False,
-            traders=traders,
-            warnings=[
-                "YouTube Data API key is not configured, so BITprivat is running deterministic demo discovery.",
-                "Managed trading remains paper-only until KYC, suitability, adviser, and venue controls are approved.",
-            ],
-        )
+        warnings = ["Managed trading remains paper-only until KYC, suitability, adviser, and venue controls are approved."]
+        if include_key_warning:
+            warnings.insert(0, "YouTube Data API key is not configured, so BITprivat is running deterministic demo discovery.")
+        return SocialDiscoveryResult(provider=self.source_name, youtube_configured=False, traders=traders, warnings=warnings)
 
-    def discover_target(self, target: str, video_limit: int | None = None) -> SocialDiscoveryResult:
+    def discover_target(
+        self,
+        target: str,
+        video_limit: int | None = None,
+        *,
+        include_key_warning: bool = True,
+    ) -> SocialDiscoveryResult:
         target_text = re.sub(r"\s+", " ", target or "").strip()
         normalized = target_text.lower().lstrip("@")
-        result = self.discover()
+        result = self.discover(include_key_warning=include_key_warning)
         matches = [
             trader
             for trader in result.traders
@@ -388,11 +391,11 @@ class YouTubeSocialDiscoveryProvider:
             channel_meta = self._hydrate_channels(video_items)
             traders = self._aggregate_channels(video_items, channel_meta)
         except Exception as exc:
-            fallback = DemoSocialDiscoveryProvider().discover()
+            fallback = DemoSocialDiscoveryProvider().discover(include_key_warning=False)
             fallback.provider = self.source_name
             fallback.youtube_configured = True
             fallback.warnings = [
-                f"YouTube Data API discovery failed ({exc.__class__.__name__}: {exc}); using deterministic fallback.",
+                f"YouTube Data API discovery failed ({self._format_youtube_exception(exc)}); using deterministic fallback.",
                 *fallback.warnings,
             ]
             return fallback
@@ -428,20 +431,24 @@ class YouTubeSocialDiscoveryProvider:
             channel_meta = self._hydrate_channels(videos)
             traders = self._aggregate_channels(videos, channel_meta)
         except Exception as exc:
-            fallback = DemoSocialDiscoveryProvider().discover_target(cleaned_target, video_limit=limit)
-            fallback.provider = self.source_name
-            fallback.youtube_configured = True
-            fallback.warnings = [
-                f"YouTube target analysis failed ({exc.__class__.__name__}: {exc}); using deterministic fallback.",
-                *fallback.warnings,
-            ]
-            return fallback
+            return self._target_fallback_result(
+                cleaned_target,
+                limit=limit,
+                reason=self._format_youtube_exception(exc),
+            )
 
         if traders:
             warnings.append(
                 f"Analyzed '{cleaned_target}' from up to {limit} latest public YouTube video(s); profile is ready for signal or managed-paper deployment."
             )
         else:
+            fallback = self._target_fallback_result(
+                cleaned_target,
+                limit=limit,
+                reason="official API returned no usable videos",
+            )
+            if fallback.traders:
+                return fallback
             warnings.append(
                 f"No usable public market-analysis videos were found for '{cleaned_target}'. Try a channel URL, @handle, or a more specific trader name."
             )
@@ -451,6 +458,170 @@ class YouTubeSocialDiscoveryProvider:
             traders=traders,
             warnings=warnings,
         )
+
+    def _target_fallback_result(self, target: str, *, limit: int, reason: str) -> SocialDiscoveryResult:
+        public_traders = self._public_target_traders(target, limit=limit)
+        if public_traders:
+            return SocialDiscoveryResult(
+                provider=self.source_name,
+                youtube_configured=bool(self.api_key),
+                traders=public_traders,
+                warnings=[
+                    f"YouTube Data API target analysis failed ({reason}); used public YouTube metadata fallback for the supplied target.",
+                    "Fallback metadata has lower confidence because it cannot read full statistics or channel history.",
+                ],
+            )
+        fallback = DemoSocialDiscoveryProvider().discover_target(
+            target,
+            video_limit=limit,
+            include_key_warning=not bool(self.api_key),
+        )
+        fallback.provider = self.source_name
+        fallback.youtube_configured = bool(self.api_key)
+        fallback.warnings = [
+            f"YouTube target analysis failed ({reason}); using deterministic fallback.",
+            *fallback.warnings,
+        ]
+        return fallback
+
+    def _public_target_traders(self, target: str, *, limit: int) -> list[DiscoveredSocialTrader]:
+        video_trader = self._oembed_trader_from_target(target)
+        if video_trader:
+            return [video_trader]
+
+        traders: list[DiscoveredSocialTrader] = []
+        for channel_id in self._channel_ids_from_target(target):
+            rss_trader = self._rss_trader_from_channel(channel_id, limit=limit)
+            if rss_trader:
+                traders.append(rss_trader)
+        return sorted(traders, key=lambda trader: trader.composite_score, reverse=True)
+
+    def _oembed_trader_from_target(self, target: str) -> DiscoveredSocialTrader | None:
+        video_ids = self._video_ids_from_target(target)
+        if not video_ids:
+            return None
+        watch_url = f"https://www.youtube.com/watch?v={video_ids[0]}"
+        payload = self._get_public_json(
+            "https://www.youtube.com/oembed",
+            {"url": watch_url, "format": "json"},
+        )
+        title = str(payload.get("title") or "YouTube market video")
+        author_name = str(payload.get("author_name") or "YouTube Trader")
+        author_url = str(payload.get("author_url") or "https://www.youtube.com")
+        thumbnail_url = str(payload.get("thumbnail_url") or "") or None
+        text = f"{title} {author_name}"
+        asset = extract_asset(text)
+        direction = infer_direction(text)
+        observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        engagement_score = 0.42
+        event = SocialEvidenceRecord(
+            external_id=f"youtube-oembed-{video_ids[0]}",
+            platform="youtube",
+            title=title[:255],
+            summary=(
+                "Public YouTube metadata fallback extracted the video title and creator after the official API path failed. "
+                f"Use this as a low-confidence signal for {asset}."
+            ),
+            url=watch_url,
+            asset=asset,
+            direction=direction,
+            confidence=confidence_from_text(text, engagement_score),
+            engagement_score=engagement_score,
+            observed_at=observed_at,
+            derived_return=deterministic_return(f"oembed:{video_ids[0]}:{asset}:{direction}", direction),
+        )
+        return score_from_events(
+            display_name=author_name,
+            handle=f"@{slugify(author_name).replace('-', '')[:24]}",
+            platform="youtube",
+            source_url=author_url,
+            avatar_url=thumbnail_url,
+            description=(
+                f"{author_name} was analyzed from a supplied YouTube video URL. "
+                "The official YouTube Data API was unavailable, so BITprivat used public metadata fallback with conservative confidence."
+            ),
+            style_tags=["youtube", "public metadata fallback", "low confidence"],
+            events=[event],
+        )
+
+    def _rss_trader_from_channel(self, channel_id: str, *, limit: int) -> DiscoveredSocialTrader | None:
+        request = Request(
+            f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}",
+            headers={"User-Agent": "BITprivatSocialDiscovery/1.0"},
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            root = ET.fromstring(response.read())
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "yt": "http://www.youtube.com/xml/schemas/2015",
+            "media": "http://search.yahoo.com/mrss/",
+        }
+        display_name = root.findtext("atom:author/atom:name", default="YouTube Trader", namespaces=ns)
+        source_url = root.findtext("atom:author/atom:uri", default=f"https://www.youtube.com/channel/{channel_id}", namespaces=ns)
+        events: list[SocialEvidenceRecord] = []
+        for entry in root.findall("atom:entry", ns)[:limit]:
+            video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
+            title = entry.findtext("atom:title", default="YouTube market video", namespaces=ns)
+            summary = entry.findtext("media:group/media:description", default="", namespaces=ns) or ""
+            published = entry.findtext("atom:published", default="", namespaces=ns) or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            text = f"{title} {summary}"
+            asset = extract_asset(text)
+            direction = infer_direction(text)
+            engagement_score = 0.38
+            events.append(
+                SocialEvidenceRecord(
+                    external_id=f"youtube-rss-{video_id or hashlib.sha1(title.encode('utf-8')).hexdigest()[:12]}",
+                    platform="youtube",
+                    title=title[:255],
+                    summary=(summary[:190] or f"Public RSS fallback video covering {asset}."),
+                    url=f"https://www.youtube.com/watch?v={video_id}" if video_id else source_url,
+                    asset=asset,
+                    direction=direction,
+                    confidence=confidence_from_text(text, engagement_score),
+                    engagement_score=engagement_score,
+                    observed_at=published,
+                    derived_return=deterministic_return(f"rss:{video_id}:{asset}:{direction}", direction),
+                )
+            )
+        meaningful_events = [event for event in events if event.confidence >= 0.4]
+        if not meaningful_events:
+            return None
+        return score_from_events(
+            display_name=display_name,
+            handle=f"@{slugify(display_name).replace('-', '')[:24]}",
+            platform="youtube",
+            source_url=source_url,
+            description=(
+                f"YouTube channel {display_name} was analyzed through public RSS fallback after the official API path was unavailable."
+            ),
+            style_tags=["youtube", "rss fallback", "recent videos"],
+            events=meaningful_events,
+        )
+
+    def _get_public_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        request = Request(f"{url}?{urlencode(params)}", headers={"User-Agent": "BITprivatSocialDiscovery/1.0"})
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _format_youtube_exception(exc: Exception) -> str:
+        if isinstance(exc, HTTPError):
+            detail = ""
+            try:
+                raw = exc.read().decode("utf-8")
+                payload = json.loads(raw)
+                error = payload.get("error", {}) if isinstance(payload, dict) else {}
+                message = str(error.get("message") or "").strip()
+                errors = error.get("errors") or []
+                reason = ""
+                if errors and isinstance(errors[0], dict):
+                    reason = str(errors[0].get("reason") or "").strip()
+                status = str(error.get("status") or "").strip()
+                detail = " ".join(part for part in (reason or status, message) if part)
+            except Exception:
+                detail = ""
+            return f"HTTP {exc.code}{f' {detail}' if detail else ''}"
+        return f"{exc.__class__.__name__}: {exc}"
 
     def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         params = {**params, "key": self.api_key}
