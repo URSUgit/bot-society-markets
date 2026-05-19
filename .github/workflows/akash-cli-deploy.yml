@@ -222,4 +222,4 @@ jobs:
         shell: pwsh
         run: |
           Start-Sleep -Seconds ([int]"${{ steps.options.outputs.wait_seconds }}")
-          ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading
+          ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -Attempts 5 -RetryDelaySeconds 5
