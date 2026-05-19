@@ -230,7 +230,7 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
         ensure_demo_user_state(repository)
-        social_refresh = self.refresh_social_trader_discovery(repository=repository)
+        social_refresh = self._bootstrap_social_trader_discovery(repository)
         macro_refreshed = self._refresh_macro_data(repository)
         refreshed_signals = repository.refresh_signal_quality_scores()
         repository.delete_expired_sessions(self._now())
@@ -419,6 +419,39 @@ class BotSocietyService:
                 pass
             self._clear_live_caches()
             raise
+
+    def _bootstrap_social_trader_discovery(self, repository: BotSocietyRepository) -> SocialDiscoveryRunResult:
+        """Keep web startup independent from external social APIs."""
+        existing_rows = repository.list_social_traders(limit=12)
+        if existing_rows:
+            return SocialDiscoveryRunResult(
+                discovered=0,
+                updated=0,
+                provider=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
+                youtube_configured=bool(self.settings.youtube_api_key),
+                traders=[
+                    self._to_social_trader_scorecard(row, repository.list_social_trader_events(int(row["id"]), limit=6))
+                    for row in existing_rows
+                ],
+                warnings=[
+                    "Startup skipped live YouTube discovery so the web service can become ready without waiting on outbound APIs."
+                ],
+            )
+
+        started_at = self._now()
+        result = DemoSocialDiscoveryProvider().discover(include_key_warning=False)
+        result.youtube_configured = bool(self.settings.youtube_api_key)
+        result.warnings = [
+            "Startup seeded the social trader watchlist from deterministic creator profiles; run discovery or analyze a target for live YouTube data.",
+            *result.warnings,
+        ]
+        return self._persist_social_discovery_result(
+            active_repository=repository,
+            result=result,
+            started_at=started_at,
+            before_slugs=set(),
+            ingest_batch_prefix="social-bootstrap",
+        )
 
     def analyze_social_trader_target(
         self,

@@ -276,6 +276,24 @@ def test_youtube_social_discovery_provider_status_requires_key() -> None:
         assert "BSM_YOUTUBE_API_KEY" in provider_status["social_discovery_warning"]
 
 
+def test_bootstrap_skips_live_youtube_discovery() -> None:
+    settings = Settings(
+        social_discovery_provider="youtube",
+        youtube_api_key="test-youtube-key",
+        youtube_discovery_queries=("crypto market analysis",),
+        outbound_timeout_seconds=3,
+    )
+    with patch.object(YouTubeSocialDiscoveryProvider, "discover", side_effect=AssertionError("startup should not call YouTube")):
+        with build_client(settings) as client:
+            traders_response = client.get("/api/social-traders")
+            assert traders_response.status_code == 200
+            assert traders_response.json()
+            provider_status = client.get("/api/system/providers").json()["provider_status"]
+            assert provider_status["social_discovery_provider_mode"] == "youtube"
+            assert provider_status["social_discovery_provider_source"] == "youtube-data-api"
+            assert provider_status["social_discovery_configured"] is True
+
+
 def test_business_model_strategy_endpoint_maps_investor_deck() -> None:
     with build_client() as client:
         response = client.get("/api/business-model")
