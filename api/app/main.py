@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from pathlib import Path
+from threading import Thread
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -146,7 +147,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        service.bootstrap()
+        if active_settings.deployment_target == "akash" and active_settings.database_url:
+            def background_bootstrap() -> None:
+                try:
+                    service.bootstrap()
+                except Exception as exc:
+                    print(f"Background bootstrap failed: {exc.__class__.__name__}: {exc}", flush=True)
+
+            Thread(target=background_bootstrap, name="bitprivat-bootstrap", daemon=True).start()
+        else:
+            service.bootstrap()
         app.state.bot_society_service = service
         try:
             yield
