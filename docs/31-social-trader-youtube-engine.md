@@ -22,6 +22,7 @@ The dashboard Social Traders section now shows:
 - bot decision feed explaining what the system would do and why
 - PnL history summary based on simulated paper-follow outcomes
 - a managed-paper execution button that converts active creator allocations into capped paper positions
+- a bot decision receipt showing why each signal opened, skipped, or hit a risk boundary
 
 ## Data Pipeline
 
@@ -48,7 +49,7 @@ Worker cycle or Scan New Videos button
 - max position percent per creator idea
 - duplicate position prevention for already-executed source signals
 
-The result returns created predictions, created positions, skipped signals, explanatory messages, and the refreshed paper portfolio snapshot.
+The result returns created predictions, created positions, skipped signals, explanatory messages, a structured decision receipt for each opened/skipped signal, and the refreshed paper portfolio snapshot. The dashboard renders this receipt so a user can see what the managed-paper bot decided, the notional it used, the source video, and the risk rule behind the action.
 
 ## Live Activation
 

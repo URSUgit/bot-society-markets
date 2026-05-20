@@ -318,6 +318,23 @@ class SocialManagedPaperExecutionRequest(BaseModel):
     min_confidence: float = Field(default=0.55, ge=0, le=1)
 
 
+class SocialManagedPaperDecision(BaseModel):
+    trader_id: int = Field(ge=1)
+    trader_name: str
+    signal_id: int | None = Field(default=None, ge=1)
+    prediction_id: int | None = Field(default=None, ge=1)
+    position_id: int | None = Field(default=None, ge=1)
+    asset: str
+    direction: Direction
+    action: str
+    confidence: float = Field(ge=0, le=1)
+    notional_usd: float = Field(default=0, ge=0)
+    reason: str
+    source_title: str
+    source_url: str
+    observed_at: str
+
+
 class SocialManagedPaperExecutionResult(BaseModel):
     evaluated_allocations: int = Field(ge=0)
     created_predictions: int = Field(ge=0)
@@ -325,6 +342,7 @@ class SocialManagedPaperExecutionResult(BaseModel):
     closed_positions: int = Field(ge=0)
     skipped_signals: int = Field(ge=0)
     messages: list[str] = Field(default_factory=list)
+    decisions: list[SocialManagedPaperDecision] = Field(default_factory=list)
     snapshot: PaperTradingSnapshot
 
 

@@ -216,6 +216,7 @@ let chartResizeFrame = null;
 let simulationConfig = null;
 let latestSimulationResult = null;
 let latestAdvancedExport = null;
+let latestSocialExecution = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
@@ -1393,6 +1394,46 @@ function socialDecisionFeedMarkup(trader) {
   `).join("") || "<li><p>No live decision feed yet. Run YouTube discovery to create fresh decisions.</p></li>";
 }
 
+function socialExecutionLedgerMarkup(socialTrading) {
+  const execution = latestSocialExecution;
+  if (execution?.decisions?.length) {
+    return execution.decisions.slice(0, 8).map((decision) => {
+      const tone = decision.action === "opened_position"
+        ? "positive"
+        : decision.action?.includes("risk") || decision.action?.includes("low") || decision.action?.includes("unsupported")
+          ? "warning"
+          : "neutral";
+      return `
+        <li>
+          <div>
+            <strong>${escapeHtml(decision.trader_name)} · ${escapeHtml(decision.asset)} ${escapeHtml(decision.direction)}</strong>
+            <p>${escapeHtml(decision.reason)}</p>
+            <small>${escapeHtml(decision.source_title || "YouTube signal")} · ${fmtRelativeTime(decision.observed_at)}</small>
+          </div>
+          <span class="badge" data-tone="${tone}">
+            ${escapeHtml(humanizeKey(decision.action || "decision"))}
+            ${decision.notional_usd ? ` · ${fmtUsd(decision.notional_usd)}` : ""}
+          </span>
+        </li>
+      `;
+    }).join("");
+  }
+
+  const decisions = socialTrading?.decision_feed || [];
+  return decisions.slice(0, 6).map((decision) => `
+    <li>
+      <div>
+        <strong>${escapeHtml(decision.asset)} · ${escapeHtml(humanizeKey(decision.action || "watch"))}</strong>
+        <p>${escapeHtml(decision.rationale)}</p>
+        <small>${escapeHtml(decision.source_title || "YouTube evidence")} · ${fmtRelativeTime(decision.observed_at)}</small>
+      </div>
+      <span class="badge" data-tone="${decision.direction === "bearish" ? "danger" : decision.direction === "bullish" ? "positive" : "warning"}">
+        ${escapeHtml(decision.direction)} · ${fmtPercent(decision.confidence || 0)}
+      </span>
+    </li>
+  `).join("") || "<li><p>Run YouTube discovery or the managed-paper bot to populate the decision ledger.</p></li>";
+}
+
 function socialAssetExposureMarkup(trader) {
   return (trader.asset_exposure || []).slice(0, 5).map((asset) => `
     <span>
@@ -1440,6 +1481,7 @@ function renderSocialTrading(socialTrading) {
   const kpis = document.getElementById("social-trader-kpis");
   const grid = document.getElementById("social-trader-grid");
   const allocationList = document.getElementById("social-allocation-list");
+  const executionLedgerList = document.getElementById("social-execution-ledger-list");
   const discoveryRunList = document.getElementById("social-discovery-run-list");
   const safetyList = document.getElementById("social-safety-list");
   if (!summary || !badge || !kpis || !grid || !allocationList || !safetyList || !socialTrading) {
@@ -1621,6 +1663,10 @@ function renderSocialTrading(socialTrading) {
       <span class="badge">${allocation.is_active ? "Active" : "Paused"}</span>
     </li>
   `).join("") || "<li><p>No followed social managers yet. Sign in, then activate signal or managed-paper mode from a profile card.</p></li>";
+
+  if (executionLedgerList) {
+    executionLedgerList.innerHTML = socialExecutionLedgerMarkup(socialTrading);
+  }
 
   if (discoveryRunList) {
     discoveryRunList.innerHTML = (socialTrading.discovery_runs || []).map((run) => {
@@ -4038,11 +4084,15 @@ async function executeSocialManagedPaper(button = null) {
         min_confidence: 0.55,
       }),
     });
+    latestSocialExecution = result;
     await loadDashboard({ silent: true });
     const headline = result.created_positions
       ? `Opened ${result.created_positions} managed-paper position(s) from ${result.created_predictions} social prediction(s).`
       : "No new managed-paper positions were opened.";
-    const detail = result.messages?.length ? ` ${result.messages[0]}` : "";
+    const firstDecision = result.decisions?.[0];
+    const detail = firstDecision
+      ? ` Latest decision: ${humanizeKey(firstDecision.action)} ${firstDecision.asset} because ${firstDecision.reason}`
+      : result.messages?.length ? ` ${result.messages[0]}` : "";
     setStatus(`${headline}${detail}`);
   } catch (error) {
     setStatus(`Managed-paper execution failed: ${error.message}`);

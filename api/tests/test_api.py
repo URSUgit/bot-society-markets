@@ -354,6 +354,8 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-discovery-run-list"' in dashboard_response.text
+        assert 'id="social-execution-ledger-list"' in dashboard_response.text
+        assert "Bot decision receipt" in dashboard_response.text
         assert "Scan New Videos" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
@@ -546,6 +548,16 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert execution_payload["evaluated_allocations"] >= 1
         assert execution_payload["created_predictions"] >= 1
         assert execution_payload["created_positions"] >= 1
+        assert execution_payload["decisions"]
+        opened_decisions = [
+            decision
+            for decision in execution_payload["decisions"]
+            if decision["action"] == "opened_position"
+        ]
+        assert opened_decisions
+        assert opened_decisions[0]["trader_name"]
+        assert opened_decisions[0]["notional_usd"] >= 25
+        assert opened_decisions[0]["reason"]
         assert execution_payload["snapshot"]["positions"]
         assert any(
             position["bot_slug"] == "social-momentum"
@@ -554,8 +566,12 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
 
         audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
         assert audit_response.status_code == 200
-        actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
+        audit_logs = audit_response.json()["audit_logs"]
+        actions = {entry["action"] for entry in audit_logs}
         assert {"social_trader.follow", "social_trader.diversify", "social_trader.execute_managed_paper"}.issubset(actions)
+        execute_audit = next(entry for entry in audit_logs if entry["action"] == "social_trader.execute_managed_paper")
+        assert execute_audit["after_state"]["decision_count"] >= len(opened_decisions)
+        assert "opened_position" in execute_audit["after_state"]["decision_actions"]
 
 
 def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> None:

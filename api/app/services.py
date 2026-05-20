@@ -83,6 +83,7 @@ from .models import (
     SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
     SocialEvidenceItem,
+    SocialManagedPaperDecision,
     SocialManagedPaperExecutionRequest,
     SocialManagedPaperExecutionResult,
     SocialMonitoringStatus,
@@ -752,7 +753,47 @@ class BotSocietyService:
         if payload.trader_id:
             allocations = [row for row in allocations if int(row["trader_id"]) == payload.trader_id]
 
+        now = self._now()
         messages: list[str] = []
+        execution_decisions: list[SocialManagedPaperDecision] = []
+
+        def append_execution_decision(
+            *,
+            allocation: dict,
+            asset: str,
+            direction: str,
+            action: str,
+            confidence: float,
+            reason: str,
+            source_title: str,
+            source_url: str,
+            observed_at: str,
+            signal_id: int | None = None,
+            prediction_id: int | None = None,
+            position_id: int | None = None,
+            notional_usd: float = 0.0,
+        ) -> None:
+            if len(execution_decisions) >= 40:
+                return
+            execution_decisions.append(
+                SocialManagedPaperDecision(
+                    trader_id=int(allocation["trader_id"]),
+                    trader_name=str(allocation.get("trader_name") or allocation.get("trader_slug") or "Social trader"),
+                    signal_id=signal_id,
+                    prediction_id=prediction_id,
+                    position_id=position_id,
+                    asset=str(asset or "UNKNOWN").upper(),
+                    direction=direction if direction in {"bullish", "bearish", "neutral"} else "neutral",
+                    action=action,
+                    confidence=round(min(1.0, max(0.0, float(confidence or 0.0))), 3),
+                    notional_usd=round(max(0.0, float(notional_usd or 0.0)), 2),
+                    reason=reason,
+                    source_title=source_title[:255] if source_title else "Social trader signal",
+                    source_url=source_url or "",
+                    observed_at=observed_at or now,
+                )
+            )
+
         if not allocations:
             return SocialManagedPaperExecutionResult(
                 evaluated_allocations=0,
@@ -761,6 +802,7 @@ class BotSocietyService:
                 closed_positions=closed_positions,
                 skipped_signals=0,
                 messages=["No active managed-paper social trader allocations were found."],
+                decisions=[],
                 snapshot=snapshot,
             )
 
@@ -788,18 +830,68 @@ class BotSocietyService:
                 signal = signals_by_external_id.get(f"social-signal-{event['external_id']}")
                 if not signal:
                     skipped_signals += 1
+                    append_execution_decision(
+                        allocation=allocation,
+                        asset=str(event.get("asset") or "UNKNOWN"),
+                        direction=str(event.get("direction") or "neutral"),
+                        action="skipped_missing_normalized_signal",
+                        confidence=float(event.get("confidence") or 0.0),
+                        reason="The YouTube evidence item has not been normalized into the shared signal ledger yet.",
+                        source_title=str(event.get("title") or "Social trader evidence"),
+                        source_url=str(event.get("url") or ""),
+                        observed_at=str(event.get("observed_at") or now),
+                    )
                     continue
                 asset = str(signal["asset"])
                 direction = "bullish" if float(signal.get("sentiment") or 0) > 0 else "bearish" if float(signal.get("sentiment") or 0) < 0 else "neutral"
                 if direction == "neutral" or asset not in latest_assets:
                     skipped_signals += 1
+                    append_execution_decision(
+                        allocation=allocation,
+                        asset=asset,
+                        direction=direction,
+                        action="skipped_unsupported_or_neutral",
+                        confidence=float(event.get("confidence") or 0.0),
+                        reason=(
+                            "The signal was neutral or the asset is not currently supported by the paper market ledger."
+                        ),
+                        source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                        source_url=str(signal.get("url") or event.get("url") or ""),
+                        observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                        signal_id=int(signal["id"]),
+                    )
                     continue
                 confidence = max(float(event.get("confidence") or 0), min(0.95, abs(float(signal.get("sentiment") or 0))))
                 if confidence < payload.min_confidence:
                     skipped_signals += 1
+                    append_execution_decision(
+                        allocation=allocation,
+                        asset=asset,
+                        direction=direction,
+                        action="skipped_low_confidence",
+                        confidence=confidence,
+                        reason=f"Confidence {confidence:.0%} is below the configured execution threshold of {payload.min_confidence:.0%}.",
+                        source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                        source_url=str(signal.get("url") or event.get("url") or ""),
+                        observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                        signal_id=int(signal["id"]),
+                    )
                     continue
                 if int(signal["id"]) in prediction_by_signal_id and int(prediction_by_signal_id[int(signal["id"])]["id"]) in open_prediction_ids:
                     skipped_signals += 1
+                    append_execution_decision(
+                        allocation=allocation,
+                        asset=asset,
+                        direction=direction,
+                        action="skipped_duplicate_open_position",
+                        confidence=confidence,
+                        reason="A managed-paper position is already open for this creator signal.",
+                        source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                        source_url=str(signal.get("url") or event.get("url") or ""),
+                        observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                        signal_id=int(signal["id"]),
+                        prediction_id=int(prediction_by_signal_id[int(signal["id"])]["id"]),
+                    )
                     continue
                 candidate_score = (
                     confidence * 0.55
@@ -815,16 +907,27 @@ class BotSocietyService:
         max_open_exposure = self.settings.paper_starting_balance * 0.65
         created_predictions = 0
         created_positions = 0
-        now = self._now()
 
         for _, allocation, event, signal in candidates[: payload.max_positions]:
-            if available_cash <= 25 or open_exposure >= max_open_exposure:
-                messages.append("Paper risk ceiling reached; remaining social signals were not executed.")
-                break
             signal_id = int(signal["id"])
-            prediction = prediction_by_signal_id.get(signal_id)
             asset = str(signal["asset"])
             direction = "bullish" if float(signal.get("sentiment") or 0) > 0 else "bearish"
+            if available_cash <= 25 or open_exposure >= max_open_exposure:
+                messages.append("Paper risk ceiling reached; remaining social signals were not executed.")
+                append_execution_decision(
+                    allocation=allocation,
+                    asset=asset,
+                    direction=direction,
+                    action="skipped_risk_ceiling",
+                    confidence=max(float(event.get("confidence") or 0), abs(float(signal.get("sentiment") or 0))),
+                    reason="Paper risk ceiling reached before this signal could be opened.",
+                    source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                    source_url=str(signal.get("url") or event.get("url") or ""),
+                    observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                    signal_id=signal_id,
+                )
+                break
+            prediction = prediction_by_signal_id.get(signal_id)
             mark_price = float(latest_assets[asset]["price"])
             confidence = round(
                 min(
@@ -869,6 +972,18 @@ class BotSocietyService:
                 prediction = repository.get_prediction(prediction_id)
                 if not prediction:
                     skipped_signals += 1
+                    append_execution_decision(
+                        allocation=allocation,
+                        asset=asset,
+                        direction=direction,
+                        action="skipped_prediction_create_failed",
+                        confidence=confidence,
+                        reason="The normalized signal passed filters, but the social-momentum prediction could not be persisted.",
+                        source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                        source_url=str(signal.get("url") or event.get("url") or ""),
+                        observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                        signal_id=signal_id,
+                    )
                     continue
                 prediction_by_signal_id[signal_id] = prediction
                 created_predictions += 1
@@ -876,6 +991,19 @@ class BotSocietyService:
             prediction_id = int(prediction["id"])
             if prediction_id in open_prediction_ids or repository.get_paper_position_for_prediction(user_slug, prediction_id):
                 skipped_signals += 1
+                append_execution_decision(
+                    allocation=allocation,
+                    asset=asset,
+                    direction=direction,
+                    action="skipped_duplicate_open_position",
+                    confidence=confidence,
+                    reason="A paper position already exists for this social-momentum prediction.",
+                    source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                    source_url=str(signal.get("url") or event.get("url") or ""),
+                    observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                    signal_id=signal_id,
+                    prediction_id=prediction_id,
+                )
                 continue
 
             allocation_limit = float(allocation.get("allocation_limit_usd") or 0)
@@ -894,6 +1022,20 @@ class BotSocietyService:
                 fee_cost = target_allocation * fee_rate
             if target_allocation < 25:
                 skipped_signals += 1
+                append_execution_decision(
+                    allocation=allocation,
+                    asset=asset,
+                    direction=direction,
+                    action="skipped_too_small_after_limits",
+                    confidence=confidence,
+                    reason="Allocation, cash, and risk limits left less than 25 USD of usable paper notional.",
+                    source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                    source_url=str(signal.get("url") or event.get("url") or ""),
+                    observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                    signal_id=signal_id,
+                    prediction_id=prediction_id,
+                    notional_usd=target_allocation,
+                )
                 continue
 
             quantity = target_allocation / mark_price if mark_price else 0.0
@@ -925,6 +1067,39 @@ class BotSocietyService:
                 messages.append(
                     f"Opened managed-paper {direction} {asset} from {trader_name} with {target_allocation:,.2f} USD notional."
                 )
+                append_execution_decision(
+                    allocation=allocation,
+                    asset=asset,
+                    direction=direction,
+                    action="opened_position",
+                    confidence=confidence,
+                    reason=(
+                        f"Signal passed confidence, freshness, duplicate, cash, and allocation checks; "
+                        f"opened {target_allocation:,.2f} USD paper notional."
+                    ),
+                    source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                    source_url=str(signal.get("url") or event.get("url") or ""),
+                    observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                    signal_id=signal_id,
+                    prediction_id=prediction_id,
+                    position_id=inserted,
+                    notional_usd=target_allocation,
+                )
+            else:
+                skipped_signals += 1
+                append_execution_decision(
+                    allocation=allocation,
+                    asset=asset,
+                    direction=direction,
+                    action="skipped_insert_conflict",
+                    confidence=confidence,
+                    reason="The paper ledger rejected the insert because another position for this prediction already exists.",
+                    source_title=str(signal.get("title") or event.get("title") or "Social trader signal"),
+                    source_url=str(signal.get("url") or event.get("url") or ""),
+                    observed_at=str(signal.get("observed_at") or event.get("observed_at") or now),
+                    signal_id=signal_id,
+                    prediction_id=prediction_id,
+                )
 
         self._clear_live_caches()
         return SocialManagedPaperExecutionResult(
@@ -934,6 +1109,7 @@ class BotSocietyService:
             closed_positions=closed_positions,
             skipped_signals=skipped_signals,
             messages=messages or ["No eligible fresh social signals passed risk and duplicate checks."],
+            decisions=execution_decisions,
             snapshot=self.get_paper_trading_snapshot(user_slug, repository=repository, latest_assets=latest_assets),
         )
 

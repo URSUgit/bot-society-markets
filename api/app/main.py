@@ -503,6 +503,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "created_predictions": result.created_predictions,
                 "created_positions": result.created_positions,
                 "skipped_signals": result.skipped_signals,
+                "decision_count": len(result.decisions),
+                "decision_actions": [decision.action for decision in result.decisions[:12]],
             },
         )
         return result

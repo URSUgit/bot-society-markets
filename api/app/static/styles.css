@@ -7844,6 +7844,38 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
   background: rgba(113, 63, 18, 0.34);
 }
 
+.bit-engine-product-ui.command-os .social-execution-ledger {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(45, 212, 191, 0.08), rgba(15, 23, 42, 0.22)),
+    rgba(2, 6, 23, 0.18);
+}
+
+.bit-engine-product-ui.command-os .social-execution-ledger h4 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.95rem;
+}
+
+.bit-engine-product-ui.command-os .social-execution-ledger li {
+  align-items: start;
+}
+
+.bit-engine-product-ui.command-os .social-execution-ledger p {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.bit-engine-product-ui.command-os .social-execution-ledger small {
+  color: var(--color-dim);
+  font-size: 0.7rem;
+}
+
 @keyframes social-avatar-orbit {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
