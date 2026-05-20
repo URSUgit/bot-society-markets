@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from html import unescape
 import hashlib
 import json
 import math
@@ -540,19 +541,17 @@ class YouTubeSocialDiscoveryProvider:
         author_name = str(payload.get("author_name") or "YouTube Trader")
         author_url = str(payload.get("author_url") or "https://www.youtube.com")
         thumbnail_url = str(payload.get("thumbnail_url") or "") or None
-        text = f"{title} {author_name}"
+        transcript = self._public_transcript_for_video(video_ids[0])
+        text = " ".join(part for part in (title, author_name, transcript or "") if part)
         asset = extract_asset(text)
         direction = infer_direction(text)
         observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        engagement_score = 0.42
+        engagement_score = 0.5 if transcript else 0.42
         event = SocialEvidenceRecord(
             external_id=f"youtube-oembed-{video_ids[0]}",
             platform="youtube",
             title=title[:255],
-            summary=(
-                "Public YouTube metadata fallback extracted the video title and creator after the official API path failed. "
-                f"Use this as a low-confidence signal for {asset}."
-            ),
+            summary=self._public_fallback_summary(asset, transcript),
             url=watch_url,
             asset=asset,
             direction=direction,
@@ -595,16 +594,17 @@ class YouTubeSocialDiscoveryProvider:
             title = entry.findtext("atom:title", default="YouTube market video", namespaces=ns)
             summary = entry.findtext("media:group/media:description", default="", namespaces=ns) or ""
             published = entry.findtext("atom:published", default="", namespaces=ns) or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            text = f"{title} {summary}"
+            transcript = self._public_transcript_for_video(video_id)
+            text = " ".join(part for part in (title, summary, transcript or "") if part)
             asset = extract_asset(text)
             direction = infer_direction(text)
-            engagement_score = 0.38
+            engagement_score = 0.46 if transcript else 0.38
             events.append(
                 SocialEvidenceRecord(
                     external_id=f"youtube-rss-{video_id or hashlib.sha1(title.encode('utf-8')).hexdigest()[:12]}",
                     platform="youtube",
                     title=title[:255],
-                    summary=(summary[:190] or f"Public RSS fallback video covering {asset}."),
+                    summary=self._rss_summary(asset, summary, transcript),
                     url=f"https://www.youtube.com/watch?v={video_id}" if video_id else source_url,
                     asset=asset,
                     direction=direction,
@@ -841,6 +841,63 @@ class YouTubeSocialDiscoveryProvider:
         with urlopen(request, timeout=self.timeout_seconds) as response:
             return response.read(1_000_000).decode("utf-8", errors="ignore")
 
+    def _public_transcript_for_video(self, video_id: str) -> str | None:
+        if not video_id:
+            return None
+        try:
+            track_list_url = f"https://video.google.com/timedtext?{urlencode({'type': 'list', 'v': video_id})}"
+            track_list = self._fetch_public_text(track_list_url)
+            root = ET.fromstring(track_list)
+            tracks = root.findall("track")
+            if not tracks:
+                return None
+            selected = next(
+                (
+                    track
+                    for track in tracks
+                    if str(track.attrib.get("lang_code") or "").lower().startswith("en")
+                ),
+                tracks[0],
+            )
+            params = {
+                "v": video_id,
+                "lang": selected.attrib.get("lang_code") or "en",
+            }
+            if selected.attrib.get("name"):
+                params["name"] = selected.attrib["name"]
+            transcript_xml = self._fetch_public_text(f"https://video.google.com/timedtext?{urlencode(params)}")
+            transcript_root = ET.fromstring(transcript_xml)
+            parts = [
+                unescape("".join(node.itertext()))
+                for node in transcript_root.iter()
+                if node.tag in {"text", "p"} and "".join(node.itertext()).strip()
+            ]
+            return self._clean_transcript_text(" ".join(parts))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _clean_transcript_text(value: str, *, limit: int = 3200) -> str | None:
+        cleaned = re.sub(r"\s+", " ", unescape(value or "")).strip()
+        if not cleaned:
+            return None
+        return cleaned[:limit]
+
+    @staticmethod
+    def _public_fallback_summary(asset: str, transcript: str | None) -> str:
+        if transcript:
+            return f"Public YouTube fallback used available captions/transcript for {asset}: {transcript[:180]}"
+        return (
+            "Public YouTube metadata fallback extracted the video title and creator after the official API path failed. "
+            f"Use this as a low-confidence signal for {asset}."
+        )
+
+    @staticmethod
+    def _rss_summary(asset: str, summary: str, transcript: str | None) -> str:
+        if transcript:
+            return f"Public RSS plus available captions/transcript covering {asset}: {transcript[:180]}"
+        return summary[:190] or f"Public RSS fallback video covering {asset}."
+
     @staticmethod
     def _extract_public_channel_id(html: str) -> str | None:
         patterns = (
@@ -952,7 +1009,8 @@ class YouTubeSocialDiscoveryProvider:
         statistics = video.get("statistics", {})
         title = str(snippet.get("title") or "Market update")
         description = str(snippet.get("description") or "")
-        text = f"{title} {description}"
+        transcript = self._public_transcript_for_video(video_id)
+        text = " ".join(part for part in (title, description, transcript or "") if part)
         view_count = safe_float(statistics.get("viewCount"))
         like_count = safe_float(statistics.get("likeCount"))
         engagement_score = clamp_value((math.log10(view_count + 10) / 7) * 0.75 + (math.log10(like_count + 3) / 6) * 0.25, 0.1, 0.98)
@@ -960,7 +1018,10 @@ class YouTubeSocialDiscoveryProvider:
         asset = extract_asset(text)
         title_terms = self._matched_title_terms(title)
         title_note = f" Title match: {', '.join(title_terms[:4])}." if title_terms else ""
-        summary = (description.strip().replace("\n", " ")[:190] + title_note).strip() or f"YouTube market video covering {asset}.{title_note}"
+        if transcript:
+            summary = f"Caption-enriched video covering {asset}: {transcript[:170]}{title_note}".strip()
+        else:
+            summary = (description.strip().replace("\n", " ")[:190] + title_note).strip() or f"YouTube market video covering {asset}.{title_note}"
         observed_at = str(snippet.get("publishedAt") or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         return SocialEvidenceRecord(
             external_id=f"youtube-{video_id}",

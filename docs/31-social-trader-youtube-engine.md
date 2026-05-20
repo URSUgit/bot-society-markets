@@ -30,6 +30,7 @@ Worker cycle or Scan New Videos button
   -> YouTube search/list ordered by date
   -> videos/list metadata and statistics hydration
   -> channels/list public avatar and channel metadata hydration
+  -> public caption/transcript enrichment when available
   -> title + description extraction for asset, direction, confidence
   -> social trader scorecard update
   -> normalized social signals inserted for bot scoring
@@ -76,6 +77,7 @@ When the official API returns a temporary quota/auth error, direct video URLs an
 ## Compliance Boundary
 
 - Use official YouTube Data API metadata and public thumbnails.
+- Use public captions/transcripts only when YouTube exposes them; otherwise stay on metadata/RSS evidence.
 - Do not impersonate creators or fabricate animated faces.
 - Show real public channel avatars only with a monitoring animation around the image.
 - Keep managed allocation paper-only until legal and operational gates pass.
@@ -83,10 +85,9 @@ When the official API returns a temporary quota/auth error, direct video URLs an
 
 ## Next Upgrade
 
-The next material upgrade is transcript enrichment:
+The next material upgrade is deeper transcript intelligence:
 
-- fetch captions/transcripts where legally available
-- fall back to user-provided or licensed transcript providers
+- add licensed transcript providers for creators without public captions
 - attach source provenance per transcript segment
 - run deeper thesis extraction, target/invalidation extraction, and time-horizon detection
 - keep every extracted decision auditable back to the source video

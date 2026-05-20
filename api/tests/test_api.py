@@ -662,6 +662,37 @@ def test_youtube_target_analysis_uses_public_handle_without_api_key() -> None:
     assert "API key is not configured" in result.warnings[0]
 
 
+def test_youtube_video_event_uses_public_transcript_when_available() -> None:
+    provider = YouTubeSocialDiscoveryProvider(
+        api_key="key",
+        queries=("macro market",),
+        channel_ids=(),
+        video_limit=3,
+    )
+    provider._public_transcript_for_video = (  # type: ignore[method-assign]
+        lambda video_id: "I am bullish Ethereum because liquidity is improving and my ETH breakout target is higher."
+    )
+
+    event = provider._event_from_video(
+        {
+            "id": "abc123",
+            "snippet": {
+                "title": "Weekly market update",
+                "description": "No direct asset mention here.",
+                "publishedAt": "2026-05-20T00:00:00Z",
+                "channelId": "UCabc",
+                "channelTitle": "Transcript Trader",
+            },
+            "statistics": {"viewCount": "10000", "likeCount": "900"},
+        }
+    )
+
+    assert event.asset == "ETH"
+    assert event.direction == "bullish"
+    assert "Caption-enriched" in event.summary
+    assert event.confidence >= 0.5
+
+
 def test_worker_runs_youtube_social_discovery_once_on_first_cycle() -> None:
     class FakeService:
         def __init__(self) -> None:

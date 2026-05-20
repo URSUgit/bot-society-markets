@@ -370,6 +370,9 @@ public video metadata, public channel RSS for `@handle`/channel URLs, or demo
 discovery if the key is missing or the API call fails. The provider status
 endpoint exposes `social_discovery_ready`, `social_discovery_warning`, and the
 configured query/channel scope so production can be checked before redeploying.
+When public captions are exposed for a video, the social engine enriches asset,
+direction, confidence, and rationale from transcript text before falling back to
+title/description metadata.
 When a worker service is deployed, it refreshes YouTube social discovery on
 `BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS` and creates normalized social signals
 without blocking the normal market cycle.
