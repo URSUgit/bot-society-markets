@@ -5,7 +5,7 @@
   "workers_dev": false,
   "vars": {
     "ORIGIN_BASE_URL": "http://app.bitprivat.com",
-    "ORIGIN_RESOLVE_OVERRIDE": "os1435jvklb2n5enkl5eq98ohg.ingress.jjozzietech.com.au"
+    "ORIGIN_RESOLVE_OVERRIDE": "j5snub7hfta833c09ev3f6covo.ingress.jjozzietech.com.au"
   },
   "routes": [
     {
