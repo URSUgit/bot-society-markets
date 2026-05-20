@@ -83,6 +83,8 @@ from .models import (
     SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
     SocialEvidenceItem,
+    SocialManagedPaperExecutionRequest,
+    SocialManagedPaperExecutionResult,
     SocialMonitoringStatus,
     SocialPortfolioDiversifyRequest,
     SocialRoiWindow,
@@ -729,6 +731,211 @@ class BotSocietyService:
             )
         self._clear_live_caches()
         return self.get_social_trading_snapshot(user_slug, repository)
+
+    def execute_social_managed_paper(
+        self,
+        user_slug: str,
+        payload: SocialManagedPaperExecutionRequest,
+    ) -> SocialManagedPaperExecutionResult:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+
+        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
+        closed_positions = self._sync_paper_positions(repository, user_slug)
+        snapshot = self.get_paper_trading_snapshot(user_slug, repository=repository, latest_assets=latest_assets)
+        allocations = [
+            row
+            for row in repository.list_social_trader_allocations(user_slug)
+            if bool(row.get("is_active")) and str(row.get("mode")) == "managed_paper"
+        ]
+        if payload.trader_id:
+            allocations = [row for row in allocations if int(row["trader_id"]) == payload.trader_id]
+
+        messages: list[str] = []
+        if not allocations:
+            return SocialManagedPaperExecutionResult(
+                evaluated_allocations=0,
+                created_predictions=0,
+                created_positions=0,
+                closed_positions=closed_positions,
+                skipped_signals=0,
+                messages=["No active managed-paper social trader allocations were found."],
+                snapshot=snapshot,
+            )
+
+        open_prediction_ids = {
+            int(position["prediction_id"])
+            for position in repository.list_paper_positions(user_slug)
+        }
+        existing_predictions = repository.list_predictions(bot_slug="social-momentum", limit=1000)
+        prediction_by_signal_id: dict[int, dict] = {}
+        for prediction in existing_predictions:
+            for signal_id in self._extract_source_signal_ids(prediction):
+                prediction_by_signal_id.setdefault(signal_id, prediction)
+
+        candidates: list[tuple[float, dict, dict, dict]] = []
+        skipped_signals = 0
+        for allocation in allocations:
+            trader_id = int(allocation["trader_id"])
+            events = repository.list_social_trader_events(trader_id, limit=24)
+            signal_external_ids = [f"social-signal-{event['external_id']}" for event in events]
+            signals_by_external_id = {
+                str(signal["external_id"]): signal
+                for signal in repository.list_signals_by_external_ids(signal_external_ids)
+            }
+            for event in events:
+                signal = signals_by_external_id.get(f"social-signal-{event['external_id']}")
+                if not signal:
+                    skipped_signals += 1
+                    continue
+                asset = str(signal["asset"])
+                direction = "bullish" if float(signal.get("sentiment") or 0) > 0 else "bearish" if float(signal.get("sentiment") or 0) < 0 else "neutral"
+                if direction == "neutral" or asset not in latest_assets:
+                    skipped_signals += 1
+                    continue
+                confidence = max(float(event.get("confidence") or 0), min(0.95, abs(float(signal.get("sentiment") or 0))))
+                if confidence < payload.min_confidence:
+                    skipped_signals += 1
+                    continue
+                if int(signal["id"]) in prediction_by_signal_id and int(prediction_by_signal_id[int(signal["id"])]["id"]) in open_prediction_ids:
+                    skipped_signals += 1
+                    continue
+                candidate_score = (
+                    confidence * 0.55
+                    + float(signal.get("source_quality_score") or 0.0) * 0.25
+                    + float(signal.get("freshness_score") or 0.0) * 0.15
+                    + float(event.get("engagement_score") or 0.0) * 0.05
+                )
+                candidates.append((candidate_score, allocation, event, signal))
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        available_cash = snapshot.summary.cash_balance
+        open_exposure = snapshot.summary.open_exposure
+        max_open_exposure = self.settings.paper_starting_balance * 0.65
+        created_predictions = 0
+        created_positions = 0
+        now = self._now()
+
+        for _, allocation, event, signal in candidates[: payload.max_positions]:
+            if available_cash <= 25 or open_exposure >= max_open_exposure:
+                messages.append("Paper risk ceiling reached; remaining social signals were not executed.")
+                break
+            signal_id = int(signal["id"])
+            prediction = prediction_by_signal_id.get(signal_id)
+            asset = str(signal["asset"])
+            direction = "bullish" if float(signal.get("sentiment") or 0) > 0 else "bearish"
+            mark_price = float(latest_assets[asset]["price"])
+            confidence = round(
+                min(
+                    0.88,
+                    max(
+                        payload.min_confidence,
+                        abs(float(signal.get("sentiment") or 0)) * 0.72
+                        + float(signal.get("source_quality_score") or 0.0) * 0.2
+                        + float(signal.get("freshness_score") or 0.0) * 0.08,
+                    ),
+                ),
+                2,
+            )
+            trader_name = str(allocation.get("trader_name") or allocation.get("trader_slug") or "Social trader")
+            if not prediction:
+                prediction_id = repository.create_prediction(
+                    {
+                        "bot_slug": "social-momentum",
+                        "asset": asset,
+                        "direction": direction,
+                        "confidence": confidence,
+                        "horizon_days": 3,
+                        "horizon_label": "3 days",
+                        "thesis": (
+                            f"Managed paper copy of {trader_name}: {signal['title']}. "
+                            f"{str(signal.get('summary') or '')[:260]}"
+                        ),
+                        "trigger_conditions": (
+                            f"Execute only while {trader_name}'s latest public creator signal remains fresh, "
+                            f"confidence stays above {payload.min_confidence:.0%}, and paper allocation caps are respected."
+                        ),
+                        "invalidation": (
+                            f"Pause if the creator reverses the thesis, {asset} loses live mark-price support, "
+                            "or the social-manager allocation cap is reached."
+                        ),
+                        "source_signal_ids": json.dumps([signal_id]),
+                        "published_at": now,
+                        "status": "pending",
+                        "start_price": mark_price,
+                    }
+                )
+                prediction = repository.get_prediction(prediction_id)
+                if not prediction:
+                    skipped_signals += 1
+                    continue
+                prediction_by_signal_id[signal_id] = prediction
+                created_predictions += 1
+
+            prediction_id = int(prediction["id"])
+            if prediction_id in open_prediction_ids or repository.get_paper_position_for_prediction(user_slug, prediction_id):
+                skipped_signals += 1
+                continue
+
+            allocation_limit = float(allocation.get("allocation_limit_usd") or 0)
+            max_position_pct = float(allocation.get("max_position_pct") or 0.12)
+            max_position_notional = max(0.0, allocation_limit * max_position_pct)
+            target_allocation = min(
+                max_position_notional,
+                self._paper_trade_allocation(available_cash, confidence),
+                available_cash,
+                max(0.0, max_open_exposure - open_exposure),
+            )
+            fee_rate = (self.settings.paper_trade_fee_bps + self.settings.paper_trade_slippage_bps) / 10000
+            fee_cost = target_allocation * fee_rate
+            if target_allocation + fee_cost > available_cash:
+                target_allocation = max(0.0, available_cash / (1 + fee_rate))
+                fee_cost = target_allocation * fee_rate
+            if target_allocation < 25:
+                skipped_signals += 1
+                continue
+
+            quantity = target_allocation / mark_price if mark_price else 0.0
+            inserted = repository.create_paper_position(
+                {
+                    "user_slug": user_slug,
+                    "prediction_id": prediction_id,
+                    "bot_slug": "social-momentum",
+                    "asset": asset,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "allocation_usd": round(target_allocation, 2),
+                    "quantity": round(quantity, 8),
+                    "entry_price": mark_price,
+                    "fees_paid": round(fee_cost, 2),
+                    "slippage_bps": self.settings.paper_trade_slippage_bps,
+                    "status": "open",
+                    "opened_at": now,
+                    "closed_at": None,
+                    "exit_price": None,
+                    "realized_pnl": None,
+                }
+            )
+            if inserted:
+                created_positions += 1
+                open_prediction_ids.add(prediction_id)
+                available_cash -= target_allocation + fee_cost
+                open_exposure += target_allocation
+                messages.append(
+                    f"Opened managed-paper {direction} {asset} from {trader_name} with {target_allocation:,.2f} USD notional."
+                )
+
+        self._clear_live_caches()
+        return SocialManagedPaperExecutionResult(
+            evaluated_allocations=len(allocations),
+            created_predictions=created_predictions,
+            created_positions=created_positions,
+            closed_positions=closed_positions,
+            skipped_signals=skipped_signals,
+            messages=messages or ["No eligible fresh social signals passed risk and duplicate checks."],
+            snapshot=self.get_paper_trading_snapshot(user_slug, repository=repository, latest_assets=latest_assets),
+        )
 
     def create_strategy(self, user_slug: str, payload: StrategyCreateRequest) -> StrategyView:
         repository = BotSocietyRepository(self.database)

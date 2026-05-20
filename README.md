@@ -136,6 +136,7 @@ Key endpoints include:
 - `POST /api/social-traders/discover`
 - `POST /api/me/social-traders/follow`
 - `POST /api/me/social-traders/diversify`
+- `POST /api/me/social-traders/execute`
 - `GET /api/edge`
 - `GET /api/simulation/config`
 - `GET /api/simulation/exports`

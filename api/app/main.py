@@ -55,6 +55,8 @@ from .models import (
     ProviderStatusEnvelope,
     SignalView,
     SocialDiscoveryRunResult,
+    SocialManagedPaperExecutionRequest,
+    SocialManagedPaperExecutionResult,
     SocialPortfolioDiversifyRequest,
     SocialTraderAnalyzeRequest,
     SocialTraderFollowRequest,
@@ -482,6 +484,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             after_state=payload.model_dump(),
         )
         return SocialTradingEnvelope(social_trading=snapshot)
+
+    @app.post("/api/v1/me/social-traders/execute", response_model=SocialManagedPaperExecutionResult)
+    @app.post("/api/me/social-traders/execute", response_model=SocialManagedPaperExecutionResult)
+    def execute_social_managed_paper(
+        payload: SocialManagedPaperExecutionRequest,
+        request: Request,
+    ) -> SocialManagedPaperExecutionResult:
+        user_slug = authenticated_user_slug(request)
+        result = run_validated(lambda: get_service(request).execute_social_managed_paper(user_slug, payload))
+        audit_event(
+            request,
+            action="social_trader.execute_managed_paper",
+            resource_type="paper_position",
+            actor_user_slug=user_slug,
+            after_state={
+                **payload.model_dump(),
+                "created_predictions": result.created_predictions,
+                "created_positions": result.created_positions,
+                "skipped_signals": result.skipped_signals,
+            },
+        )
+        return result
 
     @app.get("/api/v1/predictions", response_model=list[PredictionView])
     @app.get("/api/predictions", response_model=list[PredictionView])

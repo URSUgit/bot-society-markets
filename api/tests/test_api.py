@@ -537,10 +537,25 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert len(diversify_snapshot["allocations"]) >= 3
         assert all(allocation["mode"] == "managed_paper" for allocation in diversify_snapshot["allocations"])
 
+        execute_response = client.post(
+            "/api/v1/me/social-traders/execute",
+            json={"max_positions": 2, "min_confidence": 0.4},
+        )
+        assert execute_response.status_code == 200
+        execution_payload = execute_response.json()
+        assert execution_payload["evaluated_allocations"] >= 1
+        assert execution_payload["created_predictions"] >= 1
+        assert execution_payload["created_positions"] >= 1
+        assert execution_payload["snapshot"]["positions"]
+        assert any(
+            position["bot_slug"] == "social-momentum"
+            for position in execution_payload["snapshot"]["positions"]
+        )
+
         audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
         assert audit_response.status_code == 200
         actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
-        assert {"social_trader.follow", "social_trader.diversify"}.issubset(actions)
+        assert {"social_trader.follow", "social_trader.diversify", "social_trader.execute_managed_paper"}.issubset(actions)
 
 
 def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> None:

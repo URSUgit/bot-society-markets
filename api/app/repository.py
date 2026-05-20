@@ -160,6 +160,13 @@ class BotSocietyRepository:
             result = connection.execute(predictions_table.insert(), prediction_list)
             return max(0, result.rowcount or len(prediction_list))
 
+    def create_prediction(self, payload: dict[str, Any]) -> int:
+        stmt = predictions_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
     def list_bots(self) -> list[dict[str, Any]]:
         stmt = select(bots_table).where(bots_table.c.is_active.is_(True)).order_by(bots_table.c.name)
         with self.database.connect() as connection:
@@ -321,6 +328,14 @@ class BotSocietyRepository:
         if not normalized_ids:
             return []
         stmt = select(signals_table).where(signals_table.c.id.in_(normalized_ids)).order_by(desc(signals_table.c.observed_at))
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def list_signals_by_external_ids(self, external_ids: Iterable[str]) -> list[dict[str, Any]]:
+        normalized_ids = [str(external_id) for external_id in external_ids if str(external_id)]
+        if not normalized_ids:
+            return []
+        stmt = select(signals_table).where(signals_table.c.external_id.in_(normalized_ids)).order_by(desc(signals_table.c.observed_at))
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 

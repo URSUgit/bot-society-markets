@@ -1450,6 +1450,13 @@ function renderSocialTrading(socialTrading) {
   const allocations = socialTrading.allocations || [];
   const allocationByTrader = new Map(allocations.map((allocation) => [allocation.trader_id, allocation]));
   const canEdit = workspaceEditable();
+  const executeButton = document.getElementById("social-execute-button");
+  if (executeButton) {
+    executeButton.disabled = !canEdit || !allocations.some((allocation) => allocation.is_active && allocation.mode === "managed_paper");
+    executeButton.title = canEdit
+      ? "Runs active managed-paper allocations into the paper ledger."
+      : "Sign in to run managed-paper social execution.";
+  }
   const topScore = traders[0]?.composite_score || 0;
   const averageRoi = traders.length
     ? traders.reduce((total, trader) => total + Number(trader.roi_if_followed || 0), 0) / traders.length
@@ -4017,6 +4024,36 @@ async function diversifySocialPortfolio(button = null) {
   }
 }
 
+async function executeSocialManagedPaper(button = null) {
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Running...";
+  }
+  setStatus("Executing managed-paper social trader signals through the paper ledger...");
+  try {
+    const result = await fetchJson("/api/me/social-traders/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        max_positions: 3,
+        min_confidence: 0.55,
+      }),
+    });
+    await loadDashboard({ silent: true });
+    const headline = result.created_positions
+      ? `Opened ${result.created_positions} managed-paper position(s) from ${result.created_predictions} social prediction(s).`
+      : "No new managed-paper positions were opened.";
+    const detail = result.messages?.length ? ` ${result.messages[0]}` : "";
+    setStatus(`${headline}${detail}`);
+  } catch (error) {
+    setStatus(`Managed-paper execution failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Run Managed Paper Bot";
+    }
+  }
+}
+
 async function addWatchlist(asset) {
   await fetchJson("/api/me/watchlist", {
     method: "POST",
@@ -4459,6 +4496,15 @@ function bindInteractions() {
         return;
       }
       await diversifySocialPortfolio(target);
+      return;
+    }
+
+    if (target.id === "social-execute-button") {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      await executeSocialManagedPaper(target);
       return;
     }
 

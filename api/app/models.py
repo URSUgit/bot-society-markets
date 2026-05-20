@@ -312,6 +312,22 @@ class PaperSimulationResult(BaseModel):
     snapshot: PaperTradingSnapshot
 
 
+class SocialManagedPaperExecutionRequest(BaseModel):
+    trader_id: int | None = Field(default=None, ge=1)
+    max_positions: int = Field(default=3, ge=1, le=12)
+    min_confidence: float = Field(default=0.55, ge=0, le=1)
+
+
+class SocialManagedPaperExecutionResult(BaseModel):
+    evaluated_allocations: int = Field(ge=0)
+    created_predictions: int = Field(ge=0)
+    created_positions: int = Field(ge=0)
+    closed_positions: int = Field(ge=0)
+    skipped_signals: int = Field(ge=0)
+    messages: list[str] = Field(default_factory=list)
+    snapshot: PaperTradingSnapshot
+
+
 class TradingOrderRequest(BaseModel):
     venue: str = Field(default="paper", min_length=2, max_length=64)
     asset: str = Field(min_length=2, max_length=16)

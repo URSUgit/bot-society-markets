@@ -21,6 +21,7 @@ The dashboard Social Traders section now shows:
 - asset exposure and bullish/bearish/neutral bias
 - bot decision feed explaining what the system would do and why
 - PnL history summary based on simulated paper-follow outcomes
+- a managed-paper execution button that converts active creator allocations into capped paper positions
 
 ## Data Pipeline
 
@@ -33,7 +34,20 @@ Worker cycle or Scan New Videos button
   -> social trader scorecard update
   -> normalized social signals inserted for bot scoring
   -> dashboard decision feed and paper deployment controls
+  -> managed-paper execution creates linked predictions and paper positions
 ```
+
+## Managed-Paper Execution
+
+`POST /api/me/social-traders/execute` evaluates active `managed_paper` allocations, selects high-confidence creator signals, creates normal `social-momentum` predictions linked to the source signal ids, and opens paper positions using the existing paper ledger. It enforces:
+
+- user cash balance
+- global paper exposure ceiling
+- each creator allocation cap
+- max position percent per creator idea
+- duplicate position prevention for already-executed source signals
+
+The result returns created predictions, created positions, skipped signals, explanatory messages, and the refreshed paper portfolio snapshot.
 
 ## Live Activation
 
