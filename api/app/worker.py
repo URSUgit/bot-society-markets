@@ -27,7 +27,8 @@ class PipelineWorker:
         while True:
             completed_cycles += 1
             started_at = time.monotonic()
-            result = self.service.run_pipeline_cycle()
+            worker_controls_social = self._worker_controls_social_discovery()
+            result = self.service.run_pipeline_cycle(refresh_social_discovery=not worker_controls_social)
             operation = result.operation
             print(
                 f"[{completed_cycles}] cycle={operation.cycle_type if operation else 'n/a'} "
@@ -54,10 +55,15 @@ class PipelineWorker:
         return WorkerRunSummary(completed_cycles=completed_cycles, interval_seconds=self.interval_seconds)
 
     def _should_run_social_discovery(self, now: float) -> bool:
-        if self.service.settings.social_discovery_provider != "youtube":
-            return False
-        if not self.service.settings.youtube_api_key:
+        if not self._worker_controls_social_discovery():
             return False
         return self._last_social_discovery_at == 0.0 or (
             now - self._last_social_discovery_at >= self.social_discovery_interval_seconds
         )
+
+    def _worker_controls_social_discovery(self) -> bool:
+        if self.service.settings.social_discovery_provider != "youtube":
+            return False
+        if not self.service.settings.youtube_api_key:
+            return False
+        return True

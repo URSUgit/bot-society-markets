@@ -5547,7 +5547,7 @@ class BotSocietyService:
 
         return diagnostics
 
-    def run_pipeline_cycle(self) -> CycleResult:
+    def run_pipeline_cycle(self, *, refresh_social_discovery: bool = True) -> CycleResult:
         repository = BotSocietyRepository(self.database)
         latest_snapshots = repository.list_latest_market_snapshots()
         cycle_index = repository.count_pipeline_runs() + 1
@@ -5604,12 +5604,17 @@ class BotSocietyService:
         scored_predictions = scorer.score_available_predictions()
         social_updated = 0
         social_evidence_count = 0
-        try:
-            social_refresh = self.refresh_social_trader_discovery(repository=repository)
-            social_updated = social_refresh.updated
-            social_evidence_count = sum(len(trader.evidence) for trader in social_refresh.traders)
-        except Exception as exc:
-            message_prefixes.append(f"Social discovery fallback after {exc.__class__.__name__}: {exc}.")
+        if refresh_social_discovery:
+            try:
+                social_refresh = self.refresh_social_trader_discovery(repository=repository)
+                social_updated = social_refresh.updated
+                social_evidence_count = sum(len(trader.evidence) for trader in social_refresh.traders)
+            except Exception as exc:
+                message_prefixes.append(f"Social discovery fallback after {exc.__class__.__name__}: {exc}.")
+        else:
+            message_prefixes.append(
+                "Social discovery cadence is controlled by the worker interval guard to avoid duplicate YouTube quota usage."
+            )
 
         cycle_type = "live-cycle" if live_market_active or live_signal_active else "demo-cycle"
         if self.market_provider_fallback or self.signal_provider_fallback:

@@ -719,8 +719,10 @@ def test_worker_runs_youtube_social_discovery_once_on_first_cycle() -> None:
                 social_discovery_interval_seconds=60,
             )
             self.social_runs = 0
+            self.pipeline_refresh_flags = []
 
-        def run_pipeline_cycle(self):
+        def run_pipeline_cycle(self, *, refresh_social_discovery=True):
+            self.pipeline_refresh_flags.append(refresh_social_discovery)
             return SimpleNamespace(
                 operation=SimpleNamespace(cycle_type="test", generated_predictions=0, scored_predictions=0),
                 alert_inbox=SimpleNamespace(unread_count=0),
@@ -742,6 +744,7 @@ def test_worker_runs_youtube_social_discovery_once_on_first_cycle() -> None:
     worker.run(max_cycles=1)
 
     assert service.social_runs == 1
+    assert service.pipeline_refresh_flags == [False]
 
 
 def test_worker_skips_social_discovery_without_youtube_provider() -> None:
@@ -754,8 +757,10 @@ def test_worker_skips_social_discovery_without_youtube_provider() -> None:
                 social_discovery_interval_seconds=60,
             )
             self.social_runs = 0
+            self.pipeline_refresh_flags = []
 
-        def run_pipeline_cycle(self):
+        def run_pipeline_cycle(self, *, refresh_social_discovery=True):
+            self.pipeline_refresh_flags.append(refresh_social_discovery)
             return SimpleNamespace(
                 operation=SimpleNamespace(cycle_type="test", generated_predictions=0, scored_predictions=0),
                 alert_inbox=SimpleNamespace(unread_count=0),
@@ -771,6 +776,7 @@ def test_worker_skips_social_discovery_without_youtube_provider() -> None:
     worker.run(max_cycles=1)
 
     assert service.social_runs == 0
+    assert service.pipeline_refresh_flags == [True]
 
 
 def test_v1_routes_and_audit_log_capture_mutations() -> None:
