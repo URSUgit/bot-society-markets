@@ -7354,7 +7354,7 @@ class BotSocietyService:
             next_action = "Add BSM_YOUTUBE_API_KEY and set BSM_SOCIAL_DISCOVERY_PROVIDER=youtube to monitor live creators."
         return SocialMonitoringStatus(
             mode=mode,
-            cadence_seconds=int(self.settings.worker_interval_seconds),
+            cadence_seconds=int(self.settings.social_discovery_interval_seconds),
             provider=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
             youtube_configured=bool(self.settings.youtube_api_key),
             query_terms=list(self.settings.youtube_discovery_queries),
@@ -7365,6 +7365,7 @@ class BotSocietyService:
                 "YouTube search.list ordered by date",
                 "videos.list snippet/statistics hydration",
                 "channels.list public avatar metadata",
+                "public handle/channel RSS fallback when API quota is exhausted",
                 "title and description asset/direction extraction",
                 "normalized social signals for bot scoring",
                 "paper-only allocation/deployment controls",

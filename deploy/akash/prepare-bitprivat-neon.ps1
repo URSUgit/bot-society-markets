@@ -22,6 +22,8 @@ param(
 
     [string]$YouTubeVideoLimit = $env:BSM_YOUTUBE_VIDEO_LIMIT,
 
+    [string]$SocialDiscoveryIntervalSeconds = $env:BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS,
+
     [string]$ExtraAcceptHosts = $env:AKASH_EXTRA_ACCEPT_HOSTS,
 
     [ValidateSet("uact", "uakt")]
@@ -89,6 +91,7 @@ $youtubeApiKeyEscaped = if ($YouTubeApiKey) { $YouTubeApiKey.Replace("`r", "").R
 $youtubeQueriesEscaped = if ($YouTubeDiscoveryQueries) { $YouTubeDiscoveryQueries.Replace("`r", "").Replace("`n", "") } else { "crypto market analysis,polymarket trading,prediction market analysis,macro trading" }
 $youtubeChannelIdsEscaped = if ($YouTubeChannelIds) { $YouTubeChannelIds.Replace("`r", "").Replace("`n", "") } else { "" }
 $youtubeVideoLimitEscaped = if ($YouTubeVideoLimit) { $YouTubeVideoLimit.Trim() } else { "12" }
+$socialDiscoveryIntervalEscaped = if ($SocialDiscoveryIntervalSeconds) { $SocialDiscoveryIntervalSeconds.Trim() } else { "1800" }
 $rendered = $template.Replace(
     "ghcr.io/ursugit/bot-society-markets:latest",
     $resolvedImageRef
@@ -133,6 +136,7 @@ $rendered = $rendered -replace "BSM_YOUTUBE_API_KEY=[^`r`n]*", "BSM_YOUTUBE_API_
 $rendered = $rendered -replace "BSM_YOUTUBE_DISCOVERY_QUERIES=[^`r`n]*", "BSM_YOUTUBE_DISCOVERY_QUERIES=$youtubeQueriesEscaped"
 $rendered = $rendered -replace "BSM_YOUTUBE_CHANNEL_IDS=[^`r`n]*", "BSM_YOUTUBE_CHANNEL_IDS=$youtubeChannelIdsEscaped"
 $rendered = $rendered -replace "BSM_YOUTUBE_VIDEO_LIMIT=[^`r`n]*", "BSM_YOUTUBE_VIDEO_LIMIT=$youtubeVideoLimitEscaped"
+$rendered = $rendered -replace "BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS=[^`r`n]*", "BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS=$socialDiscoveryIntervalEscaped"
 $rendered = $rendered -replace "denom:\s+ua[ck]t", "denom: $PricingDenom"
 
 $outputDirectory = Split-Path -Parent $resolvedOutputPath

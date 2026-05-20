@@ -296,6 +296,7 @@ $env:BSM_YOUTUBE_API_KEY = ""
 $env:BSM_YOUTUBE_DISCOVERY_QUERIES = "crypto market analysis,polymarket trading,prediction market analysis,macro trading"
 $env:BSM_YOUTUBE_CHANNEL_IDS = ""
 $env:BSM_YOUTUBE_VIDEO_LIMIT = "12"
+$env:BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS = "1800"
 $env:BSM_VENUE_SIGNAL_PROVIDERS = ""
 $env:BSM_TRACKED_COIN_IDS = "bitcoin,ethereum,solana"
 $env:BSM_TRACKED_WALLETS = ""
@@ -356,6 +357,7 @@ $env:BSM_YOUTUBE_API_KEY = "your-youtube-data-api-key"
 $env:BSM_YOUTUBE_DISCOVERY_QUERIES = "crypto market analysis,polymarket trading,prediction market analysis,macro trading"
 $env:BSM_YOUTUBE_CHANNEL_IDS = ""
 $env:BSM_YOUTUBE_VIDEO_LIMIT = "12"
+$env:BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS = "1800"
 python -m api.app.jobs social-discovery
 python -m api.app.jobs provider-status
 ```
@@ -363,9 +365,13 @@ python -m api.app.jobs provider-status
 `social-discovery` is the operator command for refreshing creator-trader
 scorecards. In `demo` mode it seeds deterministic YouTube-style profiles. In
 `youtube` mode it uses the official YouTube Data API, then falls back safely to
-demo discovery if the key is missing or the API call fails. The provider status
+public video metadata, public channel RSS for `@handle`/channel URLs, or demo
+discovery if the key is missing or the API call fails. The provider status
 endpoint exposes `social_discovery_ready`, `social_discovery_warning`, and the
 configured query/channel scope so production can be checked before redeploying.
+When a worker service is deployed, it refreshes YouTube social discovery on
+`BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS` and creates normalized social signals
+without blocking the normal market cycle.
 GitHub Akash deploy automation resolves the social provider automatically:
 when the `BSM_YOUTUBE_API_KEY` repository secret exists, new main-branch
 deployments are rendered with `BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`; without

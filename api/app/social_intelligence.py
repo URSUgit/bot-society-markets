@@ -379,6 +379,7 @@ class YouTubeSocialDiscoveryProvider:
         self.channel_ids = channel_ids
         self.video_limit = video_limit
         self.timeout_seconds = timeout_seconds
+        self._public_channel_id_cache: dict[str, str | None] = {}
 
     def discover(self) -> SocialDiscoveryResult:
         if not self.api_key:
@@ -420,9 +421,30 @@ class YouTubeSocialDiscoveryProvider:
             )
         limit = min(30, max(3, int(video_limit or self.video_limit)))
         if not self.api_key:
+            try:
+                public_traders = self._public_target_traders(cleaned_target, limit=limit)
+            except Exception as exc:
+                public_traders = []
+                public_warning = (
+                    "Public YouTube fallback failed "
+                    f"({self._format_youtube_exception(exc)}); deterministic profile matching was used instead."
+                )
+            else:
+                public_warning = None
+            if public_traders:
+                return SocialDiscoveryResult(
+                    provider=self.source_name,
+                    youtube_configured=False,
+                    traders=public_traders,
+                    warnings=[
+                        "YouTube Data API key is not configured; used public YouTube metadata/RSS fallback with lower confidence.",
+                    ],
+                )
             fallback = DemoSocialDiscoveryProvider().discover_target(cleaned_target, video_limit=limit)
             fallback.provider = self.source_name
             fallback.youtube_configured = False
+            if public_warning:
+                fallback.warnings.insert(0, public_warning)
             return fallback
 
         warnings: list[str] = []
@@ -460,7 +482,15 @@ class YouTubeSocialDiscoveryProvider:
         )
 
     def _target_fallback_result(self, target: str, *, limit: int, reason: str) -> SocialDiscoveryResult:
-        public_traders = self._public_target_traders(target, limit=limit)
+        public_warning: str | None = None
+        try:
+            public_traders = self._public_target_traders(target, limit=limit)
+        except Exception as exc:
+            public_traders = []
+            public_warning = (
+                "Public YouTube fallback also failed "
+                f"({self._format_youtube_exception(exc)}); deterministic profile matching was used instead."
+            )
         if public_traders:
             return SocialDiscoveryResult(
                 provider=self.source_name,
@@ -480,6 +510,7 @@ class YouTubeSocialDiscoveryProvider:
         fallback.youtube_configured = bool(self.api_key)
         fallback.warnings = [
             f"YouTube target analysis failed ({reason}); using deterministic fallback.",
+            *([public_warning] if public_warning else []),
             *fallback.warnings,
         ]
         return fallback
@@ -759,14 +790,70 @@ class YouTubeSocialDiscoveryProvider:
         if re.fullmatch(r"UC[a-zA-Z0-9_-]{10,}", candidate):
             return [candidate]
         parsed = self._parse_maybe_youtube_url(candidate)
-        if not parsed:
-            return []
-        segments = [segment for segment in parsed.path.split("/") if segment]
-        if "channel" in segments:
-            index = segments.index("channel")
-            if len(segments) > index + 1 and segments[index + 1].startswith("UC"):
-                return [segments[index + 1]]
+        if parsed:
+            segments = [segment for segment in parsed.path.split("/") if segment]
+            if "channel" in segments:
+                index = segments.index("channel")
+                if len(segments) > index + 1 and segments[index + 1].startswith("UC"):
+                    return [segments[index + 1]]
+
+        public_channel_id = self._resolve_public_channel_id(candidate)
+        if public_channel_id:
+            return [public_channel_id]
         return []
+
+    def _resolve_public_channel_id(self, target: str) -> str | None:
+        lookup_url = self._public_channel_lookup_url(target)
+        if not lookup_url:
+            return None
+        if lookup_url in self._public_channel_id_cache:
+            return self._public_channel_id_cache[lookup_url]
+        try:
+            html = self._fetch_public_text(lookup_url)
+            channel_id = self._extract_public_channel_id(html)
+        except Exception:
+            channel_id = None
+        if channel_id:
+            self._public_channel_id_cache[lookup_url] = channel_id
+        return channel_id
+
+    def _public_channel_lookup_url(self, target: str) -> str | None:
+        candidate = target.strip()
+        if not candidate:
+            return None
+        if candidate.startswith("@") and " " not in candidate:
+            return f"https://www.youtube.com/{candidate}"
+
+        parsed = self._parse_maybe_youtube_url(candidate)
+        if not parsed:
+            return None
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if not segments:
+            return None
+        if segments[0].startswith("@"):
+            return f"https://www.youtube.com/{segments[0]}"
+        if segments[0] in {"c", "user"} and len(segments) > 1:
+            return f"https://www.youtube.com/{segments[0]}/{segments[1]}"
+        return None
+
+    def _fetch_public_text(self, url: str) -> str:
+        request = Request(url, headers={"User-Agent": "BITprivatSocialDiscovery/1.0"})
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            return response.read(1_000_000).decode("utf-8", errors="ignore")
+
+    @staticmethod
+    def _extract_public_channel_id(html: str) -> str | None:
+        patterns = (
+            r'"channelId"\s*:\s*"(UC[a-zA-Z0-9_-]{10,})"',
+            r'"externalId"\s*:\s*"(UC[a-zA-Z0-9_-]{10,})"',
+            r'itemprop="channelId"\s+content="(UC[a-zA-Z0-9_-]{10,})"',
+            r"youtube\.com/channel/(UC[a-zA-Z0-9_-]{10,})",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                return match.group(1)
+        return None
 
     def _target_query(self, target: str) -> str:
         parsed = self._parse_maybe_youtube_url(target)

@@ -119,6 +119,7 @@ class Settings:
     )
     youtube_channel_ids: tuple[str, ...] = ()
     youtube_video_limit: int = 12
+    social_discovery_interval_seconds: int = 1800
     polymarket_tag_id: int = 21
     polymarket_event_limit: int = 30
     tracked_wallets: tuple[str, ...] = ()
@@ -307,6 +308,10 @@ def get_settings() -> Settings:
     youtube_channel_ids = _split_csv_env(os.getenv("BSM_YOUTUBE_CHANNEL_IDS", ""))
 
     worker_interval_seconds = max(30, int(os.getenv("BSM_WORKER_INTERVAL_SECONDS", "900")))
+    social_discovery_interval_seconds = max(
+        worker_interval_seconds,
+        int(os.getenv("BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS", "1800")),
+    )
     worker_max_cycles = max(0, int(os.getenv("BSM_WORKER_MAX_CYCLES", "0")))
     alert_inbox_limit = max(1, min(50, int(os.getenv("BSM_ALERT_INBOX_LIMIT", "10"))))
     session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
@@ -364,6 +369,7 @@ def get_settings() -> Settings:
         ),
         youtube_channel_ids=youtube_channel_ids,
         youtube_video_limit=youtube_video_limit,
+        social_discovery_interval_seconds=social_discovery_interval_seconds,
         polymarket_tag_id=polymarket_tag_id,
         polymarket_event_limit=polymarket_event_limit,
         wallet_trade_limit=wallet_trade_limit,

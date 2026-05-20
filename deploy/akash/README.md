@@ -66,6 +66,7 @@ BSM_SOCIAL_DISCOVERY_PROVIDER=demo
 BSM_YOUTUBE_API_KEY=
 BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market analysis,polymarket trading,prediction market analysis,macro trading
 BSM_YOUTUBE_VIDEO_LIMIT=12
+BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS=1800
 ```
 
 `BSM_MARKET_PROVIDER=auto` makes the production container prefer the
@@ -78,6 +79,10 @@ workflow now defaults `social_discovery_provider` to `auto`: if the
 `BSM_YOUTUBE_API_KEY` repository secret exists, it renders the deployment with
 `BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`; otherwise it keeps deterministic demo
 discovery. You can still force `demo` or `youtube` from workflow dispatch.
+When the worker service is enabled, it runs social discovery on
+`BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS`; if official quota is exhausted, target
+analysis can still resolve direct videos and `@handle`/channel URLs through
+public YouTube metadata/RSS fallback with lower confidence warnings.
 
 After changing the Akash environment, verify the connector state from the
 running image:

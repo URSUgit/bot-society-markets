@@ -11,6 +11,7 @@ import shutil
 from tempfile import TemporaryDirectory
 import tempfile
 import time
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from unittest.mock import patch
 import zipfile
@@ -21,7 +22,8 @@ from api.app.config import Settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.main import create_app
-from api.app.social_intelligence import YouTubeSocialDiscoveryProvider
+from api.app.social_intelligence import DemoSocialDiscoveryProvider, YouTubeSocialDiscoveryProvider
+from api.app.worker import PipelineWorker
 
 
 @contextmanager
@@ -579,6 +581,134 @@ def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> No
     assert result.traders[0].evidence[0].external_id == "youtube-oembed-abc"
     assert "quotaExceeded" in result.warnings[0]
     assert "public YouTube metadata fallback" in result.warnings[0]
+
+
+def test_youtube_target_analysis_resolves_public_handle_to_rss_on_api_error() -> None:
+    provider = YouTubeSocialDiscoveryProvider(
+        api_key="bad-key",
+        queries=("crypto market analysis",),
+        channel_ids=(),
+        video_limit=3,
+    )
+
+    def fail_official_api(target: str, *, limit: int):
+        raise HTTPError(
+            "https://youtube.googleapis.test",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=BytesIO(
+                b'{"error":{"message":"quota exceeded","errors":[{"reason":"quotaExceeded"}],"status":"PERMISSION_DENIED"}}'
+            ),
+        )
+
+    def fake_public_text(url: str) -> str:
+        assert url == "https://www.youtube.com/@rsscreator"
+        return '{"channelId":"UCabcdefghijklmnopqrstuv"}'
+
+    def fake_rss_trader(channel_id: str, *, limit: int):
+        assert channel_id == "UCabcdefghijklmnopqrstuv"
+        assert limit == 5
+        trader = DemoSocialDiscoveryProvider().discover(include_key_warning=False).traders[0]
+        trader.display_name = "RSS Creator"
+        trader.handle = "@rsscreator"
+        trader.source_url = "https://www.youtube.com/@rsscreator"
+        return trader
+
+    provider._videos_from_target = fail_official_api  # type: ignore[method-assign]
+    provider._fetch_public_text = fake_public_text  # type: ignore[method-assign]
+    provider._rss_trader_from_channel = fake_rss_trader  # type: ignore[method-assign]
+
+    result = provider.discover_target("@rsscreator", video_limit=5)
+
+    assert result.traders[0].display_name == "RSS Creator"
+    assert result.traders[0].source_url == "https://www.youtube.com/@rsscreator"
+    assert "quotaExceeded" in result.warnings[0]
+    assert "public YouTube metadata fallback" in result.warnings[0]
+
+
+def test_youtube_target_analysis_uses_public_handle_without_api_key() -> None:
+    provider = YouTubeSocialDiscoveryProvider(
+        api_key=None,
+        queries=("crypto market analysis",),
+        channel_ids=(),
+        video_limit=3,
+    )
+
+    provider._fetch_public_text = lambda url: '{"externalId":"UCabcdefghijklmnopqrstuv"}'  # type: ignore[method-assign]
+    provider._rss_trader_from_channel = (  # type: ignore[method-assign]
+        lambda channel_id, *, limit: DemoSocialDiscoveryProvider().discover(include_key_warning=False).traders[0]
+    )
+
+    result = provider.discover_target("https://www.youtube.com/@rsscreator", video_limit=3)
+
+    assert result.youtube_configured is False
+    assert result.traders
+    assert "API key is not configured" in result.warnings[0]
+
+
+def test_worker_runs_youtube_social_discovery_once_on_first_cycle() -> None:
+    class FakeService:
+        def __init__(self) -> None:
+            self.settings = Settings(
+                social_discovery_provider="youtube",
+                youtube_api_key="key",
+                worker_interval_seconds=30,
+                social_discovery_interval_seconds=60,
+            )
+            self.social_runs = 0
+
+        def run_pipeline_cycle(self):
+            return SimpleNamespace(
+                operation=SimpleNamespace(cycle_type="test", generated_predictions=0, scored_predictions=0),
+                alert_inbox=SimpleNamespace(unread_count=0),
+            )
+
+        def refresh_social_trader_discovery(self):
+            self.social_runs += 1
+            return SimpleNamespace(
+                provider="youtube-data-api",
+                youtube_configured=True,
+                discovered=1,
+                updated=2,
+                warnings=[],
+            )
+
+    service = FakeService()
+    worker = PipelineWorker(service, interval_seconds=30)  # type: ignore[arg-type]
+
+    worker.run(max_cycles=1)
+
+    assert service.social_runs == 1
+
+
+def test_worker_skips_social_discovery_without_youtube_provider() -> None:
+    class FakeService:
+        def __init__(self) -> None:
+            self.settings = Settings(
+                social_discovery_provider="demo",
+                youtube_api_key="key",
+                worker_interval_seconds=30,
+                social_discovery_interval_seconds=60,
+            )
+            self.social_runs = 0
+
+        def run_pipeline_cycle(self):
+            return SimpleNamespace(
+                operation=SimpleNamespace(cycle_type="test", generated_predictions=0, scored_predictions=0),
+                alert_inbox=SimpleNamespace(unread_count=0),
+            )
+
+        def refresh_social_trader_discovery(self):
+            self.social_runs += 1
+            return SimpleNamespace(provider="demo", youtube_configured=False, discovered=0, updated=0, warnings=[])
+
+    service = FakeService()
+    worker = PipelineWorker(service, interval_seconds=30)  # type: ignore[arg-type]
+
+    worker.run(max_cycles=1)
+
+    assert service.social_runs == 0
 
 
 def test_v1_routes_and_audit_log_capture_mutations() -> None:

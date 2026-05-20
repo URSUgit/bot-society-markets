@@ -45,6 +45,7 @@ BSM_YOUTUBE_API_KEY=<YouTube Data API key>
 BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market prediction bitcoin ethereum,polymarket trading strategy prediction market,macro crypto market analysis
 BSM_YOUTUBE_CHANNEL_IDS=<optional comma-separated curated channel IDs>
 BSM_YOUTUBE_VIDEO_LIMIT=12
+BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS=1800
 BSM_WORKER_INTERVAL_SECONDS=300
 ```
 
@@ -55,6 +56,8 @@ For continuous monitoring on Akash, deploy the worker SDL:
 ```
 
 The GitHub Akash workflows already promote `social_discovery_provider=auto` to `youtube` when `BSM_YOUTUBE_API_KEY` exists as a repository secret.
+
+When the official API returns a temporary quota/auth error, direct video URLs and `@handle`/channel URLs now fall back to public YouTube metadata or public channel RSS. That keeps retail analysis usable while clearly lowering confidence and preserving warning provenance in the discovery ledger.
 
 ## Compliance Boundary
 
