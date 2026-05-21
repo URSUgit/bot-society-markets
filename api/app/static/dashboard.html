@@ -167,6 +167,51 @@
             <button class="button primary small-button" id="social-analyze-button" type="submit">Analyze Trader</button>
           </div>
         </form>
+        <div class="social-marketplace-toolbar" id="social-marketplace-toolbar" aria-label="Social trader marketplace filters">
+          <label>
+            <span>Search manager</span>
+            <input id="social-marketplace-search" type="search" placeholder="Name, handle, strategy, asset" autocomplete="off" aria-label="Search social trader managers">
+          </label>
+          <label>
+            <span>Asset</span>
+            <select id="social-asset-filter" aria-label="Filter social traders by asset">
+              <option value="all">All assets</option>
+            </select>
+          </label>
+          <label>
+            <span>Risk</span>
+            <select id="social-risk-filter" aria-label="Filter social traders by risk level">
+              <option value="all">All risk</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <label>
+            <span>Mode</span>
+            <select id="social-mode-filter" aria-label="Filter social traders by deployment mode">
+              <option value="all">All managers</option>
+              <option value="managed_paper">Managed paper</option>
+              <option value="signals">Signal follow</option>
+              <option value="ready">Paper-ready</option>
+              <option value="not_deployed">Not deployed</option>
+            </select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select id="social-sort-select" aria-label="Sort social trader marketplace">
+              <option value="score">Best score</option>
+              <option value="roi">If-followed ROI</option>
+              <option value="win_rate">Win rate</option>
+              <option value="recent">Freshest signal</option>
+              <option value="delegated">Delegated capital</option>
+            </select>
+          </label>
+          <div class="social-marketplace-status">
+            <strong id="social-visible-count">0 managers</strong>
+            <button class="button ghost small-button" id="social-reset-filters-button" type="button">Reset</button>
+          </div>
+        </div>
         <div class="social-kpi-grid" id="social-trader-kpis"></div>
         <div class="social-trader-layout">
           <div>

@@ -6171,6 +6171,72 @@ body.bit-engine-product-ui .eyebrow {
   margin: 16px 0;
 }
 
+.bit-engine-product-ui.command-os .social-marketplace-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(4, minmax(128px, 0.7fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(240, 253, 250, 0.72)),
+    radial-gradient(circle at 92% 12%, rgba(20, 184, 166, 0.12), transparent 34%);
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar label {
+  display: grid;
+  gap: 5px;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar label span {
+  color: var(--product-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar input,
+.bit-engine-product-ui.command-os .social-marketplace-toolbar select {
+  width: 100%;
+  min-height: 39px;
+  color: var(--product-ink);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.78);
+  outline: none;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar input {
+  padding: 0 12px;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar select {
+  padding: 0 9px;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-toolbar input:focus,
+.bit-engine-product-ui.command-os .social-marketplace-toolbar select:focus {
+  border-color: rgba(15, 118, 110, 0.54);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-status {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  min-width: 124px;
+}
+
+.bit-engine-product-ui.command-os .social-marketplace-status strong {
+  color: var(--product-ink);
+  font-family: var(--font-finance);
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
 .bit-engine-product-ui.command-os .social-kpi-grid article,
 .bit-engine-product-ui.command-os .social-score-strip div {
   padding: 12px;
@@ -7883,8 +7949,13 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
 
 @media (max-width: 1080px) {
   .bit-engine-product-ui.command-os .social-analyze-form,
-  .bit-engine-product-ui.command-os .social-analyze-row {
+  .bit-engine-product-ui.command-os .social-analyze-row,
+  .bit-engine-product-ui.command-os .social-marketplace-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .bit-engine-product-ui.command-os .social-marketplace-status {
+    justify-items: start;
   }
 
   .bit-engine-product-ui.command-os .social-trader-head,

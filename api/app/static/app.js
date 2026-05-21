@@ -217,6 +217,14 @@ let simulationConfig = null;
 let latestSimulationResult = null;
 let latestAdvancedExport = null;
 let latestSocialExecution = null;
+let socialMarketplaceState = {
+  query: "",
+  asset: "all",
+  risk: "all",
+  mode: "all",
+  sort: "score",
+};
+let socialMarketplaceFilterTimer = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
@@ -1475,6 +1483,149 @@ function socialRunTone(status) {
   return "positive";
 }
 
+function socialTraderSearchText(trader, allocation) {
+  return [
+    trader.display_name,
+    trader.handle,
+    trader.description,
+    trader.strategy_profile,
+    trader.current_market_view,
+    trader.pnl_history_summary,
+    trader.conviction_label,
+    trader.copy_trade_readiness,
+    trader.risk_level,
+    allocation?.mode,
+    ...(trader.primary_assets || []),
+    ...(trader.style_tags || []),
+    ...(trader.asset_exposure || []).map((item) => `${item.asset} ${item.bias}`),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function socialTraderMatchesMarketplace(trader, allocationByTrader) {
+  const allocation = allocationByTrader.get(trader.id);
+  const query = socialMarketplaceState.query.trim().toLowerCase();
+  if (query && !socialTraderSearchText(trader, allocation).includes(query)) {
+    return false;
+  }
+  if (socialMarketplaceState.asset !== "all") {
+    const assets = new Set([
+      ...(trader.primary_assets || []),
+      ...(trader.asset_exposure || []).map((item) => item.asset),
+      ...(trader.evidence || []).map((item) => item.asset),
+    ].map((asset) => String(asset).toUpperCase()));
+    if (!assets.has(socialMarketplaceState.asset.toUpperCase())) {
+      return false;
+    }
+  }
+  if (socialMarketplaceState.risk !== "all" && trader.risk_level !== socialMarketplaceState.risk) {
+    return false;
+  }
+  if (socialMarketplaceState.mode === "managed_paper" && allocation?.mode !== "managed_paper") {
+    return false;
+  }
+  if (socialMarketplaceState.mode === "signals" && allocation?.mode !== "signals") {
+    return false;
+  }
+  if (socialMarketplaceState.mode === "ready" && trader.copy_trade_readiness !== "paper_ready") {
+    return false;
+  }
+  if (socialMarketplaceState.mode === "not_deployed" && (allocation || trader.is_deployed)) {
+    return false;
+  }
+  return true;
+}
+
+function socialRiskRank(level) {
+  return { low: 1, medium: 2, high: 3 }[level] || 4;
+}
+
+function socialSortValue(trader, allocationByTrader) {
+  const allocation = allocationByTrader.get(trader.id);
+  if (socialMarketplaceState.sort === "roi") {
+    return Number(trader.roi_if_followed || 0);
+  }
+  if (socialMarketplaceState.sort === "win_rate") {
+    return Number(trader.win_rate || 0);
+  }
+  if (socialMarketplaceState.sort === "recent") {
+    return trader.last_signal_at ? new Date(trader.last_signal_at).getTime() : 0;
+  }
+  if (socialMarketplaceState.sort === "delegated") {
+    return Number(trader.delegated_usd || allocation?.allocation_limit_usd || 0);
+  }
+  return Number(trader.composite_score || 0);
+}
+
+function socialSortTraders(traders, allocationByTrader) {
+  return [...traders].sort((a, b) => {
+    const primary = socialSortValue(b, allocationByTrader) - socialSortValue(a, allocationByTrader);
+    if (Math.abs(primary) > 0.000001) {
+      return primary;
+    }
+    const risk = socialRiskRank(a.risk_level) - socialRiskRank(b.risk_level);
+    if (risk !== 0) {
+      return risk;
+    }
+    return String(a.display_name || "").localeCompare(String(b.display_name || ""));
+  });
+}
+
+function syncSocialMarketplaceControls(traders) {
+  const search = document.getElementById("social-marketplace-search");
+  const risk = document.getElementById("social-risk-filter");
+  const mode = document.getElementById("social-mode-filter");
+  const sort = document.getElementById("social-sort-select");
+  const asset = document.getElementById("social-asset-filter");
+  if (search && search.value !== socialMarketplaceState.query) {
+    search.value = socialMarketplaceState.query;
+  }
+  if (risk) {
+    risk.value = socialMarketplaceState.risk;
+  }
+  if (mode) {
+    mode.value = socialMarketplaceState.mode;
+  }
+  if (sort) {
+    sort.value = socialMarketplaceState.sort;
+  }
+  if (asset) {
+    const assets = [...new Set(traders.flatMap((trader) => [
+      ...(trader.primary_assets || []),
+      ...(trader.asset_exposure || []).map((item) => item.asset),
+      ...(trader.evidence || []).map((item) => item.asset),
+    ]).map((item) => String(item).toUpperCase()).filter(Boolean))].sort();
+    const options = ["all", ...assets];
+    const signature = options.join("|");
+    if (asset.dataset.signature !== signature) {
+      asset.innerHTML = options.map((value) => (
+        value === "all"
+          ? '<option value="all">All assets</option>'
+          : `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`
+      )).join("");
+      asset.dataset.signature = signature;
+    }
+    if (!options.includes(socialMarketplaceState.asset)) {
+      socialMarketplaceState.asset = "all";
+    }
+    asset.value = socialMarketplaceState.asset;
+  }
+}
+
+function updateSocialMarketplaceStatus(visibleCount, totalCount) {
+  const counter = document.getElementById("social-visible-count");
+  if (!counter) {
+    return;
+  }
+  const suffix = visibleCount === 1 ? "manager" : "managers";
+  counter.textContent = `${visibleCount} of ${totalCount} ${suffix}`;
+}
+
+function renderSocialTradingFromFilters() {
+  if (latestSnapshot?.social_trading) {
+    renderSocialTrading(latestSnapshot.social_trading);
+  }
+}
+
 function renderSocialTrading(socialTrading) {
   const summary = document.getElementById("social-trader-summary");
   const badge = document.getElementById("social-trader-badge");
@@ -1491,6 +1642,12 @@ function renderSocialTrading(socialTrading) {
   const traders = socialTrading.top_traders || [];
   const allocations = socialTrading.allocations || [];
   const allocationByTrader = new Map(allocations.map((allocation) => [allocation.trader_id, allocation]));
+  syncSocialMarketplaceControls(traders);
+  const visibleTraders = socialSortTraders(
+    traders.filter((trader) => socialTraderMatchesMarketplace(trader, allocationByTrader)),
+    allocationByTrader,
+  );
+  updateSocialMarketplaceStatus(visibleTraders.length, traders.length);
   const canEdit = workspaceEditable();
   const executeButton = document.getElementById("social-execute-button");
   if (executeButton) {
@@ -1544,7 +1701,7 @@ function renderSocialTrading(socialTrading) {
     </article>
   `;
 
-  grid.innerHTML = traders.map((trader) => {
+  grid.innerHTML = visibleTraders.map((trader) => {
     const allocation = allocationByTrader.get(trader.id);
     const guidance = trader.allocation_guidance || {};
     const riskNotes = (trader.risk_notes || []).slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
@@ -1652,7 +1809,11 @@ function renderSocialTrading(socialTrading) {
         </div>
       </article>
     `;
-  }).join("") || '<article class="social-empty-card"><h4>No social traders yet</h4><p>Run YouTube discovery to populate creator scorecards.</p></article>';
+  }).join("") || (
+    traders.length
+      ? '<article class="social-empty-card"><h4>No managers match the filters</h4><p>Reset filters or search a broader asset/style to bring more creator managers back into view.</p></article>'
+      : '<article class="social-empty-card"><h4>No social traders yet</h4><p>Run YouTube discovery to populate creator scorecards.</p></article>'
+  );
 
   allocationList.innerHTML = allocations.map((allocation) => `
     <li>
@@ -4254,6 +4415,45 @@ function bindForms() {
     socialAnalyzeForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await analyzeSocialTraderTarget(socialAnalyzeForm);
+    });
+  }
+
+  const socialSearch = document.getElementById("social-marketplace-search");
+  if (socialSearch) {
+    socialSearch.addEventListener("input", () => {
+      window.clearTimeout(socialMarketplaceFilterTimer);
+      socialMarketplaceFilterTimer = window.setTimeout(() => {
+        socialMarketplaceState.query = socialSearch.value || "";
+        renderSocialTradingFromFilters();
+      }, 160);
+    });
+  }
+  [
+    ["social-asset-filter", "asset"],
+    ["social-risk-filter", "risk"],
+    ["social-mode-filter", "mode"],
+    ["social-sort-select", "sort"],
+  ].forEach(([id, key]) => {
+    const control = document.getElementById(id);
+    if (control) {
+      control.addEventListener("change", () => {
+        socialMarketplaceState[key] = control.value || "all";
+        renderSocialTradingFromFilters();
+      });
+    }
+  });
+  const socialReset = document.getElementById("social-reset-filters-button");
+  if (socialReset) {
+    socialReset.addEventListener("click", () => {
+      socialMarketplaceState = {
+        query: "",
+        asset: "all",
+        risk: "all",
+        mode: "all",
+        sort: "score",
+      };
+      renderSocialTradingFromFilters();
+      setStatus("Social trader marketplace filters reset.");
     });
   }
 
