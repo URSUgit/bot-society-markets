@@ -7942,6 +7942,214 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
   font-size: 0.7rem;
 }
 
+.bit-engine-product-ui.command-os .social-detail-drawer.hidden {
+  display: none;
+}
+
+.bit-engine-product-ui.command-os .social-detail-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 640px);
+  pointer-events: none;
+}
+
+.bit-engine-product-ui.command-os .social-detail-backdrop {
+  border: 0;
+  background: rgba(2, 6, 23, 0.46);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.bit-engine-product-ui.command-os .social-detail-panel {
+  pointer-events: auto;
+  overflow: auto;
+  max-height: 100vh;
+  padding: 18px;
+  color: var(--color-text);
+  border-left: 1px solid rgba(148, 163, 184, 0.2);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(45, 212, 191, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+  box-shadow: -28px 0 60px rgba(2, 6, 23, 0.28);
+}
+
+.bit-engine-product-ui.command-os .social-detail-content {
+  display: grid;
+  gap: 14px;
+}
+
+.bit-engine-product-ui.command-os .social-detail-head,
+.bit-engine-product-ui.command-os .social-detail-identity {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.bit-engine-product-ui.command-os .social-detail-identity {
+  justify-content: flex-start;
+}
+
+.bit-engine-product-ui.command-os .social-detail-head h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+}
+
+.bit-engine-product-ui.command-os .social-detail-head p:not(.eyebrow) {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
+.bit-engine-product-ui.command-os .social-detail-status,
+.bit-engine-product-ui.command-os .social-detail-scoreboard,
+.bit-engine-product-ui.command-os .social-detail-two-col {
+  display: grid;
+  gap: 9px;
+}
+
+.bit-engine-product-ui.command-os .social-detail-status {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bit-engine-product-ui.command-os .social-detail-status span,
+.bit-engine-product-ui.command-os .social-detail-scoreboard article,
+.bit-engine-product-ui.command-os .social-detail-two-col article,
+.bit-engine-product-ui.command-os .social-detail-manager-box,
+.bit-engine-product-ui.command-os .social-detail-evidence,
+.bit-engine-product-ui.command-os .social-detail-risk {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.bit-engine-product-ui.command-os .social-detail-status span {
+  padding: 9px 10px;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-detail-status span[data-tone="positive"] {
+  color: #99f6e4;
+  border-color: rgba(45, 212, 191, 0.24);
+  background: rgba(13, 148, 136, 0.18);
+}
+
+.bit-engine-product-ui.command-os .social-detail-status span[data-tone="warning"] {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(113, 63, 18, 0.2);
+}
+
+.bit-engine-product-ui.command-os .social-detail-status span[data-tone="danger"] {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.bit-engine-product-ui.command-os .social-detail-scoreboard {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bit-engine-product-ui.command-os .social-detail-scoreboard article,
+.bit-engine-product-ui.command-os .social-detail-two-col article,
+.bit-engine-product-ui.command-os .social-detail-manager-box,
+.bit-engine-product-ui.command-os .social-detail-evidence,
+.bit-engine-product-ui.command-os .social-detail-risk {
+  padding: 12px;
+}
+
+.bit-engine-product-ui.command-os .social-detail-scoreboard span,
+.bit-engine-product-ui.command-os .social-detail-two-col span,
+.bit-engine-product-ui.command-os .social-detail-manager-box span {
+  display: block;
+  color: var(--color-dim);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bit-engine-product-ui.command-os .social-detail-scoreboard strong,
+.bit-engine-product-ui.command-os .social-detail-manager-box strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-text);
+  font-family: var(--font-finance);
+  font-size: 1.18rem;
+}
+
+.bit-engine-product-ui.command-os .social-detail-scoreboard small,
+.bit-engine-product-ui.command-os .social-detail-manager-box small,
+.bit-engine-product-ui.command-os .social-detail-two-col p,
+.bit-engine-product-ui.command-os .social-detail-risk li {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.bit-engine-product-ui.command-os .social-detail-two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bit-engine-product-ui.command-os .detail-roi-strip,
+.bit-engine-product-ui.command-os .detail-asset-exposure {
+  margin: 0;
+}
+
+.bit-engine-product-ui.command-os .social-detail-manager-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(13, 148, 136, 0.14), rgba(30, 41, 59, 0.42)),
+    rgba(15, 23, 42, 0.58);
+}
+
+.bit-engine-product-ui.command-os .social-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.bit-engine-product-ui.command-os .social-detail-evidence ul,
+.bit-engine-product-ui.command-os .social-detail-risk ul {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.bit-engine-product-ui.command-os .social-detail-evidence li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.24);
+}
+
+.bit-engine-product-ui.command-os .social-detail-evidence a {
+  color: var(--color-text);
+  font-weight: 900;
+}
+
+.bit-engine-product-ui.command-os .social-detail-evidence p,
+.bit-engine-product-ui.command-os .social-detail-evidence small {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
 @keyframes social-avatar-orbit {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -7960,8 +8168,21 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
 
   .bit-engine-product-ui.command-os .social-trader-head,
   .bit-engine-product-ui.command-os .social-thesis-grid,
-  .bit-engine-product-ui.command-os .social-roi-strip {
+  .bit-engine-product-ui.command-os .social-roi-strip,
+  .bit-engine-product-ui.command-os .social-detail-drawer,
+  .bit-engine-product-ui.command-os .social-detail-status,
+  .bit-engine-product-ui.command-os .social-detail-scoreboard,
+  .bit-engine-product-ui.command-os .social-detail-two-col,
+  .bit-engine-product-ui.command-os .social-detail-manager-box {
     grid-template-columns: 1fr;
+  }
+
+  .bit-engine-product-ui.command-os .social-detail-backdrop {
+    display: none;
+  }
+
+  .bit-engine-product-ui.command-os .social-detail-panel {
+    width: 100vw;
   }
 
   .bit-engine-product-ui.command-os .social-deploy-state {

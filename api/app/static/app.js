@@ -225,6 +225,7 @@ let socialMarketplaceState = {
   sort: "score",
 };
 let socialMarketplaceFilterTimer = null;
+let selectedSocialTraderId = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
@@ -1626,6 +1627,128 @@ function renderSocialTradingFromFilters() {
   }
 }
 
+function socialTraderDetailMarkup(trader, allocation, canEdit) {
+  const guidance = trader.allocation_guidance || {};
+  const roiWindows = socialRoiWindowsMarkup(trader) || "<div><span>ROI</span><strong>Pending</strong><small>No signal window yet</small></div>";
+  const exposure = socialAssetExposureMarkup(trader) || "<span><strong>Pending</strong> Waiting for indexed evidence</span>";
+  const decisions = socialDecisionFeedMarkup(trader);
+  const evidence = (trader.evidence || []).slice(0, 6).map((item) => `
+    <li>
+      <div>
+        <a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
+        <p>${escapeHtml(item.summary || "No summary available.")}</p>
+        <small>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtRelativeTime(item.observed_at)}</small>
+      </div>
+      <span class="${Number(item.derived_return || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(item.derived_return || 0)}</span>
+    </li>
+  `).join("") || "<li><p>No public evidence indexed yet. Analyze the channel or scan new videos.</p></li>";
+  const riskNotes = (trader.risk_notes || []).map((note) => `<li>${escapeHtml(note)}</li>`).join("")
+    || "<li>Start with signal mode or paper-only delegation until more evidence is collected.</li>";
+
+  return `
+    <div class="social-detail-head">
+      <div class="social-detail-identity">
+        ${socialAvatarMarkup(trader)}
+        <div>
+          <p class="eyebrow">${escapeHtml(humanizeKey(trader.platform))} manager · ${escapeHtml(trader.handle)}</p>
+          <h3 id="social-detail-title">${escapeHtml(trader.display_name)}</h3>
+          <p>${escapeHtml(trader.description)}</p>
+        </div>
+      </div>
+      <button class="button ghost small-button" type="button" data-action="social-close-detail">Close</button>
+    </div>
+    <div class="social-detail-status">
+      <span data-tone="${socialRiskTone(trader.risk_level)}">Risk ${escapeHtml(humanizeKey(trader.risk_level || "medium"))}</span>
+      <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
+      <span>${trader.is_deployed ? `Deployed · ${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}` : "Not deployed"}</span>
+    </div>
+    <div class="social-detail-scoreboard">
+      <article><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong><small>Composite creator score</small></article>
+      <article><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong><small>${trader.signal_count || 0} extracted signal(s)</small></article>
+      <article><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong><small>${fmtSignedPercent(trader.max_drawdown)} max drawdown</small></article>
+      <article><span>Delegation</span><strong>${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}</strong><small>${escapeHtml(humanizeKey(allocation?.mode || trader.deployment_mode || guidance.recommended_mode || "signals"))}</small></article>
+    </div>
+    <div class="social-detail-two-col">
+      <article>
+        <span>Strategy profile</span>
+        <p>${escapeHtml(trader.strategy_profile || "Strategy profile pending.")}</p>
+      </article>
+      <article>
+        <span>Current market view</span>
+        <p>${escapeHtml(trader.current_market_view || "Run discovery to update the latest market view.")}</p>
+      </article>
+    </div>
+    <div class="social-roi-strip detail-roi-strip">${roiWindows}</div>
+    <div class="social-asset-exposure detail-asset-exposure">${exposure}</div>
+    <div class="social-detail-manager-box">
+      <div>
+        <span>Suggested cap</span>
+        <strong>${fmtUsd(guidance.suggested_allocation_usd || 0)}</strong>
+        <small>${escapeHtml(guidance.rationale || trader.watch_mode_recommendation || "")}</small>
+      </div>
+      <div class="social-detail-actions">
+        <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
+          ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
+        </button>
+        <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
+          ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Deploy paper manager"}
+        </button>
+      </div>
+    </div>
+    <div class="social-bot-decisions detail-decision-list">
+      <div class="workspace-head">
+        <h5>Decision timeline</h5>
+        <span class="badge">Explainable bot</span>
+      </div>
+      <ul>${decisions}</ul>
+    </div>
+    <div class="social-detail-evidence">
+      <div class="workspace-head">
+        <h5>Evidence trail</h5>
+        <span class="badge">${(trader.evidence || []).length} item(s)</span>
+      </div>
+      <ul>${evidence}</ul>
+    </div>
+    <div class="social-detail-risk">
+      <p class="eyebrow">Risk notes</p>
+      <ul>${riskNotes}</ul>
+    </div>
+  `;
+}
+
+function renderSocialTraderDrawer(socialTrading) {
+  const drawer = document.getElementById("social-detail-drawer");
+  const content = document.getElementById("social-detail-content");
+  if (!drawer || !content || !selectedSocialTraderId) {
+    return;
+  }
+  const traders = socialTrading?.top_traders || [];
+  const allocations = socialTrading?.allocations || [];
+  const allocationByTrader = new Map(allocations.map((allocation) => [allocation.trader_id, allocation]));
+  const trader = traders.find((candidate) => Number(candidate.id) === Number(selectedSocialTraderId));
+  if (!trader) {
+    selectedSocialTraderId = null;
+    drawer.classList.add("hidden");
+    return;
+  }
+  content.innerHTML = socialTraderDetailMarkup(trader, allocationByTrader.get(trader.id), workspaceEditable());
+  drawer.classList.remove("hidden");
+}
+
+function openSocialTraderDetail(traderId) {
+  selectedSocialTraderId = Number(traderId);
+  renderSocialTraderDrawer(latestSnapshot?.social_trading);
+  setStatus("Opened the creator manager detail drawer.");
+}
+
+function closeSocialTraderDetail() {
+  selectedSocialTraderId = null;
+  const drawer = document.getElementById("social-detail-drawer");
+  if (drawer) {
+    drawer.classList.add("hidden");
+  }
+}
+
 function renderSocialTrading(socialTrading) {
   const summary = document.getElementById("social-trader-summary");
   const badge = document.getElementById("social-trader-badge");
@@ -1799,6 +1922,9 @@ function renderSocialTrading(socialTrading) {
             </select>
           </label>
           <div class="social-action-row">
+            <button class="button ghost small-button" type="button" data-action="social-open-detail" data-social-trader-id="${trader.id}">
+              Inspect manager
+            </button>
             <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
               ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
             </button>
@@ -1850,6 +1976,7 @@ function renderSocialTrading(socialTrading) {
     ...(socialTrading.portfolio_risk_notes || []),
     ...(socialTrading.safety_notes || []),
   ].filter(Boolean).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
+  renderSocialTraderDrawer(socialTrading);
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {
@@ -4710,6 +4837,12 @@ function initProfessionalTradingWorkspace() {
 }
 
 function bindInteractions() {
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && selectedSocialTraderId) {
+      closeSocialTraderDetail();
+    }
+  });
+
   document.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -4823,6 +4956,16 @@ function bindInteractions() {
           return;
         }
         await followBot(target.dataset.botSlug);
+        return;
+      }
+      if (action === "social-open-detail") {
+        event.preventDefault();
+        openSocialTraderDetail(target.dataset.socialTraderId);
+        return;
+      }
+      if (action === "social-close-detail") {
+        event.preventDefault();
+        closeSocialTraderDetail();
         return;
       }
       if (action === "social-follow-signal" || action === "social-follow-managed") {

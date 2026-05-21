@@ -357,6 +357,8 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="social-marketplace-search"' in dashboard_response.text
         assert 'id="social-sort-select"' in dashboard_response.text
         assert 'id="social-visible-count"' in dashboard_response.text
+        assert 'id="social-detail-drawer"' in dashboard_response.text
+        assert 'id="social-detail-content"' in dashboard_response.text
         assert 'id="social-discovery-run-list"' in dashboard_response.text
         assert 'id="social-execution-ledger-list"' in dashboard_response.text
         assert "Bot decision receipt" in dashboard_response.text
