@@ -75,7 +75,7 @@ flowchart TD
   redis["Redis"]
   search["Meilisearch"]
   object["R2 / S3 Object Storage"]
-  providers["External Providers\nPolymarket, Kalshi, Hyperliquid, CoinGecko, Reddit, X, Telegram"]
+  providers["External Providers\nBinance, Polymarket, Kalshi, Hyperliquid, CoinGecko, Reddit, X, Telegram"]
 
   browser --> cloudflare
   mobile --> cloudflare
@@ -810,4 +810,3 @@ The current repository already implements:
 - Akash/Docker deployment.
 
 The target architecture described here should be treated as a V1 scale-up plan, not a claim that every listed service exists today.
-

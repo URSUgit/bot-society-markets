@@ -126,6 +126,7 @@ from .notifications import NotificationDispatcher
 from .orchestration import PredictionOrchestrator
 from .providers import (
     AutoMarketProvider,
+    BinanceSpotMarketProvider,
     CoinGeckoMarketProvider,
     DemoMarketProvider,
     DemoMacroProvider,
@@ -3049,6 +3050,7 @@ class BotSocietyService:
         desktop_configured = self.settings.desktop_app_framework != "none" or bool(self.settings.desktop_bundle_id)
         desktop_ready = self.settings.desktop_app_framework != "none" and bool(self.settings.desktop_bundle_id)
         social_fallback_active = provider_status.social_discovery_fallback_active
+        binance_enabled = self.settings.market_provider_mode in {"auto", "binance"}
         hyperliquid_enabled = self.settings.market_provider_mode in {"auto", "hyperliquid"}
         ibkr_endpoint_configured = self.settings.ibkr_connection_mode != "disabled" and (
             bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
@@ -3063,6 +3065,28 @@ class BotSocietyService:
         )
 
         connectors = [
+            self._connector_item(
+                connector_id="binance-spot-market-data",
+                label="Binance Spot Market Data",
+                category="Market Data",
+                mode="auto" if self.settings.market_provider_mode == "auto" else ("binance" if binance_enabled else "planned"),
+                source=f"Binance public spot 24hr ticker ({self.settings.binance_quote_asset} quotes)",
+                configured=binance_enabled,
+                live_capable=True,
+                ready=binance_enabled and provider_status.market_provider_ready,
+                fallback_active=(not binance_enabled) or provider_status.market_fallback_active,
+                activation_phase="Primary spot data activation",
+                owner="Data Integrations",
+                risk_level="low",
+                target_surface="live spot prices, 24h volume, trend score, volatility, and dashboard indicators",
+                env_keys=["BSM_MARKET_PROVIDER", "BSM_BINANCE_API_BASE_URL", "BSM_BINANCE_QUOTE_ASSET"],
+                next_actions=[
+                    "Keep BSM_MARKET_PROVIDER=auto so Binance spot leads the live market router.",
+                    "Use BSM_BINANCE_QUOTE_ASSET=USDT for the broadest BTC/ETH/SOL coverage.",
+                    "Monitor /api/system/providers after each deploy; if Binance is unavailable, auto falls through to Hyperliquid then CoinGecko.",
+                ],
+                app_url="https://github.com/binance/binance-spot-api-docs",
+            ),
             self._connector_item(
                 connector_id="coingecko-market-data",
                 label="CoinGecko Market Data",
@@ -3079,7 +3103,7 @@ class BotSocietyService:
                 target_surface="Spot market tracking and historical archive hydration",
                 env_keys=["BSM_COINGECKO_API_KEY"],
                 next_actions=[
-                    "Keep market mode on auto so CoinGecko acts as the resilient spot-data fallback.",
+                    "Keep market mode on auto so CoinGecko acts as the final spot-data fallback after Binance and Hyperliquid.",
                     "Attach a live API key before increasing tracked assets.",
                 ],
             ),
@@ -3099,7 +3123,7 @@ class BotSocietyService:
                 target_surface="Perpetuals monitoring, momentum context, and future execution adapters",
                 env_keys=["BSM_HYPERLIQUID_DEX"],
                 next_actions=[
-                    "Keep BSM_MARKET_PROVIDER=auto so Hyperliquid can lead while CoinGecko remains a fallback.",
+                    "Keep BSM_MARKET_PROVIDER=auto so Binance spot leads while Hyperliquid provides perp context and fallback pricing.",
                     "Pair the live feed with testnet credentials before any execution-adjacent work.",
                 ],
                 app_url=self.settings.hyperliquid_testnet_app_url,
@@ -3591,6 +3615,44 @@ class BotSocietyService:
                         if self.settings.apple_developer_team_id
                         else "Desktop installers still need signing/notarization setup before public distribution."
                     ),
+                    required=False,
+                )
+            )
+
+        elif connector_id == "binance-spot-market-data":
+            binance_mode_active = self.settings.market_provider_mode in {"auto", "binance"}
+            checks.append(
+                self._connector_check(
+                    key="binance_feed_mode",
+                    label="Binance spot feed mode",
+                    status="pass" if binance_mode_active else "fail",
+                    detail=(
+                        "Binance public spot ticker is active through the auto market router."
+                        if self.settings.market_provider_mode == "auto"
+                        else "Binance public spot ticker is the selected market provider."
+                        if binance_mode_active
+                        else "Set BSM_MARKET_PROVIDER=auto or binance to promote this spot feed."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="binance_quote_asset",
+                    label="Binance quote asset",
+                    status="pass" if bool(self.settings.binance_quote_asset) else "fail",
+                    detail=(
+                        f"Tracked assets are quoted against {self.settings.binance_quote_asset}."
+                        if self.settings.binance_quote_asset
+                        else "Set BSM_BINANCE_QUOTE_ASSET, usually USDT."
+                    ),
+                )
+            )
+            checks.append(
+                self._connector_check(
+                    key="binance_api_base",
+                    label="Binance API base URL",
+                    status="pass" if self.settings.binance_api_base_url.startswith("https://") else "warn",
+                    detail=f"Base URL: {self.settings.binance_api_base_url}.",
                     required=False,
                 )
             )
@@ -6430,7 +6492,7 @@ class BotSocietyService:
                 return True, False
             if self.settings.market_provider_mode == "auto":
                 return True, True
-            if self.settings.market_provider_mode == "hyperliquid":
+            if self.settings.market_provider_mode in {"binance", "hyperliquid"}:
                 return True, True
             configured = self.settings.coingecko_plan != "pro" or bool(self.settings.coingecko_api_key)
             return configured, configured
@@ -6494,6 +6556,11 @@ class BotSocietyService:
         if self.settings.market_provider_mode == "auto":
             return AutoMarketProvider(
                 (
+                    BinanceSpotMarketProvider(
+                        tracked_coin_ids=self.settings.tracked_coin_ids,
+                        quote_asset=self.settings.binance_quote_asset,
+                        base_url=self.settings.binance_api_base_url,
+                    ),
                     HyperliquidMarketProvider(
                         tracked_coin_ids=self.settings.tracked_coin_ids,
                         dex=self.settings.hyperliquid_dex,
@@ -6504,6 +6571,12 @@ class BotSocietyService:
                         tracked_coin_ids=self.settings.tracked_coin_ids,
                     ),
                 )
+            )
+        if self.settings.market_provider_mode == "binance":
+            return BinanceSpotMarketProvider(
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+                quote_asset=self.settings.binance_quote_asset,
+                base_url=self.settings.binance_api_base_url,
             )
         if self.settings.market_provider_mode == "coingecko":
             return CoinGeckoMarketProvider(

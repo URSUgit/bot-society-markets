@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from api.app.providers import AutoMarketProvider, MarketProviderBase, ProviderReadiness
+from api.app.providers import AutoMarketProvider, BinanceSpotMarketProvider, MarketProviderBase, ProviderReadiness
 
 
 class FailingMarketProvider(MarketProviderBase):
@@ -79,3 +81,64 @@ def test_auto_market_provider_fails_loudly_when_no_feed_returns_data() -> None:
         provider.generate([], 1)
 
     assert provider.last_source_name == "auto-market-router-unresolved"
+
+
+def test_binance_spot_market_provider_parses_public_ticker(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = [
+        {
+            "symbol": "BTCUSDT",
+            "lastPrice": "103000.50000000",
+            "priceChangePercent": "2.400",
+            "quoteVolume": "5600000000.12",
+            "closeTime": 1778149000000,
+        },
+        {
+            "symbol": "ETHUSDT",
+            "lastPrice": "3900.25000000",
+            "priceChangePercent": "-1.500",
+            "quoteVolume": "2600000000.44",
+            "closeTime": 1778149000000,
+        },
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode("utf-8")
+
+    requested_urls: list[str] = []
+
+    def fake_urlopen(request, timeout: int):
+        requested_urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+
+    provider = BinanceSpotMarketProvider(tracked_coin_ids=("bitcoin", "ethereum"), quote_asset="USDT")
+    batch = provider.generate(
+        [
+            {
+                "asset": "BTC",
+                "signal_bias": 0.2,
+                "price": 100000.0,
+                "volume_24h": 1.0,
+                "volatility": 0.03,
+            }
+        ],
+        3,
+    )
+
+    assert provider.readiness().ready is True
+    assert "ticker/24hr" in requested_urls[0]
+    assert batch[0]["asset"] == "BTC"
+    assert batch[0]["price"] == 103000.5
+    assert batch[0]["change_24h"] == 0.024
+    assert batch[0]["volume_24h"] == 5600000000.12
+    assert batch[0]["source"] == "binance-spot-public-provider"
+    assert batch[1]["asset"] == "ETH"
+    assert batch[1]["trend_score"] < 0

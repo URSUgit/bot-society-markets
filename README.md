@@ -75,7 +75,7 @@ Included today:
 - Alembic migration scaffolding plus operational database upgrade and copy commands
 - seeded historical market data and signal archives
 - a scoring engine that evaluates historical predictions against stored market moves
-- demo ingestion providers plus optional CoinGecko and Hyperliquid market modes with safe fallback behavior
+- demo ingestion providers plus optional Binance, Hyperliquid, and CoinGecko market modes with safe fallback behavior
 - optional venue-intelligence signal ingestion from Polymarket Gamma and Kalshi public market data
 - social trader discovery that can index YouTube creator evidence, build avatar-style trader profiles, score historical signal quality, rank ROI-if-followed scenarios, and explain risk/readiness/allocation guidance with demo fallback behavior
 - bot orchestration that creates fresh pending predictions only when a bot is not already waiting on an unresolved call
@@ -319,7 +319,9 @@ $env:BSM_EXPORT_ARTIFACTS_DIR = "artifacts/strategy-exports"
 Optional live provider setup:
 
 ```powershell
-$env:BSM_MARKET_PROVIDER = "auto" # Hyperliquid public feed first, CoinGecko fallback.
+$env:BSM_MARKET_PROVIDER = "auto" # Binance spot first, Hyperliquid and CoinGecko fallback.
+$env:BSM_BINANCE_API_BASE_URL = "https://api.binance.com"
+$env:BSM_BINANCE_QUOTE_ASSET = "USDT"
 
 $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"

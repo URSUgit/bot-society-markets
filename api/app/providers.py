@@ -457,6 +457,117 @@ class CoinGeckoMarketProvider(MarketProviderBase):
         return generated
 
 
+class BinanceSpotMarketProvider(MarketProviderBase):
+    source_name = "binance-spot-public-provider"
+
+    def __init__(
+        self,
+        *,
+        tracked_coin_ids: tuple[str, ...],
+        quote_asset: str = "USDT",
+        base_url: str = "https://api.binance.com",
+    ) -> None:
+        self.tracked_coin_ids = tracked_coin_ids
+        self.quote_asset = (quote_asset or "USDT").upper()
+        self.base_url = (base_url or "https://api.binance.com").rstrip("/")
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.quote_asset:
+            return ProviderReadiness(False, "Binance spot mode requires BSM_BINANCE_QUOTE_ASSET")
+        if not self.tracked_coin_ids:
+            return ProviderReadiness(False, "Binance spot mode requires at least one BSM_TRACKED_COIN_IDS value")
+        return ProviderReadiness(True)
+
+    def generate(self, latest_snapshots: list[dict], cycle_index: int) -> list[dict]:
+        requested_symbols = self._requested_symbols()
+        if not requested_symbols:
+            return []
+
+        query = urlencode({"symbols": json.dumps(requested_symbols, separators=(",", ":"))})
+        request = Request(
+            f"{self.base_url}/api/v3/ticker/24hr?{query}",
+            headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
+        )
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        rows = payload if isinstance(payload, list) else [payload]
+        latest_snapshot_map = {snapshot["asset"]: snapshot for snapshot in latest_snapshots}
+        generated: list[dict] = []
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            symbol = str(row.get("symbol") or "").upper()
+            asset = self._asset_from_symbol(symbol)
+            if not asset:
+                continue
+
+            price = self._safe_float(row.get("lastPrice"))
+            if not price or price <= 0:
+                continue
+
+            change_pct = (self._safe_float(row.get("priceChangePercent"), 0.0) or 0.0) / 100
+            quote_volume = self._safe_float(row.get("quoteVolume"))
+            if quote_volume is None:
+                base_volume = self._safe_float(row.get("volume"), 0.0) or 0.0
+                quote_volume = base_volume * price
+
+            prior = latest_snapshot_map.get(asset)
+            prior_bias = float(prior["signal_bias"]) if prior else 0.0
+            volatility = min(0.35, max(0.015, abs(change_pct) * 1.7 + 0.015))
+            trend_score = _clamp(round(change_pct * 9, 6), -1.0, 1.0)
+            signal_bias = _clamp(round((trend_score * 0.75) + (prior_bias * 0.25), 6), -1.0, 1.0)
+            observed_at = self._observed_at(row.get("closeTime"))
+
+            generated.append(
+                {
+                    "asset": asset,
+                    "as_of": observed_at,
+                    "price": price,
+                    "change_24h": round(change_pct, 6),
+                    "volume_24h": round(quote_volume, 2),
+                    "volatility": round(volatility, 6),
+                    "trend_score": trend_score,
+                    "signal_bias": signal_bias,
+                    "source": self.source_name,
+                }
+            )
+
+        return generated
+
+    def _requested_symbols(self) -> list[str]:
+        symbols: list[str] = []
+        for coin_id in self.tracked_coin_ids:
+            asset = CoinGeckoMarketProvider.SYMBOL_MAP.get(coin_id.lower(), coin_id.upper())
+            symbol = f"{asset}{self.quote_asset}".upper()
+            if symbol not in symbols:
+                symbols.append(symbol)
+        return symbols
+
+    def _asset_from_symbol(self, symbol: str) -> str | None:
+        if not symbol.endswith(self.quote_asset):
+            return None
+        asset = symbol[: -len(self.quote_asset)]
+        return asset or None
+
+    @staticmethod
+    def _safe_float(value, default: float | None = None) -> float | None:
+        if value in (None, "", "null"):
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _observed_at(close_time_ms) -> str:
+        try:
+            return to_timestamp(datetime.fromtimestamp(float(close_time_ms) / 1000, tz=timezone.utc))
+        except (TypeError, ValueError, OSError):
+            return to_timestamp(datetime.now(timezone.utc))
+
+
 class HyperliquidMarketProvider(MarketProviderBase):
     source_name = "hyperliquid-public-provider"
     COIN_SYMBOLS = {

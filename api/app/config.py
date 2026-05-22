@@ -12,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover - optional during bootstrap before deps install
     load_dotenv = None
 
-MarketProviderMode = Literal["demo", "coingecko", "hyperliquid", "auto"]
+MarketProviderMode = Literal["demo", "coingecko", "hyperliquid", "binance", "auto"]
 SignalProviderMode = Literal["demo", "rss", "reddit"]
 SocialDiscoveryProviderMode = Literal["demo", "youtube"]
 VenueSignalProviderMode = Literal["polymarket", "kalshi"]
@@ -101,6 +101,8 @@ class Settings:
     coingecko_api_key: str | None = None
     coingecko_plan: Literal["demo", "pro"] = "demo"
     tracked_coin_ids: tuple[str, ...] = ("bitcoin", "ethereum", "solana")
+    binance_api_base_url: str = "https://api.binance.com"
+    binance_quote_asset: str = "USDT"
     fred_api_key: str | None = None
     fred_series_ids: tuple[str, ...] = ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS")
     hyperliquid_dex: str = ""
@@ -231,7 +233,7 @@ def get_settings() -> Settings:
     secure_session_cookie = None if secure_session_cookie_env is None else _env_bool("BSM_SECURE_SESSION_COOKIE", False)
 
     market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", "demo").lower()
-    if market_provider_mode not in {"demo", "coingecko", "hyperliquid", "auto"}:
+    if market_provider_mode not in {"demo", "coingecko", "hyperliquid", "binance", "auto"}:
         market_provider_mode = "demo"
 
     signal_provider_mode = os.getenv("BSM_SIGNAL_PROVIDER", "demo").lower()
@@ -349,6 +351,8 @@ def get_settings() -> Settings:
         coingecko_api_key=os.getenv("BSM_COINGECKO_API_KEY") or None,
         coingecko_plan=plan,
         tracked_coin_ids=coin_ids or ("bitcoin", "ethereum", "solana"),
+        binance_api_base_url=os.getenv("BSM_BINANCE_API_BASE_URL", "https://api.binance.com"),
+        binance_quote_asset=(os.getenv("BSM_BINANCE_QUOTE_ASSET") or "USDT").upper(),
         fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,
         fred_series_ids=fred_series_ids or ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS"),
         tracked_wallets=tracked_wallets,

@@ -9,7 +9,7 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `app/database.py` - SQLAlchemy schema, migrations for legacy SQLite data, and database connection management
 - `app/db_ops.py` - Alembic helpers and database copy utilities
 - `app/repository.py` - persistence layer for bots, market data, signals, predictions, pipeline runs, user state, and alert deliveries
-- `app/providers.py` - demo providers, optional CoinGecko and Hyperliquid market adapters, optional RSS/Reddit ingestion, and venue adapters for Polymarket and Kalshi
+- `app/providers.py` - demo providers, optional Binance/CoinGecko/Hyperliquid market adapters, optional RSS/Reddit ingestion, and venue adapters for Polymarket and Kalshi
 - `app/orchestration.py` - bot prediction generation logic
 - `app/scoring.py` - prediction scoring engine
 - `app/services.py` - application service layer, auth/session workflows, notification delivery, and dashboard aggregation
@@ -58,7 +58,7 @@ The current build includes:
 - persisted user state for follows, watchlist items, alert rules, notification channels, in-app alerts, and authenticated sessions
 - a repeatable pipeline cycle that ingests fresh batches, creates new pending predictions, and delivers alert events
 - retry scheduling plus delivery-health tracking for failed outbound notification attempts
-- optional live market data through CoinGecko or Hyperliquid configuration with demo fallback behavior
+- optional live market data through Binance, Hyperliquid, or CoinGecko configuration with demo fallback behavior
 - optional RSS-backed news ingestion with demo fallback behavior
 - optional Reddit OAuth-backed social ingestion with demo fallback behavior
 - optional venue-backed prediction-market ingestion from Polymarket and Kalshi
@@ -130,6 +130,10 @@ Optional live provider setup:
 $env:BSM_MARKET_PROVIDER = "coingecko"
 $env:BSM_COINGECKO_PLAN = "demo"
 $env:BSM_COINGECKO_API_KEY = "your-key-here"
+
+$env:BSM_MARKET_PROVIDER = "binance"
+$env:BSM_BINANCE_API_BASE_URL = "https://api.binance.com"
+$env:BSM_BINANCE_QUOTE_ASSET = "USDT"
 
 $env:BSM_MARKET_PROVIDER = "hyperliquid"
 $env:BSM_HYPERLIQUID_DEX = ""
