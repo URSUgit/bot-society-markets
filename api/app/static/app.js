@@ -229,6 +229,11 @@ let selectedSocialTraderId = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
+let dashboardWindowState = {
+  section: null,
+  placeholder: null,
+  lastFocus: null,
+};
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -354,7 +359,9 @@ function setActiveDashboardSection(hash) {
     activeSection.textContent = sectionTitleFromHash(activeHash);
   }
   if (activeDetail) {
-    activeDetail.textContent = "Current scroll position";
+    activeDetail.textContent = document.body.classList.contains("dashboard-window-open")
+      ? "Open workspace window"
+      : "Compact dashboard view";
   }
 }
 
@@ -391,6 +398,103 @@ function initDashboardSectionObserver() {
   targets.forEach((target) => observer.observe(target));
   setActiveDashboardSection(window.location.hash || links[0].getAttribute("href"));
 }
+
+function dashboardWindowSubtitle(hash) {
+  const subtitles = {
+    "#market-console-section": "Live market provider, bot decision queue, and risk posture.",
+    "#trading-workspace-section": "Trading workspace without leaving the dashboard.",
+    "#social-trader-section": "Creator-trader discovery, follow mode, and managed paper allocation.",
+    "#intelligence-section": "Markets, macro context, and signal intelligence in one focused view.",
+    "#paper-section": "Paper positions, venues, and simulated execution controls.",
+    "#leaderboard-section": "Bot scorecards, provenance, and alert posture.",
+    "#connectors-section": "Provider readiness and connector diagnostics.",
+    "#account-section": "Account, auth, billing, and onboarding controls.",
+    "#workspace-section": "Watchlist, rules, alerts, and notification workspace.",
+  };
+  return subtitles[hash] || "Section opened in a compact app window.";
+}
+
+function closeDashboardWindow({ restoreFocus = true } = {}) {
+  const overlay = document.getElementById("dashboard-window");
+  const body = document.getElementById("dashboard-window-body");
+  const { section, placeholder, lastFocus } = dashboardWindowState;
+
+  if (overlay) {
+    overlay.classList.add("hidden");
+  }
+  document.body.classList.remove("dashboard-window-open");
+
+  try {
+    if (section && placeholder?.parentNode) {
+      section.classList.remove("in-dashboard-window");
+      placeholder.replaceWith(section);
+    } else if (section) {
+      section.classList.remove("in-dashboard-window");
+    }
+  } catch (error) {
+    console.warn("Could not restore dashboard section from workspace window.", error);
+    section.classList.remove("in-dashboard-window");
+  }
+
+  if (body && (!section || !body.contains(section))) {
+    body.innerHTML = "";
+  }
+  dashboardWindowState = { section: null, placeholder: null, lastFocus: null };
+  if (restoreFocus && lastFocus instanceof HTMLElement) {
+    lastFocus.focus({ preventScroll: true });
+  }
+  resizeVisibleCharts();
+}
+
+function openDashboardWindow(hash, trigger = null) {
+  if (!hash || hash === "#") {
+    return false;
+  }
+  const section = document.querySelector(hash);
+  const overlay = document.getElementById("dashboard-window");
+  const body = document.getElementById("dashboard-window-body");
+  const title = document.getElementById("dashboard-window-title");
+  const subtitle = document.getElementById("dashboard-window-subtitle");
+  if (!section || !overlay || !body) {
+    return false;
+  }
+
+  closeDashboardWindow({ restoreFocus: false });
+  const placeholder = document.createElement("div");
+  placeholder.className = "dashboard-window-placeholder";
+  placeholder.hidden = true;
+  section.before(placeholder);
+  section.classList.add("in-dashboard-window");
+  body.appendChild(section);
+  overlay.classList.remove("hidden");
+  document.body.classList.add("dashboard-window-open");
+  dashboardWindowState = { section, placeholder, lastFocus: trigger };
+
+  if (title) {
+    title.textContent = sectionTitleFromHash(hash);
+  }
+  if (subtitle) {
+    subtitle.textContent = dashboardWindowSubtitle(hash);
+  }
+  overlay.querySelectorAll("[data-action='dashboard-window-close']").forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      closeDashboardWindow();
+    };
+  });
+  setActiveDashboardSection(hash);
+  setStatus(`${sectionTitleFromHash(hash)} opened in a compact workspace window.`);
+
+  const closeButton = overlay.querySelector("[data-action='dashboard-window-close']");
+  if (closeButton instanceof HTMLElement) {
+    closeButton.focus({ preventScroll: true });
+  }
+  resizeVisibleCharts();
+  return true;
+}
+
+window.closeDashboardWindow = closeDashboardWindow;
+window.openDashboardWindow = openDashboardWindow;
 
 function renderOperatorStrip(snapshot) {
   const strip = document.getElementById("operator-strip");
@@ -4849,6 +4953,29 @@ function bindInteractions() {
       return;
     }
 
+    const dashboardWindowClose = target.closest("[data-action='dashboard-window-close']");
+    if (dashboardWindowClose) {
+      event.preventDefault();
+      closeDashboardWindow();
+      return;
+    }
+
+    const dashboardSectionLink = target.closest("a[href^='#']");
+    if (
+      dashboardSectionLink
+      && document.body.classList.contains("dashboard-body")
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+    ) {
+      const hash = dashboardSectionLink.getAttribute("href");
+      if (openDashboardWindow(hash, dashboardSectionLink)) {
+        event.preventDefault();
+        return;
+      }
+    }
+
     if (target.id === "run-cycle-button") {
       event.preventDefault();
       await runCycle();
@@ -5063,6 +5190,11 @@ async function boot() {
   bindForms();
   initProfessionalTradingWorkspace();
   initDashboardSectionObserver();
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("dashboard-window-open")) {
+      closeDashboardWindow();
+    }
+  });
   window.addEventListener("beforeunload", clearRefreshTimers);
   window.addEventListener("resize", () => {
     if (chartResizeFrame) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=compact-window-2">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui">
   <div class="dashboard-shell">
@@ -26,14 +26,14 @@
         <a href="#paper-section">Paper Trade</a>
         <a href="#leaderboard-section">Bots</a>
         <span class="sidebar-nav-label">Build</span>
-        <a href="/simulation">Strategy Lab</a>
+        <a href="/simulation" target="_blank" rel="noopener">Strategy Lab</a>
         <a href="#connectors-section">Connectors</a>
         <span class="sidebar-nav-label">Workspace</span>
         <a href="#account-section">Account</a>
         <a href="#workspace-section">Rules & Alerts</a>
         <span class="sidebar-nav-label">Company</span>
-        <a href="/status">Public Status</a>
-        <a href="/landing">Public Website</a>
+        <a href="/status" target="_blank" rel="noopener">Public Status</a>
+        <a href="/landing" target="_blank" rel="noopener">Public Website</a>
       </nav>
       <div class="sidebar-card">
         <p class="eyebrow">Start here</p>
@@ -54,7 +54,7 @@
           <a class="operator-metric" href="#market-console-section">
             <span>Active View</span>
             <strong id="operator-active-section">Overview</strong>
-            <small id="operator-active-section-detail">Scroll the console</small>
+            <small id="operator-active-section-detail">Compact dashboard view</small>
           </a>
           <a class="operator-metric" href="#leaderboard-section">
             <span>Top Bot</span>
@@ -87,7 +87,7 @@
         </div>
         <div class="hero-actions compact-actions">
           <button class="button primary" id="run-cycle-button" type="button">Run Cycle</button>
-          <a class="button secondary" href="/simulation">Strategy Lab</a>
+          <a class="button secondary" href="/simulation" target="_blank" rel="noopener">Strategy Lab</a>
           <a class="button secondary" href="#social-trader-section">Social Traders</a>
           <a class="button secondary" href="#paper-section">Paper Trade</a>
         </div>
@@ -246,6 +246,26 @@
         <aside class="social-detail-panel">
           <div class="social-detail-content" id="social-detail-content"></div>
         </aside>
+      </div>
+
+      <div class="dashboard-window hidden" id="dashboard-window" role="dialog" aria-modal="true" aria-labelledby="dashboard-window-title">
+        <button class="dashboard-window-backdrop" type="button" data-action="dashboard-window-close" aria-label="Close workspace window"></button>
+        <section class="dashboard-window-panel" aria-label="Focused dashboard workspace">
+          <header class="dashboard-window-titlebar">
+            <div class="window-controls" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div>
+              <p class="eyebrow">Focused workspace</p>
+              <h2 id="dashboard-window-title">Overview</h2>
+              <small id="dashboard-window-subtitle">Section opened in a compact app window.</small>
+            </div>
+            <button class="button ghost small-button" type="button" data-action="dashboard-window-close">Close</button>
+          </header>
+          <div class="dashboard-window-body" id="dashboard-window-body"></div>
+        </section>
       </div>
 
       <section class="dashboard-ribbon card">
@@ -1041,6 +1061,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=compact-window-2"></script>
 </body>
 </html>

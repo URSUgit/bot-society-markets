@@ -8189,3 +8189,334 @@ body.dashboard-body.bit-engine-product-ui[data-theme="light"] .ds-select {
     justify-items: start;
   }
 }
+
+/* Compact command workspace: sections open like app windows instead of page jumps. */
+.dashboard-body.command-os {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(20, 184, 166, 0.1), transparent 25%),
+    radial-gradient(circle at 88% 10%, rgba(245, 158, 11, 0.08), transparent 26%),
+    linear-gradient(135deg, #eef3ef 0%, #f7f1e8 54%, #e7efec 100%);
+}
+
+.dashboard-body.command-os::before {
+  opacity: 0.44;
+}
+
+.dashboard-body.command-os .dashboard-shell {
+  grid-template-columns: 226px minmax(0, 1fr);
+}
+
+.dashboard-body.command-os .sidebar {
+  padding: 16px 14px;
+  gap: 13px;
+  background:
+    linear-gradient(180deg, rgba(9, 25, 37, 0.96), rgba(20, 43, 55, 0.94)),
+    radial-gradient(circle at top, rgba(20, 184, 166, 0.12), transparent 30%);
+}
+
+.dashboard-body.command-os .brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+
+.dashboard-body.command-os .sidebar-title {
+  font-size: 1.2rem;
+}
+
+.dashboard-body.command-os .sidebar-subtitle,
+.dashboard-body.command-os .sidebar-card {
+  display: none;
+}
+
+.dashboard-body.command-os .sidebar-nav {
+  gap: 5px;
+}
+
+.dashboard-body.command-os .sidebar-nav-label {
+  margin-top: 6px;
+  font-size: 0.62rem;
+  letter-spacing: 0.13em;
+}
+
+.dashboard-body.command-os .sidebar-nav a {
+  padding: 8px 10px;
+  border-radius: 11px;
+  font-size: 0.82rem;
+}
+
+.dashboard-body.command-os .sidebar-nav a.active,
+.dashboard-body.command-os .sidebar-nav a:hover {
+  padding-left: 22px;
+  transform: none;
+}
+
+.dashboard-body.command-os .dashboard-main {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-body.command-os .dashboard-main::before {
+  inset: 0 0 0 226px;
+}
+
+.dashboard-body.command-os .card,
+.dashboard-body.command-os .market-console,
+.dashboard-body.command-os .dashboard-hero,
+.dashboard-body.command-os .dashboard-ribbon,
+.dashboard-body.command-os .chart-panel,
+.dashboard-body.command-os .paper-venue-card {
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(16, 38, 54, 0.1);
+}
+
+.dashboard-body.command-os .card {
+  border-color: rgba(16, 38, 54, 0.1);
+}
+
+.dashboard-body.command-os .section-head {
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.dashboard-body.command-os .section-head h3,
+.dashboard-body.command-os .dashboard-hero h2 {
+  font-size: clamp(1rem, 1.4vw, 1.45rem);
+  line-height: 1.15;
+}
+
+.dashboard-body.command-os .eyebrow {
+  margin-bottom: 5px;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+}
+
+.dashboard-body.command-os p,
+.dashboard-body.command-os small,
+.dashboard-body.command-os .panel-note {
+  line-height: 1.38;
+}
+
+.dashboard-body.command-os .operator-strip,
+.dashboard-body.command-os .dashboard-hero,
+.dashboard-body.command-os .market-console,
+.dashboard-body.command-os .social-trader-section,
+.dashboard-body.command-os .launch-command-section,
+.dashboard-body.command-os .dashboard-stack-section,
+.dashboard-body.command-os .trading-workspace-pro {
+  margin-bottom: 0;
+  padding: 16px;
+}
+
+.dashboard-body.command-os .content-grid,
+.dashboard-body.command-os .live-grid,
+.dashboard-body.command-os .metrics-row {
+  gap: 12px;
+}
+
+.dashboard-body.command-os .market-console-grid,
+.dashboard-body.command-os .social-trader-layout,
+.dashboard-body.command-os .trading-workspace-grid {
+  gap: 12px;
+}
+
+.dashboard-body.command-os .operator-strip {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  border-radius: 16px;
+  background: rgba(255, 250, 242, 0.86);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 10px 30px rgba(16, 38, 54, 0.1);
+}
+
+.dashboard-body.command-os .operator-strip-metrics {
+  gap: 7px;
+}
+
+.dashboard-body.command-os .operator-metric {
+  min-width: 118px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.dashboard-body.command-os .button,
+.dashboard-body.command-os .ds-button,
+.dashboard-body.command-os .small-button {
+  min-height: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+
+.dashboard-body.command-os .dashboard-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.dashboard-body.command-os .hero-actions {
+  gap: 7px;
+}
+
+.dashboard-body.command-os .console-panel,
+.dashboard-body.command-os .console-stack-row,
+.dashboard-body.command-os .console-decision,
+.dashboard-body.command-os .console-risk-grid article,
+.dashboard-body.command-os .paper-venue-kpis div,
+.dashboard-body.command-os .macro-card {
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.dashboard-body.command-os .table-wrap,
+.dashboard-body.command-os .workspace-list,
+.dashboard-body.command-os .prediction-list,
+.dashboard-body.command-os .signal-list {
+  font-size: 0.84rem;
+}
+
+.dashboard-body.command-os th,
+.dashboard-body.command-os td {
+  padding: 8px 9px;
+}
+
+.dashboard-window.hidden {
+  display: none;
+}
+
+.dashboard-window {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.dashboard-window-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(20, 184, 166, 0.18), transparent 36%),
+    rgba(7, 24, 37, 0.46);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+
+.dashboard-window-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1180px, calc(100vw - 36px));
+  max-height: min(86vh, 920px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 246, 0.96), rgba(245, 241, 233, 0.94)),
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.08), transparent 30%);
+  box-shadow: 0 30px 90px rgba(7, 24, 37, 0.32);
+}
+
+.dashboard-window-titlebar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(16, 38, 54, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.dashboard-window-titlebar h2 {
+  color: var(--text);
+  font-size: 1.2rem;
+}
+
+.dashboard-window-titlebar small {
+  color: var(--text-soft);
+}
+
+.window-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.window-controls span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ef4444;
+}
+
+.window-controls span:nth-child(2) {
+  background: #f59e0b;
+}
+
+.window-controls span:nth-child(3) {
+  background: #14b8a6;
+}
+
+.dashboard-window-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.dashboard-window-body > .in-dashboard-window {
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+.dashboard-window-body .content-grid,
+.dashboard-window-body .live-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-window-body .market-console-grid,
+.dashboard-window-body .social-trader-layout,
+.dashboard-window-body .trading-workspace-grid,
+.dashboard-window-body .detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-window-body .operator-strip {
+  position: static;
+}
+
+body.dashboard-window-open {
+  overflow: hidden;
+}
+
+@media (max-width: 920px) {
+  .dashboard-body.command-os .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-body.command-os .sidebar {
+    position: relative;
+    height: auto;
+    max-height: none;
+  }
+
+  .dashboard-body.command-os .dashboard-main::before {
+    inset: 0;
+  }
+
+  .dashboard-body.command-os .dashboard-hero,
+  .dashboard-window-titlebar {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-window {
+    padding: 8px;
+  }
+
+  .dashboard-window-panel {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+}
