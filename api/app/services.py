@@ -1567,7 +1567,8 @@ class BotSocietyService:
         if self._cache_is_fresh(self.assets_cache, ttl_seconds=300):
             return self.assets_cache[1]
         repository = BotSocietyRepository(self.database)
-        assets = [self._to_asset_model(row) for row in repository.list_latest_market_snapshots()]
+        rows = self._fast_public_market_rows(repository) if self._use_fast_public_snapshots() else repository.list_latest_market_snapshots()
+        assets = [self._to_asset_model(row) for row in rows]
         self.assets_cache = (datetime.now(timezone.utc), assets)
         return assets
 
@@ -4846,8 +4847,8 @@ class BotSocietyService:
 
     def _get_fast_public_landing_snapshot(self, user_slug: str) -> LandingSnapshot:
         repository = BotSocietyRepository(self.database)
-        provider_status = self.get_provider_status()
         latest_assets = self._fast_public_market_rows(repository)
+        provider_status = self.get_provider_status()
         recent_signals = self._fast_public_signal_rows(repository, limit=16)
         predictions = self._fast_public_prediction_rows(repository, limit=96)
         pending_predictions = [row for row in predictions if row.get("status") == "pending"]
@@ -4881,8 +4882,8 @@ class BotSocietyService:
 
     def _get_fast_public_dashboard_snapshot(self, user_slug: str) -> DashboardSnapshot:
         repository = BotSocietyRepository(self.database)
-        provider_status = self.get_provider_status()
         latest_assets = self._fast_public_market_rows(repository)
+        provider_status = self.get_provider_status()
         recent_signals = self._fast_public_signal_rows(repository, limit=24)
         predictions = self._fast_public_prediction_rows(repository, limit=120)
         pending_predictions = [row for row in predictions if row.get("status") == "pending"]
@@ -4947,8 +4948,49 @@ class BotSocietyService:
     def _fast_public_market_rows(self, repository: BotSocietyRepository) -> list[dict]:
         if self._cache_is_fresh(self.assets_cache, ttl_seconds=300):
             return [asset.model_dump() for asset in self.assets_cache[1]]
-        rows = self._fallback_public_market_rows()
+        rows = self._fast_public_live_market_rows(repository) or self._fallback_public_market_rows()
         self.assets_cache = (datetime.now(timezone.utc), [self._to_asset_model(row) for row in rows])
+        return rows
+
+    def _fast_public_live_market_rows(self, repository: BotSocietyRepository) -> list[dict]:
+        if self.settings.market_provider_mode == "demo":
+            return []
+
+        provider = None
+        if self.settings.market_provider_mode in {"auto", "binance"}:
+            provider = BinanceSpotMarketProvider(
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+                quote_asset=self.settings.binance_quote_asset,
+                base_url=self.settings.binance_api_base_url,
+                timeout_seconds=4,
+            )
+        elif self.settings.market_provider_mode == "hyperliquid":
+            provider = HyperliquidMarketProvider(
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+                dex=self.settings.hyperliquid_dex,
+            )
+        elif self.settings.market_provider_mode == "coingecko":
+            provider = CoinGeckoMarketProvider(
+                plan=self.settings.coingecko_plan,
+                api_key=self.settings.coingecko_api_key,
+                tracked_coin_ids=self.settings.tracked_coin_ids,
+            )
+
+        if provider is None:
+            return []
+
+        try:
+            rows = provider.generate(repository.list_latest_market_snapshots(), 0)
+        except Exception:
+            self.market_provider_fallback = True
+            self.market_provider_source = f"{provider.source_name}-fallback"
+            self.provider_status_cache = None
+            return []
+
+        if rows:
+            self.market_provider_fallback = False
+            self.market_provider_source = getattr(provider, "last_source_name", provider.source_name)
+            self.provider_status_cache = None
         return rows
 
     def _fallback_public_market_rows(self) -> list[dict]:
@@ -4977,7 +5019,7 @@ class BotSocietyService:
         return rows[:6]
 
     def _fast_public_signal_rows(self, repository: BotSocietyRepository, *, limit: int) -> list[dict]:
-        assets = self._fallback_public_market_rows()
+        assets = self._fast_public_market_rows(repository)
         now = self._now()
         templates = [
             ("polymarket", "prediction-market", "Venue order books repriced the crypto election/event cluster.", 0.22),
@@ -5017,7 +5059,7 @@ class BotSocietyService:
         return rows
 
     def _fast_public_prediction_rows(self, repository: BotSocietyRepository, *, limit: int) -> list[dict]:
-        assets = self._fallback_public_market_rows()
+        assets = self._fast_public_market_rows(repository)
         now = self._now()
         bots = self._fallback_public_bot_summaries()
         rows = []
@@ -5512,7 +5554,11 @@ class BotSocietyService:
 
         active_repository = repository or BotSocietyRepository(self.database)
         recent_signals = recent_signals if recent_signals is not None else active_repository.list_recent_signals(limit=96)
-        latest_assets = latest_assets if latest_assets is not None else active_repository.list_latest_market_snapshots()
+        latest_assets = latest_assets if latest_assets is not None else (
+            self._fast_public_market_rows(active_repository)
+            if self._use_fast_public_snapshots()
+            else active_repository.list_latest_market_snapshots()
+        )
         provider_status = provider_status or self.get_provider_status()
         notification_health = notification_health or (
             self._lightweight_notification_health()

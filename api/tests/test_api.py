@@ -22,6 +22,7 @@ from api.app.config import Settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.main import create_app
+from api.app.repository import BotSocietyRepository
 from api.app.social_intelligence import DemoSocialDiscoveryProvider, YouTubeSocialDiscoveryProvider
 from api.app.worker import PipelineWorker
 
@@ -1612,6 +1613,46 @@ def test_binance_market_provider_metadata() -> None:
         assert connector_lookup["binance-spot-market-data"]["mode"] == "binance"
         assert connector_lookup["binance-spot-market-data"]["state"] in {"live", "ready"}
         assert connector_lookup["binance-spot-market-data"]["readiness_score"] >= 0.8
+
+
+def test_fast_public_market_rows_prefers_binance_live_feed(monkeypatch) -> None:
+    payload = [
+        {
+            "symbol": "BTCUSDT",
+            "lastPrice": "103111.25",
+            "priceChangePercent": "1.250",
+            "quoteVolume": "4200000000",
+            "closeTime": 1778149000000,
+        }
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+
+    settings = Settings(market_provider_mode="auto", tracked_coin_ids=("bitcoin",))
+    with build_client(settings) as client:
+        service = client.app.state.bot_society_service
+        repository = BotSocietyRepository(service.database)
+        rows = service._fast_public_market_rows(repository)
+        status = service.get_provider_status()
+
+        assert rows[0]["asset"] == "BTC"
+        assert rows[0]["price"] == 103111.25
+        assert rows[0]["source"] == "binance-spot-public-provider"
+        assert status.market_provider_source == "binance-spot-public-provider"
+        assert status.market_fallback_active is False
 
 
 def test_auto_market_provider_metadata() -> None:

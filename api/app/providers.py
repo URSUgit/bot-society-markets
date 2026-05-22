@@ -466,10 +466,12 @@ class BinanceSpotMarketProvider(MarketProviderBase):
         tracked_coin_ids: tuple[str, ...],
         quote_asset: str = "USDT",
         base_url: str = "https://api.binance.com",
+        timeout_seconds: int = 10,
     ) -> None:
         self.tracked_coin_ids = tracked_coin_ids
         self.quote_asset = (quote_asset or "USDT").upper()
         self.base_url = (base_url or "https://api.binance.com").rstrip("/")
+        self.timeout_seconds = timeout_seconds
 
     def readiness(self) -> ProviderReadiness:
         if not self.quote_asset:
@@ -488,7 +490,7 @@ class BinanceSpotMarketProvider(MarketProviderBase):
             f"{self.base_url}/api/v3/ticker/24hr?{query}",
             headers={"accept": "application/json", "user-agent": "BotSocietyMarkets/0.8"},
         )
-        with urlopen(request, timeout=10) as response:
+        with urlopen(request, timeout=self.timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
 
         rows = payload if isinstance(payload, list) else [payload]
