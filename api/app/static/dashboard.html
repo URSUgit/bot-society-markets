@@ -4,36 +4,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=compact-window-2">
+  <link rel="stylesheet" href="/static/styles.css?v=preferences-15">
 </head>
-<body class="dashboard-body command-os bit-engine-product-ui">
+<body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en">
   <div class="dashboard-shell">
     <aside class="sidebar">
       <div class="sidebar-brand">
         <span class="brand-mark bit-engine-mark">BP</span>
         <div>
           <p class="eyebrow">BITprivat</p>
-          <h1 class="sidebar-title">Market OS</h1>
-          <p class="sidebar-subtitle">Markets, bots, and strategy testing in one clear workflow.</p>
+          <h1 class="sidebar-title" data-i18n="app_title">Market OS</h1>
+          <p class="sidebar-subtitle" data-i18n="app_subtitle">Markets, bots, and strategy testing in one clear workflow.</p>
         </div>
       </div>
       <nav class="sidebar-nav">
-        <span class="sidebar-nav-label">Operate</span>
-        <a class="active" href="#market-console-section">Overview</a>
-        <a href="#trading-workspace-section">Trading Workspace</a>
-        <a href="#social-trader-section">Social Traders</a>
-        <a href="#intelligence-section">Markets</a>
-        <a href="#paper-section">Paper Trade</a>
-        <a href="#leaderboard-section">Bots</a>
-        <span class="sidebar-nav-label">Build</span>
-        <a href="/simulation" target="_blank" rel="noopener">Strategy Lab</a>
-        <a href="#connectors-section">Connectors</a>
-        <span class="sidebar-nav-label">Workspace</span>
-        <a href="#account-section">Account</a>
-        <a href="#workspace-section">Rules & Alerts</a>
-        <span class="sidebar-nav-label">Company</span>
-        <a href="/status" target="_blank" rel="noopener">Public Status</a>
-        <a href="/landing" target="_blank" rel="noopener">Public Website</a>
+        <span class="sidebar-nav-label" data-i18n="nav_operate">Operate</span>
+        <a class="active" href="#market-console-section" data-i18n="nav_overview">Overview</a>
+        <a href="#trading-workspace-section" data-i18n="nav_trading_workspace">Trading Workspace</a>
+        <a href="#social-trader-section" data-i18n="nav_social_traders">Social Traders</a>
+        <a href="#intelligence-section" data-i18n="nav_markets">Markets</a>
+        <a href="#paper-section" data-i18n="nav_paper_trade">Paper Trade</a>
+        <a href="#leaderboard-section" data-i18n="nav_bots">Bots</a>
+        <span class="sidebar-nav-label" data-i18n="nav_build">Build</span>
+        <a href="/simulation" target="_blank" rel="noopener" data-i18n="nav_strategy_lab">Strategy Lab</a>
+        <a href="#connectors-section" data-i18n="nav_connectors">Connectors</a>
+        <span class="sidebar-nav-label" data-i18n="nav_workspace">Workspace</span>
+        <a href="#account-section" data-i18n="nav_account">Account</a>
+        <a href="#workspace-section" data-i18n="nav_rules_alerts">Rules & Alerts</a>
+        <span class="sidebar-nav-label" data-i18n="nav_company">Company</span>
+        <a href="/status" target="_blank" rel="noopener" data-i18n="nav_public_status">Public Status</a>
+        <a href="/landing" target="_blank" rel="noopener" data-i18n="nav_public_website">Public Website</a>
       </nav>
       <div class="sidebar-card">
         <p class="eyebrow">Start here</p>
@@ -50,9 +50,25 @@
             <small id="operator-state-detail">Waiting for the first dashboard snapshot...</small>
           </div>
         </div>
+        <div class="operator-preferences" aria-label="Display preferences">
+          <label>
+            <span data-i18n="pref_theme">Theme</span>
+            <select class="preference-select" data-preference-theme aria-label="Theme">
+              <option value="day" data-i18n="pref_day">Day</option>
+              <option value="night" data-i18n="pref_night">Night</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="pref_language">Language</span>
+            <select class="preference-select" data-preference-language aria-label="Language">
+              <option value="en">English</option>
+              <option value="ro">Romana</option>
+            </select>
+          </label>
+        </div>
         <div class="operator-strip-metrics">
           <a class="operator-metric" href="#market-console-section">
-            <span>Active View</span>
+            <span data-i18n="operator_active_view">Active View</span>
             <strong id="operator-active-section">Overview</strong>
             <small id="operator-active-section-detail">Compact dashboard view</small>
           </a>
@@ -258,11 +274,11 @@
               <span></span>
             </div>
             <div>
-              <p class="eyebrow">Focused workspace</p>
+              <p class="eyebrow" data-i18n="focused_workspace">Focused workspace</p>
               <h2 id="dashboard-window-title">Overview</h2>
-              <small id="dashboard-window-subtitle">Section opened in a compact app window.</small>
+              <small id="dashboard-window-subtitle" data-i18n="window_default_subtitle">Section opened in a compact app window.</small>
             </div>
-            <button class="button ghost small-button" type="button" data-action="dashboard-window-close">Close</button>
+            <a class="button ghost small-button" href="#close-dashboard-window" data-action="dashboard-window-close" data-i18n="close">Close</a>
           </header>
           <div class="dashboard-window-body" id="dashboard-window-body"></div>
         </section>
@@ -457,19 +473,19 @@
             <p class="panel-note">Dark-first trading UI with explicit units, direction, margin, fee, liquidation and order confirmation states.</p>
           </div>
           <div class="trading-head-actions" role="group" aria-label="Workspace controls">
-            <span class="status-pill status-pill-connected" aria-label="Connection status live">Live</span>
-            <span class="status-pill status-pill-delayed" aria-label="Data status delayed backup">Delayed 15m backup</span>
-            <button class="ds-button ghost active" type="button" data-trading-mode="pro" aria-pressed="true">Pro</button>
-            <button class="ds-button ghost" type="button" data-trading-mode="simple" aria-pressed="false">Simplu</button>
+              <span class="status-pill status-pill-connected" aria-label="Connection status live" data-i18n="status_live">Live</span>
+              <span class="status-pill status-pill-delayed" aria-label="Data status delayed backup" data-i18n="status_delayed_backup">Delayed 15m backup</span>
+              <button class="ds-button ghost active" type="button" data-trading-mode="pro" aria-pressed="true">Pro</button>
+              <button class="ds-button ghost" type="button" data-trading-mode="simple" aria-pressed="false" data-i18n="mode_simple">Simple</button>
+            </div>
           </div>
-        </div>
 
         <div class="trading-simple-panel" aria-label="Simplified trading flow">
           <div class="simple-trade-hero">
             <div>
               <span class="status-pill status-pill-connected">BTC-USD live</span>
-              <h4>Buy/Sell in 2 pasi</h4>
-              <p>Selecteaza suma in fiat, verifica impactul, confirma ordinul. Perfect pentru utilizatori noi.</p>
+              <h4 data-i18n="simple_buy_sell_title">Buy/Sell in 2 steps</h4>
+              <p data-i18n="simple_buy_sell_copy">Choose the fiat amount, review impact, then confirm the order. Designed for newer users.</p>
             </div>
             <div class="simple-price-block" aria-live="polite">
               <span>BTC-USD pret live</span>
@@ -812,8 +828,8 @@
         <article class="card wide-card">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Workspace access</p>
-              <h3>Start in demo mode or sign in for a personal workspace</h3>
+              <p class="eyebrow" data-i18n="account_eyebrow">Workspace access</p>
+              <h3 data-i18n="account_title">Start in demo mode or sign in for a personal workspace</h3>
             </div>
             <span class="badge" id="auth-status-badge">Checking session</span>
           </div>
@@ -863,6 +879,34 @@
               </form>
             </article>
           </div>
+          <div class="preference-control-grid">
+            <article class="workspace-card preference-card">
+              <div class="workspace-head">
+                <div>
+                  <h4 data-i18n="preferences_title">Preferences</h4>
+                  <p class="workspace-subtitle" data-i18n="preferences_subtitle">Choose day/night mode and interface language. English is the default.</p>
+                </div>
+                <span class="status-pill" id="preference-status-badge" data-i18n="saved_locally">Saved locally</span>
+              </div>
+              <div class="preference-grid">
+                <label class="preference-field">
+                  <span data-i18n="pref_theme">Theme</span>
+                  <select class="preference-select" data-preference-theme aria-label="Theme">
+                    <option value="day" data-i18n="pref_day">Day</option>
+                    <option value="night" data-i18n="pref_night">Night</option>
+                  </select>
+                </label>
+                <label class="preference-field">
+                  <span data-i18n="pref_language">Language</span>
+                  <select class="preference-select" data-preference-language aria-label="Language">
+                    <option value="en">English</option>
+                    <option value="ro">Romana</option>
+                  </select>
+                </label>
+              </div>
+              <p class="panel-note" data-i18n="preferences_note">Preferences are saved in this browser and applied immediately across the dashboard.</p>
+            </article>
+          </div>
           <div class="billing-control-grid">
             <article class="workspace-card billing-workspace-card">
               <div class="workspace-head">
@@ -885,8 +929,8 @@
         <article class="card wide-card">
           <div class="section-head">
             <div>
-              <p class="eyebrow">User workspace</p>
-              <h3>Follows, watchlist, rules, channels, and inbox state</h3>
+              <p class="eyebrow" data-i18n="workspace_eyebrow">User workspace</p>
+              <h3 data-i18n="workspace_title">Follows, watchlist, rules, channels, and inbox state</h3>
             </div>
             <span class="badge" id="workspace-tier">Loading tier</span>
           </div>
@@ -1061,6 +1105,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=compact-window-2"></script>
+  <script src="/static/app.js?v=preferences-15"></script>
 </body>
 </html>

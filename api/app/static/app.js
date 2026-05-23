@@ -1,16 +1,151 @@
+const DEFAULT_PREFERENCES = {
+  theme: "day",
+  language: "en",
+};
+const STORAGE_KEYS = {
+  theme: "bitprivat.theme",
+  language: "bitprivat.language",
+};
+const I18N = {
+  en: {
+    document_title: "BITprivat Command Center",
+    app_title: "Market OS",
+    app_subtitle: "Markets, bots, and strategy testing in one clear workflow.",
+    nav_operate: "Operate",
+    nav_overview: "Overview",
+    nav_trading_workspace: "Trading Workspace",
+    nav_social_traders: "Social Traders",
+    nav_markets: "Markets",
+    nav_paper_trade: "Paper Trade",
+    nav_bots: "Bots",
+    nav_build: "Build",
+    nav_strategy_lab: "Strategy Lab",
+    nav_connectors: "Connectors",
+    nav_workspace: "Workspace",
+    nav_account: "Account",
+    nav_rules_alerts: "Rules & Alerts",
+    nav_company: "Company",
+    nav_public_status: "Public Status",
+    nav_public_website: "Public Website",
+    pref_theme: "Theme",
+    pref_day: "Day",
+    pref_night: "Night",
+    pref_language: "Language",
+    operator_active_view: "Active View",
+    compact_dashboard_view: "Compact dashboard view",
+    open_workspace_window: "Open workspace window",
+    status_live: "Live",
+    status_delayed_backup: "Delayed 15m backup",
+    mode_simple: "Simple",
+    simple_buy_sell_title: "Buy/Sell in 2 steps",
+    simple_buy_sell_copy: "Choose the fiat amount, review impact, then confirm the order. Designed for newer users.",
+    account_eyebrow: "Workspace access",
+    account_title: "Start in demo mode or sign in for a personal workspace",
+    preferences_title: "Preferences",
+    preferences_subtitle: "Choose day/night mode and interface language. English is the default.",
+    preferences_note: "Preferences are saved in this browser and applied immediately across the dashboard.",
+    preferences_saved: "Preferences saved.",
+    saved_locally: "Saved locally",
+    workspace_eyebrow: "User workspace",
+    workspace_title: "Follows, watchlist, rules, channels, and inbox state",
+    focused_workspace: "Focused workspace",
+    window_default_subtitle: "Section opened in a compact app window.",
+    window_market_console: "Live market provider, bot decision queue, and risk posture.",
+    window_trading_workspace: "Trading workspace without leaving the dashboard.",
+    window_social_trader: "Creator-trader discovery, follow mode, and managed paper allocation.",
+    window_intelligence: "Markets, macro context, and signal intelligence in one focused view.",
+    window_paper: "Paper positions, venues, and simulated execution controls.",
+    window_leaderboard: "Bot scorecards, provenance, and alert posture.",
+    window_connectors: "Provider readiness and connector diagnostics.",
+    window_account: "Account, auth, billing, and onboarding controls.",
+    window_workspace: "Watchlist, rules, alerts, and notification workspace.",
+    close: "Close",
+    opened_window_status: "{section} opened in a compact workspace window.",
+  },
+  ro: {
+    document_title: "BITprivat Centru de Comanda",
+    app_title: "Market OS",
+    app_subtitle: "Piete, boti si testare de strategii intr-un flux clar.",
+    nav_operate: "Operare",
+    nav_overview: "Privire generala",
+    nav_trading_workspace: "Spatiu de trading",
+    nav_social_traders: "Traderi sociali",
+    nav_markets: "Piete",
+    nav_paper_trade: "Paper trading",
+    nav_bots: "Boti",
+    nav_build: "Construire",
+    nav_strategy_lab: "Laborator strategii",
+    nav_connectors: "Conectori",
+    nav_workspace: "Spatiu lucru",
+    nav_account: "Cont",
+    nav_rules_alerts: "Reguli si alerte",
+    nav_company: "Companie",
+    nav_public_status: "Status public",
+    nav_public_website: "Website public",
+    pref_theme: "Tema",
+    pref_day: "Zi",
+    pref_night: "Noapte",
+    pref_language: "Limba",
+    operator_active_view: "Vedere activa",
+    compact_dashboard_view: "Dashboard compact",
+    open_workspace_window: "Fereastra workspace deschisa",
+    status_live: "Live",
+    status_delayed_backup: "Backup intarziat 15m",
+    mode_simple: "Simplu",
+    simple_buy_sell_title: "Cumpara/Vinde in 2 pasi",
+    simple_buy_sell_copy: "Alege suma in fiat, verifica impactul, apoi confirma ordinul. Creat pentru utilizatori noi.",
+    account_eyebrow: "Acces workspace",
+    account_title: "Porneste in mod demo sau autentifica-te pentru un workspace personal",
+    preferences_title: "Preferinte",
+    preferences_subtitle: "Alege modul zi/noapte si limba interfetei. Engleza este implicita.",
+    preferences_note: "Preferintele sunt salvate in acest browser si aplicate imediat in dashboard.",
+    preferences_saved: "Preferinte salvate.",
+    saved_locally: "Salvat local",
+    workspace_eyebrow: "Workspace utilizator",
+    workspace_title: "Urmari, watchlist, reguli, canale si inbox",
+    focused_workspace: "Workspace focalizat",
+    window_default_subtitle: "Sectiunea s-a deschis intr-o fereastra compacta.",
+    window_market_console: "Provider live de piata, coada de decizii bot si postura de risc.",
+    window_trading_workspace: "Spatiu de trading fara sa parasesti dashboardul.",
+    window_social_trader: "Descoperire creatori-traderi, mod follow si alocare paper administrata.",
+    window_intelligence: "Piete, context macro si inteligenta de semnal intr-o vedere focalizata.",
+    window_paper: "Pozitii paper, venue-uri si controale de executie simulata.",
+    window_leaderboard: "Scorecard-uri boti, provenienta si postura alertelor.",
+    window_connectors: "Pregatire provideri si diagnostice pentru conectori.",
+    window_account: "Cont, autentificare, billing si controale de onboarding.",
+    window_workspace: "Watchlist, reguli, alerte si workspace de notificari.",
+    close: "Inchide",
+    opened_window_status: "{section} s-a deschis intr-o fereastra compacta.",
+  },
+};
+let appPreferences = { ...DEFAULT_PREFERENCES };
+
+function currentLocale() {
+  return appPreferences.language === "ro" ? "ro-RO" : "en-US";
+}
+
+function t(key, replacements = {}) {
+  const dictionary = I18N[appPreferences.language] || I18N.en;
+  const template = dictionary[key] || I18N.en[key] || key;
+  return Object.entries(replacements).reduce(
+    (value, [name, replacement]) => value.replaceAll(`{${name}}`, replacement),
+    template,
+  );
+}
+
 const fmtPercent = (value, digits = 0) => `${(Number(value) * 100).toFixed(digits)}%`;
 const fmtScore = (value) => Number(value).toFixed(1);
-const fmtPrice = (value) => Intl.NumberFormat("en-US", { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
-const fmtUsd = (value, digits = 0) => Intl.NumberFormat("en-US", {
+const fmtPrice = (value) => Intl.NumberFormat(currentLocale(), { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
+const fmtUsd = (value, digits = 0) => Intl.NumberFormat(currentLocale(), {
   style: "currency",
   currency: "USD",
   notation: Math.abs(Number(value)) >= 1000000 ? "compact" : "standard",
   maximumFractionDigits: digits,
 }).format(Number(value || 0));
-const fmtCompactNumber = (value) => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
+const fmtCompactNumber = (value) => Intl.NumberFormat(currentLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
 const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
 const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
-const fmtDateTime = (value) => value ? new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "n/a";
+const fmtDateTime = (value) => value ? new Date(value).toLocaleString(currentLocale(), { dateStyle: "medium", timeStyle: "short" }) : "n/a";
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
   "<": "&lt;",
@@ -229,6 +364,7 @@ let selectedSocialTraderId = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
+let suppressDashboardWindowOpenUntil = 0;
 let dashboardWindowState = {
   section: null,
   placeholder: null,
@@ -320,6 +456,96 @@ function setStatus(message) {
   }
 }
 
+function loadPreferences() {
+  try {
+    const storedTheme = window.localStorage.getItem(STORAGE_KEYS.theme);
+    const storedLanguage = window.localStorage.getItem(STORAGE_KEYS.language);
+    appPreferences = {
+      theme: ["day", "night"].includes(storedTheme) ? storedTheme : DEFAULT_PREFERENCES.theme,
+      language: ["en", "ro"].includes(storedLanguage) ? storedLanguage : DEFAULT_PREFERENCES.language,
+    };
+  } catch (error) {
+    console.warn("Preferences unavailable; using defaults.", error);
+    appPreferences = { ...DEFAULT_PREFERENCES };
+  }
+}
+
+function savePreferences() {
+  try {
+    window.localStorage.setItem(STORAGE_KEYS.theme, appPreferences.theme);
+    window.localStorage.setItem(STORAGE_KEYS.language, appPreferences.language);
+  } catch (error) {
+    console.warn("Could not persist preferences.", error);
+  }
+}
+
+function syncPreferenceControls() {
+  document.querySelectorAll("[data-preference-theme]").forEach((select) => {
+    select.value = appPreferences.theme;
+  });
+  document.querySelectorAll("[data-preference-language]").forEach((select) => {
+    select.value = appPreferences.language;
+  });
+}
+
+function applyPreferences({ announce = false } = {}) {
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+
+  body.dataset.theme = appPreferences.theme;
+  body.dataset.language = appPreferences.language;
+  document.documentElement.lang = appPreferences.language === "ro" ? "ro" : "en";
+  document.title = t("document_title");
+
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+    node.setAttribute("aria-label", t(node.dataset.i18nAria));
+  });
+
+  syncPreferenceControls();
+  setActiveDashboardSection(window.location.hash || "#market-console-section");
+  if (!document.getElementById("dashboard-window")?.classList.contains("hidden")) {
+    const openSection = dashboardWindowState.section?.id ? `#${dashboardWindowState.section.id}` : null;
+    const title = document.getElementById("dashboard-window-title");
+    const subtitle = document.getElementById("dashboard-window-subtitle");
+    if (title && openSection) {
+      title.textContent = sectionTitleFromHash(openSection);
+    }
+    if (subtitle && openSection) {
+      subtitle.textContent = dashboardWindowSubtitle(openSection);
+    }
+  }
+  if (announce) {
+    setStatus(t("preferences_saved"));
+  }
+}
+
+function bindPreferenceControls() {
+  document.querySelectorAll("[data-preference-theme]").forEach((select) => {
+    select.addEventListener("change", () => {
+      appPreferences.theme = select.value === "night" ? "night" : "day";
+      savePreferences();
+      applyPreferences({ announce: true });
+      resizeVisibleCharts();
+    });
+  });
+  document.querySelectorAll("[data-preference-language]").forEach((select) => {
+    select.addEventListener("change", () => {
+      appPreferences.language = select.value === "ro" ? "ro" : "en";
+      savePreferences();
+      applyPreferences({ announce: true });
+      resizeVisibleCharts();
+    });
+  });
+}
+
 function applyBillingQueryStatus() {
   const params = new URLSearchParams(window.location.search);
   const billingState = params.get("billing");
@@ -360,8 +586,8 @@ function setActiveDashboardSection(hash) {
   }
   if (activeDetail) {
     activeDetail.textContent = document.body.classList.contains("dashboard-window-open")
-      ? "Open workspace window"
-      : "Compact dashboard view";
+      ? t("open_workspace_window")
+      : t("compact_dashboard_view");
   }
 }
 
@@ -401,20 +627,21 @@ function initDashboardSectionObserver() {
 
 function dashboardWindowSubtitle(hash) {
   const subtitles = {
-    "#market-console-section": "Live market provider, bot decision queue, and risk posture.",
-    "#trading-workspace-section": "Trading workspace without leaving the dashboard.",
-    "#social-trader-section": "Creator-trader discovery, follow mode, and managed paper allocation.",
-    "#intelligence-section": "Markets, macro context, and signal intelligence in one focused view.",
-    "#paper-section": "Paper positions, venues, and simulated execution controls.",
-    "#leaderboard-section": "Bot scorecards, provenance, and alert posture.",
-    "#connectors-section": "Provider readiness and connector diagnostics.",
-    "#account-section": "Account, auth, billing, and onboarding controls.",
-    "#workspace-section": "Watchlist, rules, alerts, and notification workspace.",
+    "#market-console-section": "window_market_console",
+    "#trading-workspace-section": "window_trading_workspace",
+    "#social-trader-section": "window_social_trader",
+    "#intelligence-section": "window_intelligence",
+    "#paper-section": "window_paper",
+    "#leaderboard-section": "window_leaderboard",
+    "#connectors-section": "window_connectors",
+    "#account-section": "window_account",
+    "#workspace-section": "window_workspace",
   };
-  return subtitles[hash] || "Section opened in a compact app window.";
+  return t(subtitles[hash] || "window_default_subtitle");
 }
 
 function closeDashboardWindow({ restoreFocus = true } = {}) {
+  suppressDashboardWindowOpenUntil = Date.now() + 2000;
   const overlay = document.getElementById("dashboard-window");
   const body = document.getElementById("dashboard-window-body");
   const { section, placeholder, lastFocus } = dashboardWindowState;
@@ -425,6 +652,7 @@ function closeDashboardWindow({ restoreFocus = true } = {}) {
   document.body.classList.remove("dashboard-window-open");
 
   try {
+    section?.querySelector(".dashboard-window-inline-close")?.remove();
     if (section && placeholder?.parentNode) {
       section.classList.remove("in-dashboard-window");
       placeholder.replaceWith(section);
@@ -446,7 +674,19 @@ function closeDashboardWindow({ restoreFocus = true } = {}) {
   resizeVisibleCharts();
 }
 
+function closeDashboardWindowFromHash() {
+  if (window.location.hash !== "#close-dashboard-window") {
+    return false;
+  }
+  closeDashboardWindow();
+  window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
+  return true;
+}
+
 function openDashboardWindow(hash, trigger = null) {
+  if (Date.now() < suppressDashboardWindowOpenUntil) {
+    return true;
+  }
   if (!hash || hash === "#") {
     return false;
   }
@@ -463,9 +703,23 @@ function openDashboardWindow(hash, trigger = null) {
   const placeholder = document.createElement("div");
   placeholder.className = "dashboard-window-placeholder";
   placeholder.hidden = true;
+  body.querySelector(".dashboard-window-inline-close")?.remove();
+  const inlineClose = document.createElement("form");
+  inlineClose.className = "dashboard-window-inline-close";
+  inlineClose.addEventListener("submit", (event) => {
+    event.preventDefault();
+    closeDashboardWindow();
+  });
+  const inlineCloseButton = document.createElement("button");
+  inlineCloseButton.className = "button ghost small-button";
+  inlineCloseButton.type = "submit";
+  inlineCloseButton.dataset.i18n = "close";
+  inlineCloseButton.textContent = t("close");
+  inlineClose.appendChild(inlineCloseButton);
   section.before(placeholder);
   section.classList.add("in-dashboard-window");
   body.appendChild(section);
+  section.prepend(inlineClose);
   overlay.classList.remove("hidden");
   document.body.classList.add("dashboard-window-open");
   dashboardWindowState = { section, placeholder, lastFocus: trigger };
@@ -477,13 +731,20 @@ function openDashboardWindow(hash, trigger = null) {
     subtitle.textContent = dashboardWindowSubtitle(hash);
   }
   overlay.querySelectorAll("[data-action='dashboard-window-close']").forEach((button) => {
-    button.onclick = (event) => {
+    const closeFromControl = (event) => {
       event.preventDefault();
       closeDashboardWindow();
     };
+    button.onclick = closeFromControl;
+    button.onpointerdown = closeFromControl;
+    button.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        closeFromControl(event);
+      }
+    };
   });
   setActiveDashboardSection(hash);
-  setStatus(`${sectionTitleFromHash(hash)} opened in a compact workspace window.`);
+  setStatus(t("opened_window_status", { section: sectionTitleFromHash(hash) }));
 
   const closeButton = overlay.querySelector("[data-action='dashboard-window-close']");
   if (closeButton instanceof HTMLElement) {
@@ -4941,6 +5202,17 @@ function initProfessionalTradingWorkspace() {
 }
 
 function bindInteractions() {
+  document.querySelectorAll("[data-action='dashboard-window-close']").forEach((button) => {
+    const closeWindow = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      closeDashboardWindow();
+    };
+    button.addEventListener("pointerdown", closeWindow);
+    button.addEventListener("click", closeWindow);
+  });
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && selectedSocialTraderId) {
       closeSocialTraderDetail();
@@ -4969,6 +5241,10 @@ function bindInteractions() {
       && !event.shiftKey
       && !event.altKey
     ) {
+      if (Date.now() < suppressDashboardWindowOpenUntil) {
+        event.preventDefault();
+        return;
+      }
       const hash = dashboardSectionLink.getAttribute("href");
       if (openDashboardWindow(hash, dashboardSectionLink)) {
         event.preventDefault();
@@ -5186,8 +5462,11 @@ function bindInteractions() {
 }
 
 async function boot() {
+  loadPreferences();
+  applyPreferences();
   bindInteractions();
   bindForms();
+  bindPreferenceControls();
   initProfessionalTradingWorkspace();
   initDashboardSectionObserver();
   window.addEventListener("keydown", (event) => {
@@ -5195,6 +5474,7 @@ async function boot() {
       closeDashboardWindow();
     }
   });
+  window.addEventListener("hashchange", closeDashboardWindowFromHash);
   window.addEventListener("beforeunload", clearRefreshTimers);
   window.addEventListener("resize", () => {
     if (chartResizeFrame) {
