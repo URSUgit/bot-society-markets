@@ -133,18 +133,37 @@ function t(key, replacements = {}) {
   );
 }
 
-const fmtPercent = (value, digits = 0) => `${(Number(value) * 100).toFixed(digits)}%`;
-const fmtScore = (value) => Number(value).toFixed(1);
-const fmtPrice = (value) => Intl.NumberFormat(currentLocale(), { maximumFractionDigits: Number(value) > 1000 ? 0 : 2 }).format(Number(value));
+const finiteNumberOrNull = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+const fmtPercent = (value, digits = 0) => {
+  const numeric = finiteNumberOrNull(value);
+  return numeric === null ? "--" : `${(numeric * 100).toFixed(digits)}%`;
+};
+const fmtScore = (value) => {
+  const numeric = finiteNumberOrNull(value);
+  return numeric === null ? "--" : numeric.toFixed(1);
+};
+const fmtPrice = (value) => {
+  const numeric = finiteNumberOrNull(value);
+  return numeric === null ? "--" : Intl.NumberFormat(currentLocale(), { maximumFractionDigits: numeric > 1000 ? 0 : 2 }).format(numeric);
+};
 const fmtUsd = (value, digits = 0) => Intl.NumberFormat(currentLocale(), {
   style: "currency",
   currency: "USD",
   notation: Math.abs(Number(value)) >= 1000000 ? "compact" : "standard",
   maximumFractionDigits: digits,
 }).format(Number(value || 0));
-const fmtCompactNumber = (value) => Intl.NumberFormat(currentLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
-const fmtSignedPercent = (value) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}%`;
-const fmtBps = (value) => `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(0)} bps`;
+const fmtCompactNumber = (value) => Intl.NumberFormat(currentLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
+const fmtSignedPercent = (value) => {
+  const numeric = finiteNumberOrNull(value);
+  return numeric === null ? "--" : `${numeric >= 0 ? "+" : ""}${(numeric * 100).toFixed(1)}%`;
+};
+const fmtBps = (value) => {
+  const numeric = finiteNumberOrNull(value);
+  return numeric === null ? "--" : `${numeric >= 0 ? "+" : ""}${numeric.toFixed(0)} bps`;
+};
 const fmtDateTime = (value) => value ? new Date(value).toLocaleString(currentLocale(), { dateStyle: "medium", timeStyle: "short" }) : "n/a";
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
