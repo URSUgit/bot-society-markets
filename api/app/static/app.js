@@ -4406,7 +4406,22 @@ async function renderBotDetail(slug) {
   if (!detail || !slug) {
     return;
   }
-  const bot = await fetchJson(`/api/bots/${slug}`);
+  let bot;
+  try {
+    bot = await fetchJson(`/api/bots/${slug}`);
+  } catch (error) {
+    const fallback = latestSnapshot?.leaderboard?.find((candidate) => candidate.slug === slug);
+    if (!fallback) {
+      throw error;
+    }
+    bot = {
+      ...fallback,
+      calibration: Number(fallback.calibration || 0),
+      provenance_score: Number(fallback.provenance_score || 0),
+      asset_universe: fallback.asset_universe || [fallback.latest_asset || "BTC"],
+      recent_predictions: [],
+    };
+  }
   const canEdit = workspaceEditable();
   const latestPrediction = bot.recent_predictions?.[0];
   const evidenceProviders = (latestPrediction?.provider_mix || []).map((provider) => humanizeKey(provider)).join(", ") || "Awaiting linked sources";
