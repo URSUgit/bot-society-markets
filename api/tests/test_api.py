@@ -373,6 +373,7 @@ def test_professional_console_pages_are_served() -> None:
         assert "hydrateLiveSocialTrading" in app_js_response.text
         assert "X-BITprivat-Data-Mode" in app_js_response.text
         assert "Standby snapshot" in app_js_response.text
+        assert "socialTradingRetryTimer" in app_js_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

@@ -358,6 +358,7 @@ let autoRefreshTimer = null;
 let countdownTimer = null;
 let dashboardLoadInFlight = false;
 let socialTradingLoadInFlight = false;
+let socialTradingRetryTimer = null;
 let statusPageLoadInFlight = false;
 let statusPageTimer = null;
 let previousLeaderboardScores = new Map();
@@ -4616,6 +4617,15 @@ async function hydrateLiveSocialTrading({ fresh = false } = {}) {
     };
     renderOperatorStrip(latestSnapshot);
     renderSocialTrading(latestSnapshot.social_trading);
+    if (socialTradingRetryTimer) {
+      clearTimeout(socialTradingRetryTimer);
+      socialTradingRetryTimer = null;
+    }
+    if (["edge-fallback", "edge-snapshot"].includes(latestSnapshot.social_trading.delivery_mode)) {
+      socialTradingRetryTimer = window.setTimeout(() => {
+        void hydrateLiveSocialTrading();
+      }, 2500);
+    }
   } catch (error) {
     if (fresh) {
       throw error;
