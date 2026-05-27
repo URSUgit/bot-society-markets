@@ -826,6 +826,35 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
+    def list_social_trader_events_for_traders(
+        self,
+        trader_ids: Iterable[int],
+        *,
+        per_trader_limit: int = 6,
+    ) -> dict[int, list[dict[str, Any]]]:
+        normalized_ids = list(dict.fromkeys(int(trader_id) for trader_id in trader_ids))
+        if not normalized_ids:
+            return {}
+        row_rank = func.row_number().over(
+            partition_by=social_trader_events_table.c.trader_id,
+            order_by=(desc(social_trader_events_table.c.observed_at), desc(social_trader_events_table.c.id)),
+        ).label("_row_rank")
+        ranked_events = (
+            select(social_trader_events_table, row_rank)
+            .where(social_trader_events_table.c.trader_id.in_(normalized_ids))
+            .subquery()
+        )
+        stmt = (
+            select(ranked_events)
+            .where(ranked_events.c._row_rank <= max(1, per_trader_limit))
+            .order_by(ranked_events.c.trader_id, desc(ranked_events.c.observed_at), desc(ranked_events.c.id))
+        )
+        grouped = {trader_id: [] for trader_id in normalized_ids}
+        with self.database.connect() as connection:
+            for row in self._rows(connection.execute(stmt)):
+                grouped[int(row["trader_id"])].append(row)
+        return grouped
+
     def upsert_social_trader_allocation(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         stmt = self.database.upsert_insert(social_trader_allocations_table).values(**payload)
         stmt = stmt.on_conflict_do_update(

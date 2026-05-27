@@ -431,13 +431,17 @@ class BotSocietyService:
         """Keep web startup independent from external social APIs."""
         existing_rows = repository.list_social_traders(limit=12)
         if existing_rows:
+            events_by_trader = repository.list_social_trader_events_for_traders(
+                (int(row["id"]) for row in existing_rows),
+                per_trader_limit=6,
+            )
             return SocialDiscoveryRunResult(
                 discovered=0,
                 updated=0,
                 provider=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
                 youtube_configured=bool(self.settings.youtube_api_key),
                 traders=[
-                    self._to_social_trader_scorecard(row, repository.list_social_trader_events(int(row["id"]), limit=6))
+                    self._to_social_trader_scorecard(row, events_by_trader.get(int(row["id"]), []))
                     for row in existing_rows
                 ],
                 warnings=[
@@ -560,8 +564,12 @@ class BotSocietyService:
             focus_slugs=focus_slugs,
             limit=12,
         )
+        events_by_trader = active_repository.list_social_trader_events_for_traders(
+            (int(row["id"]) for row in visible_rows),
+            per_trader_limit=6,
+        )
         visible_scorecards = [
-            self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=6))
+            self._to_social_trader_scorecard(row, events_by_trader.get(int(row["id"]), []))
             for row in visible_rows
         ]
         return SocialDiscoveryRunResult(
@@ -600,8 +608,12 @@ class BotSocietyService:
     ) -> SocialTradingSnapshot:
         active_repository = repository or BotSocietyRepository(self.database)
         trader_rows = active_repository.list_social_traders(limit=16)
+        events_by_trader = active_repository.list_social_trader_events_for_traders(
+            (int(row["id"]) for row in trader_rows),
+            per_trader_limit=5,
+        )
         top_traders = [
-            self._to_social_trader_scorecard(row, active_repository.list_social_trader_events(int(row["id"]), limit=5))
+            self._to_social_trader_scorecard(row, events_by_trader.get(int(row["id"]), []))
             for row in trader_rows
         ]
         allocations = [
