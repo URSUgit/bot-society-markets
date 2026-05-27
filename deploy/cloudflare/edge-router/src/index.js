@@ -203,6 +203,12 @@ export default {
         generated_at: new Date().toISOString(),
       });
     }
+    if (request.method === "GET" && incomingUrl.pathname === "/api/runtime/public-origin") {
+      return jsonResponse({
+        social_read_origin: origin.origin,
+        generated_at: new Date().toISOString(),
+      });
+    }
     if (incomingUrl.hostname === "status.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/status")) {
       return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
     }

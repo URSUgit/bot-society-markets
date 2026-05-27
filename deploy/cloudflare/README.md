@@ -54,6 +54,7 @@ curl.exe https://status.bitprivat.com/
 - The Worker preserves `x-forwarded-host`, so the FastAPI app can render the correct landing or status surface.
 - HTML and client-facing API responses are marked `no-store` to avoid browser-stale control-plane pages.
 - Anonymous read-only public API payloads use a short edge cache after a successful live response and fall back to bundled public snapshots if Akash does not respond before the origin deadline. The `X-BITprivat-Data-Mode` header exposes `live-origin`, `edge-live-cache`, or `edge-fallback` delivery.
+- `/api/runtime/public-origin` exposes the active Akash read origin so the anonymous Social Traders panel can hydrate live public creator evidence directly when the Worker-to-ingress hop is degraded.
 - Authenticated reads and all state-changing API requests always reach the FastAPI origin; they are never served from the public fallback cache.
 - Static assets are allowed a short cache window to keep the public site fast without pinning old HTML.
 - The Worker name intentionally matches the route owner already configured in Cloudflare.

@@ -359,6 +359,7 @@ let countdownTimer = null;
 let dashboardLoadInFlight = false;
 let socialTradingLoadInFlight = false;
 let socialTradingRetryTimer = null;
+let publicSocialReadOrigin = null;
 let statusPageLoadInFlight = false;
 let statusPageTimer = null;
 let previousLeaderboardScores = new Map();
@@ -2270,6 +2271,7 @@ function renderSocialTrading(socialTrading) {
   summary.textContent = socialTrading.summary;
   const xConnector = (socialTrading.source_connectors || []).find((source) => source.platform === "x");
   const deliveryLabel = {
+    "direct-live-origin": " · Direct live",
     "edge-fallback": " · Standby snapshot",
     "edge-snapshot": " · Standby snapshot",
     "edge-live-cache": " · Edge cached",
@@ -4593,6 +4595,53 @@ async function renderBotDetail(slug) {
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }
 
+async function resolvePublicSocialReadOrigin() {
+  if (publicSocialReadOrigin !== null) {
+    return publicSocialReadOrigin;
+  }
+  try {
+    const runtime = await fetchJson("/api/runtime/public-origin");
+    publicSocialReadOrigin = runtime?.social_read_origin || "";
+  } catch (error) {
+    console.warn("Public social origin discovery is temporarily unavailable.", error);
+    publicSocialReadOrigin = "";
+  }
+  return publicSocialReadOrigin;
+}
+
+async function requestSocialTradingEnvelope(path) {
+  if (!workspaceEditable()) {
+    const publicOrigin = await resolvePublicSocialReadOrigin();
+    if (publicOrigin) {
+      try {
+        const directResponse = await fetch(`${publicOrigin}${path}`, {
+          credentials: "omit",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (directResponse.ok) {
+          return {
+            envelope: await directResponse.json(),
+            deliveryMode: "direct-live-origin",
+          };
+        }
+      } catch (error) {
+        console.warn("Direct live social hydration failed; requesting the edge fallback.", error);
+      }
+    }
+  }
+  const edgeResponse = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!edgeResponse.ok) {
+    throw new Error(`Failed to load ${path}`);
+  }
+  return {
+    envelope: await edgeResponse.json(),
+    deliveryMode: edgeResponse.headers.get("X-BITprivat-Data-Mode") || "live-origin",
+  };
+}
+
 async function hydrateLiveSocialTrading({ fresh = false } = {}) {
   if (socialTradingLoadInFlight || !latestSnapshot) {
     return;
@@ -4600,20 +4649,13 @@ async function hydrateLiveSocialTrading({ fresh = false } = {}) {
   socialTradingLoadInFlight = true;
   try {
     const path = fresh ? `/api/social-trading?fresh=1&v=${Date.now()}` : "/api/social-trading";
-    const response = await fetch(path, {
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to load ${path}`);
-    }
-    const envelope = await response.json();
+    const { envelope, deliveryMode } = await requestSocialTradingEnvelope(path);
     if (!envelope?.social_trading) {
       return;
     }
     latestSnapshot.social_trading = {
       ...envelope.social_trading,
-      delivery_mode: response.headers.get("X-BITprivat-Data-Mode") || "live-origin",
+      delivery_mode: deliveryMode,
     };
     renderOperatorStrip(latestSnapshot);
     renderSocialTrading(latestSnapshot.social_trading);
