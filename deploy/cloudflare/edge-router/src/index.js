@@ -83,6 +83,71 @@ function connectorDiagnosticFromSnapshot(connectorId) {
   return diagnostics.find((item) => item.connector_id === connectorId) || null;
 }
 
+function publicApiSnapshot(pathname) {
+  if (pathname === "/api/landing" || pathname === "/api/v1/landing/stats") {
+    return publicSnapshotResponse(LANDING_SNAPSHOT);
+  }
+  if (pathname === "/api/dashboard" || pathname === "/api/v1/dashboard/summary") {
+    return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
+  }
+  if (pathname === "/api/social-trading" || pathname === "/api/v1/social-trading") {
+    return publicSnapshotResponse({ social_trading: DASHBOARD_SNAPSHOT.social_trading });
+  }
+  if (pathname === "/api/social-traders" || pathname === "/api/v1/social-traders") {
+    return jsonResponse(DASHBOARD_SNAPSHOT.social_trading?.top_traders || []);
+  }
+  if (pathname === "/api/system/pulse" || pathname === "/api/v1/system/pulse") {
+    return publicSnapshotResponse(SYSTEM_PULSE);
+  }
+  if (pathname === "/api/system/providers" || pathname === "/api/v1/system/providers") {
+    return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
+  }
+  if (pathname === "/api/assets" || pathname === "/api/v1/assets") {
+    return jsonResponse(DASHBOARD_SNAPSHOT.assets);
+  }
+  if (pathname === "/api/paper-venues" || pathname === "/api/v1/paper-venues" || pathname === "/api/v1/trading/venues") {
+    return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
+  }
+  if (pathname === "/api/system/connectors" || pathname === "/api/v1/system/connectors") {
+    return publicSnapshotResponse({ connector_control: DASHBOARD_SNAPSHOT.connector_control });
+  }
+  if (pathname === "/api/system/connectors/diagnostics" || pathname === "/api/v1/system/connectors/diagnostics") {
+    return publicSnapshotResponse(CONNECTOR_DIAGNOSTICS);
+  }
+  const connectorDiagnosticMatch = pathname.match(/^\/api(?:\/v1)?\/system\/connectors\/([^/]+)\/diagnostics$/);
+  if (!connectorDiagnosticMatch) {
+    return null;
+  }
+  const connectorDiagnostic = connectorDiagnosticFromSnapshot(decodeURIComponent(connectorDiagnosticMatch[1]));
+  return connectorDiagnostic
+    ? publicSnapshotResponse({ connector_diagnostic: connectorDiagnostic })
+    : jsonResponse({ detail: "Connector not found" }, 404);
+}
+
+function withDeliveryMode(response, mode) {
+  const deliveredResponse = new Response(response.body, response);
+  deliveredResponse.headers.set("Cache-Control", "no-store");
+  deliveredResponse.headers.set("X-BITprivat-Data-Mode", mode);
+  return deliveredResponse;
+}
+
+function isAnonymousPublicRead(request, fallbackResponse) {
+  return Boolean(fallbackResponse)
+    && request.method === "GET"
+    && !request.headers.has("Authorization")
+    && !request.headers.has("Cookie");
+}
+
+async function fetchWithinDeadline(request, timeoutMilliseconds) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMilliseconds);
+  try {
+    return await fetch(new Request(request, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function statusPage(originBaseUrl) {
   const escapedOrigin = String(originBaseUrl || "app.bitprivat.com").replace(/[<>&"]/g, "");
   return new Response(
@@ -123,7 +188,7 @@ function statusPage(originBaseUrl) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const incomingUrl = new URL(request.url);
     const configuredOrigin = normalizeOrigin(env.ORIGIN_BASE_URL || "https://app.bitprivat.com");
     const originBaseUrl = env.ORIGIN_RESOLVE_OVERRIDE
@@ -174,47 +239,19 @@ export default {
     if (incomingUrl.pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
       return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
     }
-    // The edge snapshot is a fallback for static demos. When a live Akash
-    // origin is configured, API reads should proxy so the dashboard reflects
-    // live provider state, worker refreshes, and YouTube discovery results.
-    if (!env.ORIGIN_RESOLVE_OVERRIDE) {
-      if (incomingUrl.pathname === "/api/landing" || incomingUrl.pathname === "/api/v1/landing/stats") {
-        return publicSnapshotResponse(LANDING_SNAPSHOT);
-      }
-      if (incomingUrl.pathname === "/api/dashboard" || incomingUrl.pathname === "/api/v1/dashboard/summary") {
-        return publicSnapshotResponse(DASHBOARD_SNAPSHOT);
-      }
-      if (incomingUrl.pathname === "/api/social-trading" || incomingUrl.pathname === "/api/v1/social-trading") {
-        return publicSnapshotResponse({ social_trading: DASHBOARD_SNAPSHOT.social_trading });
-      }
-      if (incomingUrl.pathname === "/api/social-traders" || incomingUrl.pathname === "/api/v1/social-traders") {
-        return jsonResponse(DASHBOARD_SNAPSHOT.social_trading?.top_traders || []);
-      }
-      if (incomingUrl.pathname === "/api/system/pulse" || incomingUrl.pathname === "/api/v1/system/pulse") {
-        return publicSnapshotResponse(SYSTEM_PULSE);
-      }
-      if (incomingUrl.pathname === "/api/system/providers" || incomingUrl.pathname === "/api/v1/system/providers") {
-        return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
-      }
-      if (incomingUrl.pathname === "/api/assets" || incomingUrl.pathname === "/api/v1/assets") {
-        return jsonResponse(DASHBOARD_SNAPSHOT.assets);
-      }
-      if (incomingUrl.pathname === "/api/paper-venues" || incomingUrl.pathname === "/api/v1/paper-venues" || incomingUrl.pathname === "/api/v1/trading/venues") {
-        return publicSnapshotResponse({ paper_venues: DASHBOARD_SNAPSHOT.paper_venues, ...DASHBOARD_SNAPSHOT.paper_venues });
-      }
-      if (incomingUrl.pathname === "/api/system/connectors" || incomingUrl.pathname === "/api/v1/system/connectors") {
-        return publicSnapshotResponse({ connector_control: DASHBOARD_SNAPSHOT.connector_control });
-      }
-      if (incomingUrl.pathname === "/api/system/connectors/diagnostics" || incomingUrl.pathname === "/api/v1/system/connectors/diagnostics") {
-        return publicSnapshotResponse(CONNECTOR_DIAGNOSTICS);
-      }
-      const connectorDiagnosticMatch = incomingUrl.pathname.match(/^\/api(?:\/v1)?\/system\/connectors\/([^/]+)\/diagnostics$/);
-      if (connectorDiagnosticMatch) {
-        const connectorDiagnostic = connectorDiagnosticFromSnapshot(decodeURIComponent(connectorDiagnosticMatch[1]));
-        if (!connectorDiagnostic) {
-          return jsonResponse({ detail: "Connector not found" }, 404);
-        }
-        return publicSnapshotResponse({ connector_diagnostic: connectorDiagnostic });
+    const publicFallback = publicApiSnapshot(incomingUrl.pathname);
+    if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback) {
+      return withDeliveryMode(publicFallback, "edge-snapshot");
+    }
+    const canCachePublicRead = isAnonymousPublicRead(request, publicFallback);
+    const bypassPublicCache = incomingUrl.searchParams.get("fresh") === "1";
+    const cacheUrl = new URL(request.url);
+    cacheUrl.search = "";
+    const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
+    if (canCachePublicRead && !bypassPublicCache) {
+      const cachedResponse = await caches.default.match(cacheKey);
+      if (cachedResponse) {
+        return withDeliveryMode(cachedResponse, "edge-live-cache");
       }
     }
 
@@ -236,9 +273,22 @@ export default {
       body: upstreamMethod === "GET" ? undefined : request.body,
       redirect: "manual",
     });
-    // The upstream URL already contains the exact Akash lease host. Avoid an
-    // additional DNS override so Cloudflare makes a normal HTTPS origin call.
-    const upstreamResponse = await fetch(upstreamRequest);
+    let upstreamResponse;
+    try {
+      // Anonymous dashboard reads degrade gracefully instead of waiting for
+      // an intermittent Akash ingress timeout. Writes and personal reads do not.
+      upstreamResponse = canCachePublicRead
+        ? await fetchWithinDeadline(upstreamRequest, 4500)
+        : await fetch(upstreamRequest);
+    } catch (error) {
+      if (canCachePublicRead && publicFallback) {
+        return withDeliveryMode(publicFallback, "edge-fallback");
+      }
+      throw error;
+    }
+    if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500) {
+      return withDeliveryMode(publicFallback, "edge-fallback");
+    }
 
     const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {
       status: upstreamResponse.status,
@@ -251,6 +301,12 @@ export default {
     );
     if (incomingUrl.hostname === "api.bitprivat.com") {
       response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    }
+    if (canCachePublicRead && response.ok) {
+      response.headers.set("X-BITprivat-Data-Mode", "live-origin");
+      const cachedResponse = response.clone();
+      cachedResponse.headers.set("Cache-Control", "public, max-age=20");
+      ctx.waitUntil(caches.default.put(cacheKey, cachedResponse));
     }
     return response;
   },

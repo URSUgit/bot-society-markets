@@ -368,6 +368,11 @@ def test_professional_console_pages_are_served() -> None:
         assert "Bot decision receipt" in dashboard_response.text
         assert "Build Creator Bot" in dashboard_response.text
         assert "Scan New Videos" in dashboard_response.text
+        app_js_response = client.get("/static/app.js")
+        assert app_js_response.status_code == 200
+        assert "hydrateLiveSocialTrading" in app_js_response.text
+        assert "X-BITprivat-Data-Mode" in app_js_response.text
+        assert "Standby snapshot" in app_js_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

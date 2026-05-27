@@ -52,7 +52,9 @@ curl.exe https://status.bitprivat.com/
 ## Notes
 
 - The Worker preserves `x-forwarded-host`, so the FastAPI app can render the correct landing or status surface.
-- API and HTML responses are marked `no-store` to avoid Cloudflare serving stale control-plane pages.
+- HTML and client-facing API responses are marked `no-store` to avoid browser-stale control-plane pages.
+- Anonymous read-only public API payloads use a short edge cache after a successful live response and fall back to bundled public snapshots if Akash does not respond before the origin deadline. The `X-BITprivat-Data-Mode` header exposes `live-origin`, `edge-live-cache`, or `edge-fallback` delivery.
+- Authenticated reads and all state-changing API requests always reach the FastAPI origin; they are never served from the public fallback cache.
 - Static assets are allowed a short cache window to keep the public site fast without pinning old HTML.
 - The Worker name intentionally matches the route owner already configured in Cloudflare.
 - The root `wrangler.jsonc` is intentional, so Cloudflare's Git build deploys the same Worker as manual Wrangler deploys.

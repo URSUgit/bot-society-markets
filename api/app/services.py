@@ -609,7 +609,8 @@ class BotSocietyService:
     ) -> SocialTradingSnapshot:
         cache_key = user_slug or self.settings.default_user_slug
         cached_snapshot = self.social_trading_snapshot_cache.get(cache_key)
-        if self._cache_is_fresh(cached_snapshot, ttl_seconds=30):
+        cache_ttl_seconds = 120 if cache_key == self.settings.default_user_slug else 30
+        if self._cache_is_fresh(cached_snapshot, ttl_seconds=cache_ttl_seconds):
             return cached_snapshot[1]
         active_repository = repository or BotSocietyRepository(self.database)
         trader_rows = active_repository.list_social_traders(limit=16)

@@ -357,6 +357,7 @@ let autoRefreshEnabled = true;
 let autoRefreshTimer = null;
 let countdownTimer = null;
 let dashboardLoadInFlight = false;
+let socialTradingLoadInFlight = false;
 let statusPageLoadInFlight = false;
 let statusPageTimer = null;
 let previousLeaderboardScores = new Map();
@@ -2267,10 +2268,15 @@ function renderSocialTrading(socialTrading) {
 
   summary.textContent = socialTrading.summary;
   const xConnector = (socialTrading.source_connectors || []).find((source) => source.platform === "x");
+  const deliveryLabel = {
+    "edge-fallback": " · Standby snapshot",
+    "edge-snapshot": " · Standby snapshot",
+    "edge-live-cache": " · Edge cached",
+  }[socialTrading.delivery_mode] || "";
   badge.textContent = socialTrading.youtube_configured
-    ? `YouTube live · X ${xConnector?.state === "indexed" ? "indexed" : "pending"}`
-    : "YouTube setup needed";
-  badge.dataset.variant = socialTrading.youtube_configured ? "positive" : "warning";
+    ? `YouTube live · X ${xConnector?.state === "indexed" ? "indexed" : "pending"}${deliveryLabel}`
+    : `YouTube setup needed${deliveryLabel}`;
+  badge.dataset.variant = socialTrading.youtube_configured && !socialTrading.delivery_mode?.includes("fallback") ? "positive" : "warning";
   renderSocialBotFactory(socialTrading);
 
   kpis.innerHTML = `
@@ -4586,6 +4592,40 @@ async function renderBotDetail(slug) {
   renderPredictions(bot.recent_predictions, "bot-detail-predictions");
 }
 
+async function hydrateLiveSocialTrading({ fresh = false } = {}) {
+  if (socialTradingLoadInFlight || !latestSnapshot) {
+    return;
+  }
+  socialTradingLoadInFlight = true;
+  try {
+    const path = fresh ? `/api/social-trading?fresh=1&v=${Date.now()}` : "/api/social-trading";
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to load ${path}`);
+    }
+    const envelope = await response.json();
+    if (!envelope?.social_trading) {
+      return;
+    }
+    latestSnapshot.social_trading = {
+      ...envelope.social_trading,
+      delivery_mode: response.headers.get("X-BITprivat-Data-Mode") || "live-origin",
+    };
+    renderOperatorStrip(latestSnapshot);
+    renderSocialTrading(latestSnapshot.social_trading);
+  } catch (error) {
+    if (fresh) {
+      throw error;
+    }
+    console.warn("Live social trader hydration is temporarily unavailable.", error);
+  } finally {
+    socialTradingLoadInFlight = false;
+  }
+}
+
 async function loadDashboard(options = {}) {
   if (dashboardLoadInFlight) {
     return;
@@ -4640,6 +4680,11 @@ async function loadDashboard(options = {}) {
       setStatus(`Dashboard synced ${fmtRelativeTime(lastDashboardRefreshAt)}. ${snapshot.summary.pending_predictions} predictions are still waiting for score windows.`);
     }
     applyBillingQueryStatus();
+    if (options.refreshSocial) {
+      await hydrateLiveSocialTrading({ fresh: true });
+    } else {
+      void hydrateLiveSocialTrading();
+    }
   } finally {
     dashboardLoadInFlight = false;
   }
@@ -4751,7 +4796,7 @@ async function runSocialDiscovery(button = null) {
   setStatus("Running YouTube-first social trader discovery...");
   try {
     const result = await fetchJson("/api/social-traders/discover", { method: "POST" });
-    await loadDashboard({ silent: true });
+    await loadDashboard({ silent: true, refreshSocial: true });
     const warning = result.warnings?.length ? ` ${result.warnings[0]}` : "";
     setStatus(`Social discovery updated ${result.updated} profile(s), ${result.discovered} new.${warning}`);
   } catch (error) {
@@ -4788,7 +4833,7 @@ async function analyzeSocialTraderTarget(form = null) {
       method: "POST",
       body: JSON.stringify({ query, video_limit: videoLimit }),
     });
-    await loadDashboard({ silent: true });
+    await loadDashboard({ silent: true, refreshSocial: true });
     const analyzedNames = (result.traders || []).slice(0, 2).map((trader) => trader.display_name).filter(Boolean);
     const warning = result.warnings?.length ? ` ${result.warnings[0]}` : "";
     if (input) {
@@ -4824,7 +4869,7 @@ async function configureSocialTrader(traderId, mode) {
       auto_rebalance: true,
     }),
   });
-  await loadDashboard({ silent: true });
+  await loadDashboard({ silent: true, refreshSocial: true });
   setStatus(mode === "managed_paper"
     ? "Managed paper allocation is active. Live-money execution remains legally gated."
     : "Signal follow is active. Alerts and evidence are now tracked for this trader.");
@@ -4845,7 +4890,7 @@ async function diversifySocialPortfolio(button = null) {
         max_position_pct: 0.12,
       }),
     });
-    await loadDashboard({ silent: true });
+    await loadDashboard({ silent: true, refreshSocial: true });
     setStatus("Diversified managed-paper allocation created across the top social trader scorecards.");
   } catch (error) {
     setStatus(`Diversification failed: ${error.message}`);
@@ -4871,7 +4916,7 @@ async function executeSocialManagedPaper(button = null) {
       }),
     });
     latestSocialExecution = result;
-    await loadDashboard({ silent: true });
+    await loadDashboard({ silent: true, refreshSocial: true });
     const headline = result.created_positions
       ? `Opened ${result.created_positions} managed-paper position(s) from ${result.created_predictions} social prediction(s).`
       : "No new managed-paper positions were opened.";

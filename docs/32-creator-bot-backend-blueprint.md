@@ -15,6 +15,7 @@ A creator bot is an explainable market-research profile built from a trader's pu
 | Browser experience | Static dashboard delivered by FastAPI through Cloudflare | `api/app/static/dashboard.html`, `api/app/static/app.js` |
 
 Cloudflare should not hold provider API keys, analyze videos, make bot decisions, or own trading state. The Akash backend owns computation; Neon owns durable memory.
+For public anonymous reads only, Cloudflare may retain a short-lived copy of a successful API response or serve a visibly labelled standby snapshot if Akash ingress is temporarily unavailable. Authenticated reads and writes remain origin-only.
 
 ## Shipped Vertical Slice
 
@@ -23,6 +24,7 @@ Cloudflare should not hold provider API keys, analyze videos, make bot decisions
 3. Every stored creator appears as a creator-bot scorecard with decision explanations.
 4. A signed-in user may follow signals or allocate a capped managed-paper budget.
 5. The page now exposes source coverage, learning stage, deployment state, and backend location.
+6. The dashboard hydrates its Social Traders area from the full live social API after first paint and identifies edge-cached or standby delivery in the UI.
 
 Current creator returns are content-derived proxy metrics. They are not yet calculated from verified historical prices or actual fills.
 
