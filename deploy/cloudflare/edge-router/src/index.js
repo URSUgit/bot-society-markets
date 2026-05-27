@@ -245,6 +245,9 @@ export default {
     }
     const canCachePublicRead = isAnonymousPublicRead(request, publicFallback);
     const bypassPublicCache = incomingUrl.searchParams.get("fresh") === "1";
+    const isSocialRead = incomingUrl.pathname.includes("/social-trad");
+    const originDeadlineMilliseconds = isSocialRead ? 9000 : 4500;
+    const publicCacheSeconds = isSocialRead ? 60 : 20;
     const cacheUrl = new URL(request.url);
     cacheUrl.search = "";
     const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
@@ -278,7 +281,7 @@ export default {
       // Anonymous dashboard reads degrade gracefully instead of waiting for
       // an intermittent Akash ingress timeout. Writes and personal reads do not.
       upstreamResponse = canCachePublicRead
-        ? await fetchWithinDeadline(upstreamRequest, 4500)
+        ? await fetchWithinDeadline(upstreamRequest, originDeadlineMilliseconds)
         : await fetch(upstreamRequest);
     } catch (error) {
       if (canCachePublicRead && publicFallback) {
@@ -305,7 +308,7 @@ export default {
     if (canCachePublicRead && response.ok) {
       response.headers.set("X-BITprivat-Data-Mode", "live-origin");
       const cachedResponse = response.clone();
-      cachedResponse.headers.set("Cache-Control", "public, max-age=20");
+      cachedResponse.headers.set("Cache-Control", `public, max-age=${publicCacheSeconds}`);
       ctx.waitUntil(caches.default.put(cacheKey, cachedResponse));
     }
     return response;
