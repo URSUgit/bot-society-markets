@@ -43,6 +43,7 @@ from .models import (
     BusinessModelTeamRole,
     BotDetail,
     BotSummary,
+    CreatorBotTrainingStatus,
     ConnectorDiagnosticCheck,
     ConnectorDiagnosticResult,
     CycleResult,
@@ -82,6 +83,7 @@ from .models import (
     SignalMixItem,
     SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
+    SocialBackendRuntime,
     SocialEvidenceItem,
     SocialManagedPaperDecision,
     SocialManagedPaperExecutionRequest,
@@ -89,6 +91,7 @@ from .models import (
     SocialMonitoringStatus,
     SocialPortfolioDiversifyRequest,
     SocialRoiWindow,
+    SocialSourceStatus,
     SocialTraderAnalyzeRequest,
     SocialTraderAllocation,
     SocialTraderAssetExposure,
@@ -629,6 +632,7 @@ class BotSocietyService:
             )
         else:
             summary = "No social trader profiles are indexed yet. Run discovery to seed the YouTube-first watchlist."
+        source_connectors = self._social_source_connector_registry(top_traders)
         return SocialTradingSnapshot(
             generated_at=self._now(),
             provider_mode=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
@@ -655,6 +659,7 @@ class BotSocietyService:
                 "Managed mode is paper-only here: no live user funds are moved by this MVP.",
                 "Live copy trading requires KYC/suitability review, exchange authorization, risk controls, audit logging, and legal sign-off.",
                 "YouTube ingestion uses the official YouTube Data API when BSM_YOUTUBE_API_KEY is configured.",
+                "Displayed creator returns are content-derived proxy results until each extracted call is resolved against real market prices.",
             ],
             monitoring=self._social_monitoring_status(discovery_runs),
             decision_feed=[
@@ -662,6 +667,16 @@ class BotSocietyService:
                 for trader in top_traders[:6]
                 for decision in trader.decision_feed[:2]
             ][:10],
+            source_connectors=source_connectors,
+            backend_runtime=self._social_backend_runtime(),
+            bot_factory_pipeline=[
+                "Discover public creator content through approved source APIs",
+                "Extract assets, direction, timestamps, confidence, and evidence references",
+                "Build a versioned creator-bot evidence profile with an explainable decision feed",
+                "Resolve calls against venue market data before publishing validated performance",
+                "Deploy only capped paper allocations until regulated live execution is approved",
+            ],
+            performance_disclaimer="Content-derived proxy results are research signals, not verified against historical market prices, fills, or investable performance.",
         )
 
     def follow_social_trader(
@@ -5468,6 +5483,20 @@ class BotSocietyService:
                 evidence=[],
             ),
         ]
+        for trader in top_traders:
+            trader.creator_bot = CreatorBotTrainingStatus(
+                bot_name=f"{trader.display_name} Bot",
+                stage="awaiting_evidence",
+                dataset_events=0,
+                indexed_sources=[],
+                source_coverage_pct=0.0,
+                evidence_confidence=0.0,
+                validation_mode="edge_preview_requires_live_origin",
+                last_updated_at=now,
+                next_action="Connect to the live origin and run public-content discovery for an evidence-backed profile.",
+            )
+            trader.source_coverage = self._creator_bot_source_statuses([])
+            trader.performance_basis = "Edge preview only; live evidence and market-price validation are required before performance claims."
         allocations = []
         allocated_usd = round(sum(item.allocation_limit_usd for item in allocations if item.is_active), 2)
         portfolio_limit = round(max(self.settings.paper_starting_balance, allocated_usd), 2)
@@ -5499,8 +5528,17 @@ class BotSocietyService:
             safety_notes=[
                 "Signal mode is alerts-only.",
                 "Managed mode remains paper-only until legal, KYC, and venue approvals are complete.",
-                "Creator scorecards rank historical evidence; they are not guarantees of future performance.",
+                "Creator scorecards rank content-derived proxy evidence; they are not market-validated performance or guarantees.",
             ],
+            source_connectors=self._social_source_connector_registry(top_traders),
+            backend_runtime=self._social_backend_runtime(),
+            bot_factory_pipeline=[
+                "Discover creator evidence",
+                "Extract trade thesis",
+                "Resolve against real prices",
+                "Validate in paper execution",
+            ],
+            performance_disclaimer="Content-derived proxy results are research signals, not verified against historical market prices, fills, or investable performance.",
         )
 
     def _fast_public_user_profile(self, user_slug: str, alert_inbox: AlertInbox) -> UserProfile:
@@ -7502,6 +7540,9 @@ class BotSocietyService:
             roi_windows=self._social_roi_windows(row, evidence),
             decision_feed=self._social_decision_feed(row, evidence),
             asset_exposure=self._social_asset_exposure(evidence, primary_assets),
+            creator_bot=self._creator_bot_training_status(row, evidence, copy_trade_readiness),
+            source_coverage=self._creator_bot_source_statuses(evidence),
+            performance_basis="Content-derived proxy from public creator evidence; market-price validation is required before performance claims.",
         )
 
     @staticmethod
@@ -7524,6 +7565,121 @@ class BotSocietyService:
             risk_flag=BotSocietyService._social_evidence_risk_flag(confidence, derived_return),
             observed_at=str(row["observed_at"]),
             derived_return=derived_return,
+        )
+
+    def _creator_bot_training_status(
+        self,
+        row: dict,
+        evidence: list[SocialEvidenceItem],
+        copy_trade_readiness: str,
+    ) -> CreatorBotTrainingStatus:
+        indexed_sources = sorted({item.platform for item in evidence})
+        has_youtube = "youtube" in indexed_sources
+        has_x = "x" in indexed_sources
+        if not evidence:
+            stage = "awaiting_evidence"
+            next_action = "Scan recent public creator content before creating a paper strategy."
+        elif has_youtube and has_x and copy_trade_readiness == "paper_ready":
+            stage = "paper_validation"
+            next_action = "Resolve extracted calls against market prices and measure paper execution quality."
+        elif has_youtube and has_x:
+            stage = "multi_source_profile"
+            next_action = "Collect additional confirmed calls before enabling a managed-paper pilot."
+        else:
+            stage = "youtube_profile_active"
+            next_action = "Link an official X content feed and add price-resolution evidence before validating performance."
+        average_confidence = mean(item.confidence for item in evidence) if evidence else 0.0
+        return CreatorBotTrainingStatus(
+            bot_name=f"{str(row.get('display_name') or 'Creator')} Bot",
+            stage=stage,
+            dataset_events=len(evidence),
+            indexed_sources=indexed_sources,
+            source_coverage_pct=round(min(1.0, len(indexed_sources) / 2), 3),
+            evidence_confidence=round(average_confidence, 3),
+            validation_mode="content_proxy_pending_market_resolution",
+            last_updated_at=str(row.get("last_signal_at")) if row.get("last_signal_at") else None,
+            next_action=next_action,
+        )
+
+    def _creator_bot_source_statuses(
+        self,
+        evidence: list[SocialEvidenceItem],
+        *,
+        monitored_profiles: dict[str, int] | None = None,
+    ) -> list[SocialSourceStatus]:
+        grouped: dict[str, list[SocialEvidenceItem]] = defaultdict(list)
+        for item in evidence:
+            grouped[item.platform].append(item)
+        monitored_profiles = monitored_profiles or {}
+        youtube_items = grouped["youtube"]
+        x_items = grouped["x"]
+        youtube_live = bool(self.settings.youtube_api_key)
+        x_configured = bool(self.settings.x_bearer_token)
+        return [
+            SocialSourceStatus(
+                platform="youtube",
+                label="YouTube videos",
+                state="live" if youtube_live else ("indexed" if youtube_items else "ready_to_scan"),
+                configured=youtube_live,
+                indexed_items=len(youtube_items),
+                monitored_profiles=monitored_profiles.get("youtube", 1 if youtube_items else 0),
+                last_observed_at=youtube_items[0].observed_at if youtube_items else None,
+                role="Primary long-form thesis and creator-discovery evidence",
+                content_types=["video title", "description", "public transcript where available", "channel metadata"],
+                next_action=(
+                    "Continuous official API discovery is enabled; keep reviewing extracted decisions."
+                    if youtube_live
+                    else "Configure BSM_YOUTUBE_API_KEY to replace the seeded or RSS-assisted evidence flow."
+                ),
+            ),
+            SocialSourceStatus(
+                platform="x",
+                label="X posts",
+                state="indexed" if x_items else ("connector_build_required" if x_configured else "planned"),
+                configured=x_configured,
+                indexed_items=len(x_items),
+                monitored_profiles=monitored_profiles.get("x", 1 if x_items else 0),
+                last_observed_at=x_items[0].observed_at if x_items else None,
+                role="Fast reaction, entry/exit updates, and thesis-confirmation evidence",
+                content_types=["public posts", "threads", "timestamps", "linked assets"],
+                next_action=(
+                    "Refresh official X evidence in the worker cycle and link it to creator identities."
+                    if x_items
+                    else (
+                        "Build the official X API ingestion adapter for configured trader handles."
+                        if x_configured
+                        else "Add official X developer access after the ingestion adapter is enabled."
+                    )
+                ),
+            ),
+        ]
+
+    def _social_source_connector_registry(self, traders: list[SocialTraderScorecard]) -> list[SocialSourceStatus]:
+        evidence = [item for trader in traders for item in trader.evidence]
+        monitored_profiles = {
+            platform: len(
+                {
+                    trader.id
+                    for trader in traders
+                    if any(item.platform == platform for item in trader.evidence)
+                }
+            )
+            for platform in ("youtube", "x")
+        }
+        return self._creator_bot_source_statuses(evidence, monitored_profiles=monitored_profiles)
+
+    def _social_backend_runtime(self) -> SocialBackendRuntime:
+        persistence = (
+            "Neon PostgreSQL stores creator profiles, evidence, signals, allocations, and audit history."
+            if self.settings.database_url and "postgres" in self.settings.database_url.lower()
+            else "Application database stores creator profiles and evidence; hosted production should use Neon PostgreSQL."
+        )
+        return SocialBackendRuntime(
+            api_service="FastAPI social intelligence and creator-bot API deployed in the Akash web service.",
+            persistence=persistence,
+            continuous_worker="Akash worker cycle performs approved-source discovery and evidence refreshes.",
+            execution_boundary="Creator bots may generate signals or capped managed-paper actions only.",
+            market_validation="A price-resolution job must match each thesis to real venue history before ROI is validated.",
         )
 
     def _social_roi_windows(self, row: dict, evidence: list[SocialEvidenceItem]) -> list[SocialRoiWindow]:
@@ -7656,7 +7812,7 @@ class BotSocietyService:
             return "No fresh creator view is indexed yet; run YouTube discovery to update the thesis."
         latest = evidence[0]
         return (
-            f"Latest view: {latest.direction} {latest.asset} from '{latest.title}'. "
+            f"Evidence-derived view: {latest.direction} {latest.asset} from '{latest.title}'. "
             f"Confidence {latest.confidence:.0%}; BITprivat action is {('watch long setups' if latest.direction == 'bullish' else 'protect downside' if latest.direction == 'bearish' else 'stay neutral')}."
         )
 
@@ -7668,8 +7824,8 @@ class BotSocietyService:
         avg = float(row.get("average_roi") or 0)
         drawdown = float(row.get("max_drawdown") or 0)
         return (
-            f"If BITprivat had paper-followed the indexed calls, proxy ROI is {roi:+.1%}, "
-            f"average call return {avg:+.1%}, max drawdown {drawdown:.1%}, across {int(row.get('signal_count') or len(evidence))} signal(s)."
+            f"Content-derived proxy only, not market-validated PnL: modeled ROI {roi:+.1%}, "
+            f"average evidence return {avg:+.1%}, modeled drawdown {drawdown:.1%}, across {int(row.get('signal_count') or len(evidence))} signal(s)."
         )
 
     @staticmethod
@@ -7762,7 +7918,7 @@ class BotSocietyService:
         return (
             f"{len(evidence)} recent evidence item(s) across {asset_text}; "
             f"{dominant_direction} bias, {average_confidence:.0%} average confidence, "
-            f"{average_return:+.1%} average resolved move."
+            f"{average_return:+.1%} average content-derived proxy move."
         )
 
     @staticmethod
@@ -7875,6 +8031,8 @@ class BotSocietyService:
                 "public handle/channel RSS fallback when API quota is exhausted",
                 "title and description asset/direction extraction",
                 "normalized social signals for bot scoring",
+                "official X connector slot awaiting authenticated ingestion implementation",
+                "market-price resolution required before validated performance reporting",
                 "paper-only allocation/deployment controls",
             ],
             auto_signal_creation=True,

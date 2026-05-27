@@ -121,6 +121,9 @@ class Settings:
     )
     youtube_channel_ids: tuple[str, ...] = ()
     youtube_video_limit: int = 12
+    x_bearer_token: str | None = None
+    x_trader_handles: tuple[str, ...] = ()
+    x_post_limit: int = 20
     social_discovery_interval_seconds: int = 1800
     polymarket_tag_id: int = 21
     polymarket_event_limit: int = 30
@@ -308,6 +311,7 @@ def get_settings() -> Settings:
         )
     )
     youtube_channel_ids = _split_csv_env(os.getenv("BSM_YOUTUBE_CHANNEL_IDS", ""))
+    x_trader_handles = _split_csv_env(os.getenv("BSM_X_TRADER_HANDLES", ""))
 
     worker_interval_seconds = max(30, int(os.getenv("BSM_WORKER_INTERVAL_SECONDS", "900")))
     social_discovery_interval_seconds = max(
@@ -320,6 +324,7 @@ def get_settings() -> Settings:
     outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
     reddit_post_limit = max(5, min(50, int(os.getenv("BSM_REDDIT_POST_LIMIT", "15"))))
     youtube_video_limit = max(3, min(50, int(os.getenv("BSM_YOUTUBE_VIDEO_LIMIT", "12"))))
+    x_post_limit = max(5, min(100, int(os.getenv("BSM_X_POST_LIMIT", "20"))))
     polymarket_tag_id = max(1, int(os.getenv("BSM_POLYMARKET_TAG_ID", "21")))
     polymarket_event_limit = max(5, min(100, int(os.getenv("BSM_POLYMARKET_EVENT_LIMIT", "30"))))
     wallet_trade_limit = max(5, min(100, int(os.getenv("BSM_WALLET_TRADE_LIMIT", "25"))))
@@ -373,6 +378,9 @@ def get_settings() -> Settings:
         ),
         youtube_channel_ids=youtube_channel_ids,
         youtube_video_limit=youtube_video_limit,
+        x_bearer_token=os.getenv("BSM_X_BEARER_TOKEN") or None,
+        x_trader_handles=x_trader_handles,
+        x_post_limit=x_post_limit,
         social_discovery_interval_seconds=social_discovery_interval_seconds,
         polymarket_tag_id=polymarket_tag_id,
         polymarket_event_limit=polymarket_event_limit,

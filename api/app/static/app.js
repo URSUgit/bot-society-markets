@@ -1868,6 +1868,99 @@ function socialRunTone(status) {
   return "positive";
 }
 
+function socialSourceTone(state) {
+  if (state === "live" || state === "indexed") {
+    return "positive";
+  }
+  if (state === "connector_build_required" || state === "planned") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function socialCreatorStageLabel(stage) {
+  const labels = {
+    awaiting_evidence: "Awaiting evidence",
+    youtube_profile_active: "YouTube profile active",
+    multi_source_profile: "Multi-source learning",
+    paper_validation: "Paper validation",
+  };
+  return labels[stage] || humanizeKey(stage || "awaiting_evidence");
+}
+
+function socialCreatorBotMarkup(trader) {
+  const bot = trader.creator_bot;
+  if (!bot) {
+    return "";
+  }
+  const sourceChips = (trader.source_coverage || []).map((source) => `
+    <span data-tone="${socialSourceTone(source.state)}">
+      ${escapeHtml(source.label)} · ${escapeHtml(humanizeKey(source.state))}
+    </span>
+  `).join("");
+  const coverage = Math.max(0, Math.min(100, Number(bot.source_coverage_pct || 0) * 100));
+  return `
+    <div class="social-training-card">
+      <div class="social-training-head">
+        <div>
+          <span>Creator bot</span>
+          <strong>${escapeHtml(bot.bot_name)}</strong>
+          <small>${escapeHtml(socialCreatorStageLabel(bot.stage))} · ${bot.dataset_events || 0} indexed item(s)</small>
+        </div>
+        <div class="social-training-confidence">
+          <span>Evidence confidence</span>
+          <strong>${fmtPercent(bot.evidence_confidence || 0)}</strong>
+        </div>
+      </div>
+      <div class="social-training-meter" aria-label="Source coverage ${coverage.toFixed(0)} percent">
+        <span style="width:${coverage}%"></span>
+      </div>
+      <div class="social-source-chip-row">${sourceChips}</div>
+      <p>${escapeHtml(trader.performance_basis || "Content-derived proxy; validation is pending.")}</p>
+    </div>
+  `;
+}
+
+function renderSocialBotFactory(socialTrading) {
+  const registry = document.getElementById("social-source-registry");
+  const backend = document.getElementById("social-backend-map");
+  if (!registry || !backend) {
+    return;
+  }
+  const connectors = socialTrading.source_connectors || [];
+  registry.innerHTML = connectors.map((connector) => `
+    <article class="social-source-card" data-tone="${socialSourceTone(connector.state)}">
+      <div>
+        <span class="social-source-dot"></span>
+        <strong>${escapeHtml(connector.label)}</strong>
+        <small>${escapeHtml(humanizeKey(connector.state))}</small>
+      </div>
+      <p>${escapeHtml(connector.role)}</p>
+      <dl>
+        <div><dt>Indexed</dt><dd>${connector.indexed_items || 0}</dd></div>
+        <div><dt>Bots</dt><dd>${connector.monitored_profiles || 0}</dd></div>
+        <div><dt>Latest</dt><dd>${connector.last_observed_at ? fmtRelativeTime(connector.last_observed_at) : "Waiting"}</dd></div>
+      </dl>
+      <small>${escapeHtml(connector.next_action)}</small>
+    </article>
+  `).join("") || '<article class="social-source-card"><p>Source registry is loading.</p></article>';
+
+  const runtime = socialTrading.backend_runtime || {};
+  const pipeline = socialTrading.bot_factory_pipeline || [];
+  backend.innerHTML = `
+    <div class="social-runtime-copy">
+      <p class="eyebrow">Where the backend lives</p>
+      <h5>Akash API + worker, backed by Neon Postgres</h5>
+      <p>${escapeHtml(runtime.api_service || "Backend runtime status is loading.")}</p>
+      <p>${escapeHtml(runtime.persistence || "")}</p>
+      <span>${escapeHtml(runtime.execution_boundary || "")}</span>
+    </div>
+    <ol class="social-pipeline">
+      ${pipeline.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+    </ol>
+  `;
+}
+
 function socialTraderSearchText(trader, allocation) {
   return [
     trader.display_name,
@@ -2046,10 +2139,11 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
       <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
       <span>${trader.is_deployed ? `Deployed · ${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}` : "Not deployed"}</span>
     </div>
+    ${socialCreatorBotMarkup(trader)}
     <div class="social-detail-scoreboard">
       <article><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong><small>Composite creator score</small></article>
       <article><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong><small>${trader.signal_count || 0} extracted signal(s)</small></article>
-      <article><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong><small>${fmtSignedPercent(trader.max_drawdown)} max drawdown</small></article>
+      <article><span>Proxy if-followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong><small>${fmtSignedPercent(trader.max_drawdown)} modeled drawdown</small></article>
       <article><span>Delegation</span><strong>${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}</strong><small>${escapeHtml(humanizeKey(allocation?.mode || trader.deployment_mode || guidance.recommended_mode || "signals"))}</small></article>
     </div>
     <div class="social-detail-two-col">
@@ -2075,7 +2169,7 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
           ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
         </button>
         <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-          ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Deploy paper manager"}
+          ${allocation?.mode === "managed_paper" ? "Paper bot active" : "Deploy paper bot"}
         </button>
       </div>
     </div>
@@ -2172,8 +2266,12 @@ function renderSocialTrading(socialTrading) {
   const decisionCount = (socialTrading.decision_feed || []).length;
 
   summary.textContent = socialTrading.summary;
-  badge.textContent = socialTrading.youtube_configured ? "YouTube API live" : "Demo YouTube watchlist";
+  const xConnector = (socialTrading.source_connectors || []).find((source) => source.platform === "x");
+  badge.textContent = socialTrading.youtube_configured
+    ? `YouTube live · X ${xConnector?.state === "indexed" ? "indexed" : "pending"}`
+    : "YouTube setup needed";
   badge.dataset.variant = socialTrading.youtube_configured ? "positive" : "warning";
+  renderSocialBotFactory(socialTrading);
 
   kpis.innerHTML = `
     <article>
@@ -2192,9 +2290,9 @@ function renderSocialTrading(socialTrading) {
       <small>${fmtUsd(socialTrading.unallocated_usd || 0)} unallocated</small>
     </article>
     <article>
-      <span>Avg if-followed ROI</span>
+      <span>Avg evidence proxy</span>
       <strong>${fmtSignedPercent(averageRoi)}</strong>
-      <small>Backtest-style proxy from extracted calls</small>
+      <small>Not market-validated PnL</small>
     </article>
     <article>
       <span>Last discovery</span>
@@ -2243,11 +2341,12 @@ function renderSocialTrading(socialTrading) {
           <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
           <span>${escapeHtml(trader.analysis_basis || "YouTube metadata analysis")}</span>
         </div>
+        ${socialCreatorBotMarkup(trader)}
         <div class="social-score-strip">
           <div><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong></div>
           <div><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong></div>
-          <div><span>If followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
-          <div><span>Drawdown</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
+          <div><span>Proxy ROI</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
+          <div><span>Modeled DD</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
         </div>
         <div class="social-roi-strip">
           ${socialRoiWindowsMarkup(trader)}
@@ -2313,7 +2412,7 @@ function renderSocialTrading(socialTrading) {
               ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
             </button>
             <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-              ${allocation?.mode === "managed_paper" ? "Managed paper active" : "Deploy with delegation"}
+              ${allocation?.mode === "managed_paper" ? "Paper bot active" : "Deploy paper bot"}
             </button>
           </div>
         </div>
@@ -4672,18 +4771,18 @@ async function analyzeSocialTraderTarget(form = null) {
   const query = input?.value?.trim() || "";
   const videoLimit = Number(limitSelect?.value || 12);
   if (query.length < 2) {
-    setStatus("Add a YouTube trader name, @handle, channel URL, or video URL before analysis.");
+    setStatus("Add a YouTube trader name, @handle, channel URL, or video URL to build a creator bot.");
     input?.focus();
     return;
   }
   if (button) {
     button.disabled = true;
-    button.textContent = "Analyzing...";
+    button.textContent = "Building bot...";
   }
   if (activeForm) {
     activeForm.classList.add("is-running");
   }
-  setStatus(`Analyzing YouTube trader target: ${query}`);
+  setStatus(`Building the YouTube evidence profile for creator bot: ${query}`);
   try {
     const result = await fetchJson("/api/social-traders/analyze", {
       method: "POST",
@@ -4695,13 +4794,13 @@ async function analyzeSocialTraderTarget(form = null) {
     if (input) {
       input.value = "";
     }
-    setStatus(`Trader analysis updated ${result.updated} profile(s), ${result.discovered} new${analyzedNames.length ? `: ${analyzedNames.join(", ")}` : ""}.${warning}`);
+    setStatus(`Creator bot dataset updated ${result.updated} profile(s), ${result.discovered} new${analyzedNames.length ? `: ${analyzedNames.join(", ")}` : ""}.${warning}`);
   } catch (error) {
-    setStatus(`Trader analysis failed: ${error.message}`);
+    setStatus(`Creator bot build failed: ${error.message}`);
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "Analyze Trader";
+      button.textContent = "Build Creator Bot";
     }
     if (activeForm) {
       activeForm.classList.remove("is-running");

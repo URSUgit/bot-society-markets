@@ -359,11 +359,14 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="social-marketplace-search"' in dashboard_response.text
         assert 'id="social-sort-select"' in dashboard_response.text
         assert 'id="social-visible-count"' in dashboard_response.text
+        assert 'id="social-source-registry"' in dashboard_response.text
+        assert 'id="social-backend-map"' in dashboard_response.text
         assert 'id="social-detail-drawer"' in dashboard_response.text
         assert 'id="social-detail-content"' in dashboard_response.text
         assert 'id="social-discovery-run-list"' in dashboard_response.text
         assert 'id="social-execution-ledger-list"' in dashboard_response.text
         assert "Bot decision receipt" in dashboard_response.text
+        assert "Build Creator Bot" in dashboard_response.text
         assert "Scan New Videos" in dashboard_response.text
 
         simulation_response = client.get("/simulation")
@@ -459,6 +462,10 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert initial_snapshot["monitoring"]["auto_signal_creation"] is True
         assert initial_snapshot["monitoring"]["query_terms"]
         assert initial_snapshot["decision_feed"]
+        assert {source["platform"] for source in initial_snapshot["source_connectors"]} >= {"youtube", "x"}
+        assert initial_snapshot["backend_runtime"]["api_service"].startswith("FastAPI")
+        assert "market" in initial_snapshot["performance_disclaimer"].lower()
+        assert initial_snapshot["bot_factory_pipeline"]
         first_trader = initial_snapshot["top_traders"][0]
         assert first_trader["roi_windows"]
         assert {window["label"] for window in first_trader["roi_windows"]} >= {"1W", "1M", "1Y", "10Y", "Overall"}
@@ -467,6 +474,10 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert first_trader["strategy_profile"]
         assert first_trader["current_market_view"]
         assert first_trader["pnl_history_summary"]
+        assert first_trader["creator_bot"]["dataset_events"] >= 1
+        assert first_trader["creator_bot"]["source_coverage_pct"] > 0
+        assert {source["platform"] for source in first_trader["source_coverage"]} >= {"youtube", "x"}
+        assert "market-price validation" in first_trader["performance_basis"].lower()
         assert initial_snapshot["latest_discovery_run"]["updated"] >= 4
         assert initial_snapshot["latest_discovery_run"]["evidence_count"] >= 20
         assert initial_snapshot["discovery_runs"]

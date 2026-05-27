@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=modern-ui-2">
+  <link rel="stylesheet" href="/static/styles.css?v=creator-bots-1">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en">
   <div class="dashboard-shell">
@@ -157,7 +157,7 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Social trader engine</p>
-            <h3>Continuously monitor YouTube creators, turn videos into bot signals, and deploy paper-managed allocations</h3>
+            <h3>Build creator bots from public market opinions, inspect every decision, and deploy paper allocations</h3>
           </div>
           <div class="section-actions">
             <span class="status-pill" id="social-trader-badge">Syncing</span>
@@ -167,10 +167,22 @@
           </div>
         </div>
         <p class="panel-note" id="social-trader-summary">Loading social trader discovery, evidence, and paper allocation limits...</p>
+        <div class="social-bot-factory" aria-label="Creator bot factory and backend status">
+          <div class="social-factory-head">
+            <div>
+              <p class="eyebrow">Creator bot factory</p>
+              <h4>Every detected trader becomes an explainable evidence profile</h4>
+              <p>YouTube content forms the first thesis dataset. X posts become the fast-reaction layer once its official connector is activated. All allocation remains paper-only until price validation and legal controls graduate it.</p>
+            </div>
+            <span class="social-validation-pill">Research + paper validation</span>
+          </div>
+          <div class="social-source-registry" id="social-source-registry" aria-live="polite"></div>
+          <div class="social-backend-map" id="social-backend-map" aria-live="polite"></div>
+        </div>
         <form class="social-analyze-form" id="social-analyze-form">
           <div>
-            <label for="social-analyze-input">Analyze a YouTube trader</label>
-            <p>Paste a channel, video URL, @handle, or creator name. BITprivat reads recent public videos, enriches with public captions when available, falls back to public RSS when API quota is tight, infers signals, scores ROI history, and makes the trader deployable.</p>
+            <label for="social-analyze-input">Create or retrain a creator bot</label>
+            <p>Paste a YouTube channel, video URL, @handle, or creator name. BITprivat indexes public evidence, extracts a market thesis, and creates explainable paper signals. Displayed ROI remains a content proxy until validated against real venue prices.</p>
           </div>
           <div class="social-analyze-row">
             <input id="social-analyze-input" type="search" autocomplete="off" placeholder="Example: Crypto Banter, @traderhandle, or youtube.com/@channel" aria-label="YouTube trader name, handle, channel URL, or video URL">
@@ -180,7 +192,7 @@
               <option value="20">20 videos</option>
               <option value="30">30 videos</option>
             </select>
-            <button class="button primary small-button" id="social-analyze-button" type="submit">Analyze Trader</button>
+            <button class="button primary small-button" id="social-analyze-button" type="submit">Build Creator Bot</button>
           </div>
         </form>
         <div class="social-marketplace-toolbar" id="social-marketplace-toolbar" aria-label="Social trader marketplace filters">
@@ -217,7 +229,7 @@
             <span>Sort</span>
             <select id="social-sort-select" aria-label="Sort social trader marketplace">
               <option value="score">Best score</option>
-              <option value="roi">If-followed ROI</option>
+              <option value="roi">Evidence proxy ROI</option>
               <option value="win_rate">Win rate</option>
               <option value="recent">Freshest signal</option>
               <option value="delegated">Delegated capital</option>
@@ -1105,6 +1117,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=modern-ui-2"></script>
+  <script src="/static/app.js?v=creator-bots-1"></script>
 </body>
 </html>

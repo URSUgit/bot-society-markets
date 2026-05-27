@@ -26,6 +26,8 @@ SocialTradeMode = Literal["signals", "managed_paper"]
 SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
 SocialRiskLevel = Literal["low", "medium", "high"]
 SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
+SocialSourceState = Literal["live", "indexed", "ready_to_scan", "planned", "connector_build_required"]
+CreatorBotLearningStage = Literal["awaiting_evidence", "youtube_profile_active", "multi_source_profile", "paper_validation"]
 
 
 class Summary(BaseModel):
@@ -1055,6 +1057,40 @@ class SocialTraderAssetExposure(BaseModel):
     average_return: float
 
 
+class SocialSourceStatus(BaseModel):
+    platform: SocialPlatform
+    label: str
+    state: SocialSourceState
+    configured: bool = False
+    indexed_items: int = Field(default=0, ge=0)
+    monitored_profiles: int = Field(default=0, ge=0)
+    last_observed_at: str | None = None
+    role: str
+    content_types: list[str] = Field(default_factory=list)
+    next_action: str
+
+
+class CreatorBotTrainingStatus(BaseModel):
+    bot_name: str
+    stage: CreatorBotLearningStage
+    dataset_events: int = Field(default=0, ge=0)
+    indexed_sources: list[SocialPlatform] = Field(default_factory=list)
+    source_coverage_pct: float = Field(default=0, ge=0, le=1)
+    evidence_confidence: float = Field(default=0, ge=0, le=1)
+    validation_mode: str
+    model_version: str = "creator-profile-v0.1"
+    last_updated_at: str | None = None
+    next_action: str
+
+
+class SocialBackendRuntime(BaseModel):
+    api_service: str
+    persistence: str
+    continuous_worker: str
+    execution_boundary: str
+    market_validation: str
+
+
 class SocialTraderScorecard(BaseModel):
     id: int
     slug: str
@@ -1100,6 +1136,9 @@ class SocialTraderScorecard(BaseModel):
     roi_windows: list[SocialRoiWindow] = Field(default_factory=list)
     decision_feed: list[SocialTraderDecision] = Field(default_factory=list)
     asset_exposure: list[SocialTraderAssetExposure] = Field(default_factory=list)
+    creator_bot: CreatorBotTrainingStatus | None = None
+    source_coverage: list[SocialSourceStatus] = Field(default_factory=list)
+    performance_basis: str = "Content-derived proxy; performance is not market-validated PnL."
 
 
 class SocialTraderAllocation(BaseModel):
@@ -1161,6 +1200,10 @@ class SocialTradingSnapshot(BaseModel):
     safety_notes: list[str] = Field(default_factory=list)
     monitoring: SocialMonitoringStatus | None = None
     decision_feed: list[SocialTraderDecision] = Field(default_factory=list)
+    source_connectors: list[SocialSourceStatus] = Field(default_factory=list)
+    backend_runtime: SocialBackendRuntime | None = None
+    bot_factory_pipeline: list[str] = Field(default_factory=list)
+    performance_disclaimer: str = "Content-derived proxy results are not yet verified against historical market prices or fills."
 
 
 class SocialTradingEnvelope(BaseModel):
