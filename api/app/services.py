@@ -231,6 +231,7 @@ class BotSocietyService:
         self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
         self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
         self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
+        self.social_trading_snapshot_cache: dict[str, tuple[datetime, SocialTradingSnapshot]] = {}
 
     def bootstrap(self) -> None:
         self.database.initialize()
@@ -606,6 +607,10 @@ class BotSocietyService:
         user_slug: str,
         repository: BotSocietyRepository | None = None,
     ) -> SocialTradingSnapshot:
+        cache_key = user_slug or self.settings.default_user_slug
+        cached_snapshot = self.social_trading_snapshot_cache.get(cache_key)
+        if self._cache_is_fresh(cached_snapshot, ttl_seconds=30):
+            return cached_snapshot[1]
         active_repository = repository or BotSocietyRepository(self.database)
         trader_rows = active_repository.list_social_traders(limit=16)
         events_by_trader = active_repository.list_social_trader_events_for_traders(
@@ -645,7 +650,7 @@ class BotSocietyService:
         else:
             summary = "No social trader profiles are indexed yet. Run discovery to seed the YouTube-first watchlist."
         source_connectors = self._social_source_connector_registry(top_traders)
-        return SocialTradingSnapshot(
+        snapshot = SocialTradingSnapshot(
             generated_at=self._now(),
             provider_mode=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
             youtube_required=True,
@@ -690,6 +695,8 @@ class BotSocietyService:
             ],
             performance_disclaimer="Content-derived proxy results are research signals, not verified against historical market prices, fills, or investable performance.",
         )
+        self.social_trading_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def follow_social_trader(
         self,
@@ -7219,6 +7226,7 @@ class BotSocietyService:
         self.leaderboard_cache.clear()
         self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
+        self.social_trading_snapshot_cache.clear()
 
     def _use_fast_public_snapshots(self) -> bool:
         return self.settings.deployment_target == "akash" and bool(self.settings.database_url)
@@ -7234,6 +7242,7 @@ class BotSocietyService:
             self.get_system_pulse()
             self.get_landing_snapshot(user_slug)
             self.get_dashboard_snapshot(user_slug)
+            self.get_social_trading_snapshot(user_slug)
         except Exception:
             self._clear_live_caches()
 

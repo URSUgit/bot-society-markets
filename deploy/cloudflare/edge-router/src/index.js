@@ -236,10 +236,9 @@ export default {
       body: upstreamMethod === "GET" ? undefined : request.body,
       redirect: "manual",
     });
-    const upstreamResponse = await fetch(
-      upstreamRequest,
-      env.ORIGIN_RESOLVE_OVERRIDE ? { cf: { resolveOverride: env.ORIGIN_RESOLVE_OVERRIDE } } : undefined,
-    );
+    // The upstream URL already contains the exact Akash lease host. Avoid an
+    // additional DNS override so Cloudflare makes a normal HTTPS origin call.
+    const upstreamResponse = await fetch(upstreamRequest);
 
     const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {
       status: upstreamResponse.status,

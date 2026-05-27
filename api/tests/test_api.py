@@ -481,6 +481,8 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert initial_snapshot["latest_discovery_run"]["updated"] >= 4
         assert initial_snapshot["latest_discovery_run"]["evidence_count"] >= 20
         assert initial_snapshot["discovery_runs"]
+        cached_snapshot = client.get("/api/social-trading").json()["social_trading"]
+        assert cached_snapshot["generated_at"] == initial_snapshot["generated_at"]
 
         discovery_response = client.post("/api/social-traders/discover")
         assert discovery_response.status_code == 200
