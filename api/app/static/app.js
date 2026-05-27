@@ -4707,6 +4707,11 @@ async function loadDashboard(options = {}) {
     renderPaperTrading(snapshot.paper_trading);
     renderPaperVenues(snapshot.paper_venues);
     renderSocialTrading(snapshot.social_trading);
+    if (options.refreshSocial) {
+      await hydrateLiveSocialTrading({ fresh: true });
+    } else {
+      void hydrateLiveSocialTrading();
+    }
     await renderDashboardMarketChart(snapshot.assets);
     renderActivityFeed(snapshot);
     renderOperation(snapshot.latest_operation);
@@ -4726,17 +4731,16 @@ async function loadDashboard(options = {}) {
 
     const preferredSlug = selectedBotSlug || snapshot.leaderboard[0]?.slug;
     if (preferredSlug) {
-      await renderBotDetail(preferredSlug);
+      try {
+        await renderBotDetail(preferredSlug);
+      } catch (error) {
+        console.warn("Bot detail is temporarily unavailable; the dashboard remains active.", error);
+      }
     }
     if (!options.silent) {
       setStatus(`Dashboard synced ${fmtRelativeTime(lastDashboardRefreshAt)}. ${snapshot.summary.pending_predictions} predictions are still waiting for score windows.`);
     }
     applyBillingQueryStatus();
-    if (options.refreshSocial) {
-      await hydrateLiveSocialTrading({ fresh: true });
-    } else {
-      void hydrateLiveSocialTrading();
-    }
   } finally {
     dashboardLoadInFlight = false;
   }
