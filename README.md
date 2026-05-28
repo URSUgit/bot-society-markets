@@ -91,7 +91,7 @@ Included today:
 - chart-driven research surfaces powered by vendored TradingView Lightweight Charts
 - paper trading tied to bot predictions so the dashboard can simulate capital allocation and portfolio drift
 - social-trader follow controls with separate signal-only and managed-paper allocation modes, allocation caps, evidence-weighted risk notes, diversification helpers, managed-paper decision receipts, and compliance safety rails before any live copy-trading workflow
-- normalized paper order placement through `/api/v1/trading/orders`, with cash, exposure, single-order, and daily-loss risk checks before internal fills
+- normalized paper order preview, risk checks, and placement through `/api/v1/trading/preview`, `/api/v1/risk/check`, and `/api/v1/trading/orders`, with cash, exposure, single-order, daily-loss, and live-execution gates before internal fills
 - a paper venue activation map for Polysandbox, Kalshi Demo, Hyperliquid Testnet, Lorem Ipsum Trade, PaperMarket, and the internal ledger
 - a dedicated Strategy Lab page for rapid backtesting over selectable historical lookback windows
 - an Algorithm Creator inside Strategy Lab with editable signal weights, entry/exit thresholds, exposure limits, stop loss, take profit, and data-source selection
@@ -166,6 +166,8 @@ Key endpoints include:
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
+- `POST /api/trading/preview`
+- `POST /api/risk/check`
 - `GET /api/trading/orders`
 - `POST /api/trading/orders`
 - `GET /api/trading/orders/{order_id}`

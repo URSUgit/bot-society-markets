@@ -1367,6 +1367,88 @@ def test_ibkr_gateway_configuration_is_paper_first_and_guarded() -> None:
         assert check_lookup["ibkr_live_trading_gate"]["status"] == "blocked"
 
 
+def test_trading_preview_and_risk_check_gate_orders() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Preview User",
+                "email": "preview-order@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        preview_response = client.post(
+            "/api/v1/trading/preview",
+            json={
+                "venue": "paper",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "market",
+                "notional_usd": 500,
+                "client_order_id": "preview-only-1",
+            },
+        )
+        assert preview_response.status_code == 200
+        preview = preview_response.json()
+        assert preview["user_slug"] == user_slug
+        assert preview["risk"]["approved"] is True
+        assert preview["risk"]["live_trading_blocked"] is False
+        assert preview["execution_mode"] == "internal-paper"
+        assert preview["next_action"] == "submit_paper_order"
+        assert preview["reference_price"] > 0
+        assert preview["estimated_fill_price"] >= preview["reference_price"]
+        assert preview["notional_usd"] == 500
+        assert preview["estimated_fee"] > 0
+        assert {check["key"] for check in preview["risk"]["checks"]} >= {
+            "live_execution_gate",
+            "single_order_limit",
+            "cash_available",
+            "open_exposure_limit",
+        }
+
+        with client.app.state.bot_society_service.database.connect() as connection:
+            stored_count = connection.exec_driver_sql(
+                "SELECT COUNT(*) FROM orders WHERE user_slug = ?",
+                (user_slug,),
+            ).scalar_one()
+        assert stored_count == 0
+
+        oversized_response = client.post(
+            "/api/v1/trading/preview",
+            json={
+                "venue": "paper",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "market",
+                "notional_usd": 4000,
+            },
+        )
+        assert oversized_response.status_code == 200
+        oversized = oversized_response.json()
+        assert oversized["risk"]["approved"] is False
+        assert any("max single-order notional" in blocker for blocker in oversized["risk"]["blockers"])
+
+        live_risk_response = client.post(
+            "/api/v1/risk/check",
+            json={
+                "venue": "polymarket",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "market",
+                "notional_usd": 100,
+                "is_paper": False,
+            },
+        )
+        assert live_risk_response.status_code == 200
+        live_risk = live_risk_response.json()
+        assert live_risk["approved"] is False
+        assert live_risk["live_trading_blocked"] is True
+        assert "Live execution is disabled" in " ".join(live_risk["blockers"])
+
+
 def test_trading_order_contract_records_internal_paper_order() -> None:
     with build_client() as client:
         register_response = client.post(

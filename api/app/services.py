@@ -116,7 +116,11 @@ from .models import (
     StrategyView,
     Summary,
     SystemPulseSnapshot,
+    RiskCheckStatus,
     TradingOrderRequest,
+    TradingOrderPreview,
+    TradingRiskCheckItem,
+    TradingRiskCheckResult,
     TradingOrderView,
     UserIdentity,
     UserProfile,
@@ -1824,61 +1828,265 @@ class BotSocietyService:
             snapshot=self.get_paper_trading_snapshot(user_slug),
         )
 
-    def place_trading_order(self, user_slug: str, payload: TradingOrderRequest) -> TradingOrderView:
-        repository = BotSocietyRepository(self.database)
-        user = repository.get_user(user_slug)
+    def preview_trading_order(
+        self,
+        user_slug: str,
+        payload: TradingOrderRequest,
+        *,
+        repository: BotSocietyRepository | None = None,
+    ) -> TradingOrderPreview:
+        active_repository = repository or BotSocietyRepository(self.database)
+        user = active_repository.get_user(user_slug)
         if not user:
             raise ValueError(f"User {user_slug} is not available")
-        if not payload.is_paper or payload.venue not in {"paper", "internal"}:
-            raise ValueError("Live execution is disabled. Use venue=paper and is_paper=true.")
-        if payload.order_type != "market":
-            raise ValueError("The current paper engine only accepts market orders")
-        if payload.side not in {"buy", "long"}:
-            raise ValueError("The current paper engine only supports buy/long orders")
 
-        latest_assets = {row["asset"]: row for row in repository.list_latest_market_snapshots()}
-        if payload.asset not in latest_assets:
-            raise ValueError(f"Unknown or unsupported paper-trading asset: {payload.asset}")
-        mark_price = float(latest_assets[payload.asset]["price"])
-        if mark_price <= 0:
-            raise ValueError(f"Invalid market price for {payload.asset}")
-
-        slippage_multiplier = 1 + (self.settings.paper_trade_slippage_bps / 10000)
-        fill_price = round(mark_price * slippage_multiplier, 8)
-        quantity = float(payload.quantity) if payload.quantity is not None else float(payload.notional_usd or 0.0) / fill_price
-        requested_notional = quantity * fill_price
-        if requested_notional <= 0:
-            raise ValueError("Order notional must be greater than zero")
-
-        snapshot = self.get_paper_trading_snapshot(user_slug)
-        fee = requested_notional * (self.settings.paper_trade_fee_bps / 10000)
-        total_cash_required = requested_notional + fee
+        generated_at = self._now()
+        latest_assets = {row["asset"]: row for row in active_repository.list_latest_market_snapshots()}
+        snapshot = self.get_paper_trading_snapshot(
+            user_slug,
+            repository=active_repository,
+            latest_assets=latest_assets,
+        )
         max_single_order = self.settings.paper_starting_balance * 0.25
         max_open_exposure = self.settings.paper_starting_balance * 0.65
         daily_loss_limit = self.settings.paper_starting_balance * -0.1
+        risk_limits = {
+            "max_single_order_usd": round(max_single_order, 2),
+            "max_open_exposure_usd": round(max_open_exposure, 2),
+            "daily_loss_limit_usd": round(daily_loss_limit, 2),
+        }
+        live_trading_blocked = not payload.is_paper or payload.venue not in {"paper", "internal"}
+        execution_mode = "internal-paper" if not live_trading_blocked else "blocked-live"
+        checks: list[TradingRiskCheckItem] = []
+        blockers: list[str] = []
+        warnings: list[str] = []
 
-        if requested_notional > max_single_order:
-            raise ValueError(f"Paper order exceeds max single-order notional of {max_single_order:.2f} USD")
-        if total_cash_required > snapshot.summary.cash_balance:
-            raise ValueError("Insufficient paper cash for order notional plus fees")
-        if snapshot.summary.open_exposure + requested_notional > max_open_exposure:
-            raise ValueError(f"Paper order would exceed max open exposure of {max_open_exposure:.2f} USD")
-        if snapshot.summary.realized_pnl <= daily_loss_limit:
-            raise ValueError("Daily paper loss limit reached; new orders are suspended")
+        def add_check(
+            *,
+            key: str,
+            label: str,
+            status: RiskCheckStatus,
+            detail: str,
+            observed_value: float | None = None,
+            limit_value: float | None = None,
+            unit: str = "USD",
+        ) -> None:
+            checks.append(
+                TradingRiskCheckItem(
+                    key=key,
+                    label=label,
+                    status=status,
+                    detail=detail,
+                    observed_value=round(float(observed_value), 8) if observed_value is not None else None,
+                    limit_value=round(float(limit_value), 8) if limit_value is not None else None,
+                    unit=unit,
+                )
+            )
+            if status in {"fail", "blocked"} and detail not in blockers:
+                blockers.append(detail)
+            if status == "warn" and detail not in warnings:
+                warnings.append(detail)
 
-        notional = quantity * fill_price
-        fee = notional * (self.settings.paper_trade_fee_bps / 10000)
+        add_check(
+            key="live_execution_gate",
+            label="Live execution gate",
+            status="blocked" if live_trading_blocked else "pass",
+            detail=(
+                "Live execution is disabled. Use venue=paper and is_paper=true."
+                if live_trading_blocked
+                else "Order is scoped to the internal paper ledger; no live venue will receive it."
+            ),
+            unit="mode",
+        )
+        add_check(
+            key="order_type_support",
+            label="Order type support",
+            status="pass" if payload.order_type == "market" else "blocked",
+            detail=(
+                "The current paper engine accepts market orders."
+                if payload.order_type == "market"
+                else "The current paper engine only accepts market orders."
+            ),
+            unit="type",
+        )
+        add_check(
+            key="side_support",
+            label="Side support",
+            status="pass" if payload.side in {"buy", "long"} else "blocked",
+            detail=(
+                "The current paper engine supports buy/long exposure."
+                if payload.side in {"buy", "long"}
+                else "The current paper engine only supports buy/long orders."
+            ),
+            unit="side",
+        )
+
+        asset_row = latest_assets.get(payload.asset)
+        mark_price = float(asset_row["price"]) if asset_row else None
+        if asset_row is None:
+            add_check(
+                key="asset_support",
+                label="Asset support",
+                status="fail",
+                detail=f"Unknown or unsupported paper-trading asset: {payload.asset}",
+                unit="asset",
+            )
+        elif mark_price is None or mark_price <= 0:
+            add_check(
+                key="market_price",
+                label="Reference market price",
+                status="fail",
+                detail=f"Invalid market price for {payload.asset}",
+                observed_value=mark_price,
+            )
+        else:
+            add_check(
+                key="asset_support",
+                label="Asset support",
+                status="pass",
+                detail=f"{payload.asset} has a current reference market price.",
+                observed_value=mark_price,
+                unit="USD/asset",
+            )
+
+        fill_price = None
+        quantity = 0.0
+        requested_notional = 0.0
+        fee = 0.0
+        total_cash_required = 0.0
+        if mark_price is not None and mark_price > 0:
+            slippage_multiplier = 1 + (self.settings.paper_trade_slippage_bps / 10000)
+            fill_price = round(mark_price * slippage_multiplier, 8)
+            quantity = (
+                float(payload.quantity)
+                if payload.quantity is not None
+                else float(payload.notional_usd or 0.0) / fill_price
+            )
+            requested_notional = quantity * fill_price
+            fee = requested_notional * (self.settings.paper_trade_fee_bps / 10000)
+            total_cash_required = requested_notional + fee
+
+        add_check(
+            key="positive_notional",
+            label="Positive notional",
+            status="pass" if requested_notional > 0 else "fail",
+            detail=(
+                "Order notional is greater than zero."
+                if requested_notional > 0
+                else "Order notional must be greater than zero."
+            ),
+            observed_value=requested_notional,
+        )
+        add_check(
+            key="single_order_limit",
+            label="Single-order limit",
+            status="pass" if requested_notional <= max_single_order else "fail",
+            detail=(
+                f"Order is inside the max single-order notional of {max_single_order:.2f} USD."
+                if requested_notional <= max_single_order
+                else f"Paper order exceeds max single-order notional of {max_single_order:.2f} USD."
+            ),
+            observed_value=requested_notional,
+            limit_value=max_single_order,
+        )
+        add_check(
+            key="cash_available",
+            label="Cash available",
+            status="pass" if total_cash_required <= snapshot.summary.cash_balance else "fail",
+            detail=(
+                "Paper cash covers order notional plus estimated fees."
+                if total_cash_required <= snapshot.summary.cash_balance
+                else "Insufficient paper cash for order notional plus fees."
+            ),
+            observed_value=total_cash_required,
+            limit_value=snapshot.summary.cash_balance,
+        )
+        projected_exposure = snapshot.summary.open_exposure + requested_notional
+        add_check(
+            key="open_exposure_limit",
+            label="Open exposure limit",
+            status="pass" if projected_exposure <= max_open_exposure else "fail",
+            detail=(
+                f"Projected open exposure stays under {max_open_exposure:.2f} USD."
+                if projected_exposure <= max_open_exposure
+                else f"Paper order would exceed max open exposure of {max_open_exposure:.2f} USD."
+            ),
+            observed_value=projected_exposure,
+            limit_value=max_open_exposure,
+        )
+        add_check(
+            key="daily_loss_limit",
+            label="Daily loss limit",
+            status="pass" if snapshot.summary.realized_pnl > daily_loss_limit else "blocked",
+            detail=(
+                "Daily paper loss limit has not been reached."
+                if snapshot.summary.realized_pnl > daily_loss_limit
+                else "Daily paper loss limit reached; new orders are suspended."
+            ),
+            observed_value=snapshot.summary.realized_pnl,
+            limit_value=daily_loss_limit,
+        )
+
+        approved = not blockers
+        risk = TradingRiskCheckResult(
+            approved=approved,
+            live_trading_blocked=live_trading_blocked,
+            execution_mode=execution_mode,
+            blockers=blockers,
+            warnings=warnings,
+            checks=checks,
+        )
+        return TradingOrderPreview(
+            preview_id=f"preview-{generated_at.replace(':', '').replace('-', '').replace('Z', '')}-{payload.asset.lower()}",
+            generated_at=generated_at,
+            user_slug=user_slug,
+            venue=payload.venue,
+            asset=payload.asset,
+            side=payload.side,
+            order_type=payload.order_type,
+            is_paper=payload.is_paper,
+            execution_mode=execution_mode,
+            reference_price=round(mark_price, 8) if mark_price is not None and mark_price > 0 else None,
+            estimated_fill_price=fill_price,
+            quantity=round(quantity, 8),
+            notional_usd=round(requested_notional, 2),
+            estimated_fee=round(fee, 2),
+            estimated_total_cost=round(total_cash_required, 2),
+            estimated_slippage_bps=float(self.settings.paper_trade_slippage_bps),
+            fee_bps=float(self.settings.paper_trade_fee_bps),
+            cash_balance=snapshot.summary.cash_balance,
+            open_exposure=snapshot.summary.open_exposure,
+            equity=snapshot.summary.equity,
+            risk_limits=risk_limits,
+            risk=risk,
+            message=(
+                "Paper order preview passed risk checks. Submit to create an internal paper fill."
+                if approved
+                else f"Order blocked by {len(blockers)} control or risk check(s)."
+            ),
+            next_action="submit_paper_order" if approved else "resolve_blockers",
+        )
+
+    def check_trading_risk(self, user_slug: str, payload: TradingOrderRequest) -> TradingRiskCheckResult:
+        return self.preview_trading_order(user_slug, payload).risk
+
+    def place_trading_order(self, user_slug: str, payload: TradingOrderRequest) -> TradingOrderView:
+        repository = BotSocietyRepository(self.database)
+        preview = self.preview_trading_order(user_slug, payload, repository=repository)
+        if not preview.risk.approved:
+            raise ValueError(preview.risk.blockers[0] if preview.risk.blockers else "Order blocked by risk checks")
+        quantity = preview.quantity
+        notional = preview.notional_usd
+        fee = preview.estimated_fee
         now = self._now()
         metadata = {
-            "execution_mode": "internal-paper",
-            "reference_price": mark_price,
+            "execution_mode": preview.execution_mode,
+            "preview_id": preview.preview_id,
+            "reference_price": preview.reference_price,
             "slippage_bps": self.settings.paper_trade_slippage_bps,
             "fee_bps": self.settings.paper_trade_fee_bps,
-            "risk_limits": {
-                "max_single_order_usd": round(max_single_order, 2),
-                "max_open_exposure_usd": round(max_open_exposure, 2),
-                "daily_loss_limit_usd": round(daily_loss_limit, 2),
-            },
+            "risk_limits": preview.risk_limits,
+            "risk_checks": [check.model_dump() for check in preview.risk.checks],
             "client_order_id": payload.client_order_id,
         }
         order_id = repository.create_order(
@@ -1895,7 +2103,7 @@ class BotSocietyService:
                 "price": None,
                 "status": "filled",
                 "filled_quantity": round(quantity, 8),
-                "avg_fill_price": fill_price,
+                "avg_fill_price": preview.estimated_fill_price,
                 "fee": round(fee, 2),
                 "fee_currency": "USD",
                 "exchange_order_id": f"paper-{now.replace(':', '').replace('-', '').replace('Z', '')}-{payload.asset.lower()}",

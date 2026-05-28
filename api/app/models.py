@@ -20,6 +20,7 @@ LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 BillingPlanKey = Literal["basic", "pro", "enterprise"]
 ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
 ConnectorDiagnosticStatus = Literal["pass", "warn", "fail", "blocked"]
+RiskCheckStatus = Literal["pass", "warn", "fail", "blocked"]
 InfrastructureTaskState = Literal["ready", "attention", "planned"]
 SocialPlatform = Literal["youtube", "x", "reddit", "telegram", "newsletter", "other"]
 SocialTradeMode = Literal["signals", "managed_paper"]
@@ -371,6 +372,52 @@ class TradingOrderRequest(BaseModel):
         if self.client_order_id is not None:
             self.client_order_id = self.client_order_id.strip() or None
         return self
+
+
+class TradingRiskCheckItem(BaseModel):
+    key: str
+    label: str
+    status: RiskCheckStatus
+    detail: str
+    observed_value: float | None = None
+    limit_value: float | None = None
+    unit: str = "USD"
+
+
+class TradingRiskCheckResult(BaseModel):
+    approved: bool
+    live_trading_blocked: bool
+    execution_mode: str
+    blockers: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    checks: list[TradingRiskCheckItem] = Field(default_factory=list)
+
+
+class TradingOrderPreview(BaseModel):
+    preview_id: str
+    generated_at: str
+    user_slug: str
+    venue: str
+    asset: str
+    side: OrderSide
+    order_type: OrderType
+    is_paper: bool
+    execution_mode: str
+    reference_price: float | None = Field(default=None, ge=0)
+    estimated_fill_price: float | None = Field(default=None, ge=0)
+    quantity: float = Field(default=0, ge=0)
+    notional_usd: float = Field(default=0, ge=0)
+    estimated_fee: float = Field(default=0, ge=0)
+    estimated_total_cost: float = Field(default=0, ge=0)
+    estimated_slippage_bps: float = Field(default=0, ge=0)
+    fee_bps: float = Field(default=0, ge=0)
+    cash_balance: float | None = None
+    open_exposure: float | None = None
+    equity: float | None = None
+    risk_limits: dict[str, float] = Field(default_factory=dict)
+    risk: TradingRiskCheckResult
+    message: str
+    next_action: str
 
 
 class TradingOrderView(BaseModel):

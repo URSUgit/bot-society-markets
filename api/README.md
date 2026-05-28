@@ -39,6 +39,8 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `GET /api/me/notification-health`
 - `GET /api/paper-trading`
 - `GET /api/paper-venues`
+- `POST /api/trading/preview`
+- `POST /api/risk/check`
 - `POST /api/me/alerts/{alert_id}/read`
 - `POST /api/me/alerts/read-all`
 - `POST /api/me/follows`

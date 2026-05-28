@@ -74,6 +74,8 @@ from .models import (
     Summary,
     SystemPulseEnvelope,
     TradingOrderRequest,
+    TradingOrderPreview,
+    TradingRiskCheckResult,
     TradingOrderView,
     UserProfile,
     WalletIntelligenceSnapshot,
@@ -727,6 +729,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/paper-venues", response_model=PaperVenuesSnapshot)
     def paper_venues(request: Request) -> PaperVenuesSnapshot:
         return get_service(request).get_paper_venues()
+
+    @app.post("/api/v1/trading/preview", response_model=TradingOrderPreview)
+    @app.post("/api/trading/preview", response_model=TradingOrderPreview)
+    def preview_trading_order(payload: TradingOrderRequest, request: Request) -> TradingOrderPreview:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).preview_trading_order(user_slug, payload))
+
+    @app.post("/api/v1/risk/check", response_model=TradingRiskCheckResult)
+    @app.post("/api/risk/check", response_model=TradingRiskCheckResult)
+    def check_trading_risk(payload: TradingOrderRequest, request: Request) -> TradingRiskCheckResult:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).check_trading_risk(user_slug, payload))
 
     @app.post("/api/v1/trading/orders", response_model=TradingOrderView)
     @app.post("/api/trading/orders", response_model=TradingOrderView)
