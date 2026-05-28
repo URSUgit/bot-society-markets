@@ -372,7 +372,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="order-preview-submit"' in dashboard_response.text
         assert 'id="simple-trade-symbol"' in dashboard_response.text
         assert 'id="dashboard-window-nav"' in dashboard_response.text
-        assert "/static/app.js?v=platform-nav-1" in dashboard_response.text
+        assert "/static/app.js?v=platform-nav-2" in dashboard_response.text
         app_js_response = client.get("/static/app.js")
         assert app_js_response.status_code == 200
         assert "hydrateLiveSocialTrading" in app_js_response.text

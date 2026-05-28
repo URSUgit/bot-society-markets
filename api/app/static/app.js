@@ -6018,8 +6018,11 @@ async function boot() {
     }
 
     if (document.getElementById("dashboard-metrics")) {
+      const openedDashboardWorkspace = openDashboardWindowFromHash();
       await loadDashboard();
-      openDashboardWindowFromHash();
+      if (!openedDashboardWorkspace) {
+        openDashboardWindowFromHash();
+      }
     }
 
     if (document.getElementById("simulation-form")) {
