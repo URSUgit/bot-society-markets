@@ -10069,6 +10069,7 @@ body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .dashbo
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: min(1180px, calc(100vw - 36px));
   max-height: min(88dvh, 980px);
   border: 1px solid var(--modern-line-strong);
@@ -10094,6 +10095,64 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-titlebar 
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-titlebar [data-action="dashboard-window-close"] {
   display: inline-flex;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--modern-line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--modern-panel-strong) 94%, transparent), color-mix(in srgb, var(--modern-panel) 92%, transparent));
+  backdrop-filter: blur(16px);
+  scrollbar-width: thin;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--modern-line);
+  border-radius: 999px;
+  color: var(--modern-muted);
+  background: color-mix(in srgb, var(--modern-panel-strong) 78%, transparent);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: var(--modern-accent);
+  background: color-mix(in srgb, var(--modern-accent) 10%, transparent);
+  font-family: var(--font-finance);
+  font-size: 0.67rem;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a.active {
+  color: var(--modern-ink);
+  border-color: color-mix(in srgb, var(--modern-accent) 34%, var(--modern-line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--modern-accent) 12%, var(--modern-panel-strong)), color-mix(in srgb, var(--modern-info) 8%, var(--modern-panel)));
+  transform: translateY(-1px);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--modern-accent) 36%, transparent);
+  outline-offset: 2px;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-inline-close {
@@ -10331,6 +10390,21 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
 
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body {
     padding: 12px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-titlebar {
+    align-items: flex-start;
+    padding: 10px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav {
+    padding: 8px 10px 10px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-nav a {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 0.72rem;
   }
 
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window {

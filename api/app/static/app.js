@@ -597,11 +597,60 @@ function sectionTitleFromHash(hash) {
   return navLink?.textContent?.trim() || humanizeKey(hash.replace("#", "").replace("-section", ""));
 }
 
+function isDashboardWorkspaceHash(hash) {
+  if (!hash || !hash.startsWith("#")) {
+    return false;
+  }
+  try {
+    const section = document.querySelector(hash);
+    const hasWorkspaceLink = [...document.querySelectorAll(".sidebar-nav a[href^='#']")]
+      .some((link) => link.getAttribute("href") === hash);
+    return Boolean(section && hasWorkspaceLink);
+  } catch {
+    return false;
+  }
+}
+
+function dashboardWindowNavIcon(hash) {
+  const icons = {
+    "#market-console-section": "01",
+    "#trading-workspace-section": "02",
+    "#social-trader-section": "03",
+    "#intelligence-section": "04",
+    "#paper-section": "05",
+    "#leaderboard-section": "06",
+    "#connectors-section": "07",
+    "#account-section": "08",
+    "#workspace-section": "09",
+  };
+  return icons[hash] || ">";
+}
+
+function syncDashboardWindowNav(activeHash = "#market-console-section") {
+  const nav = document.getElementById("dashboard-window-nav");
+  if (!nav) {
+    return;
+  }
+  const links = [...document.querySelectorAll(".sidebar-nav a[href^='#']")]
+    .filter((link) => isDashboardWorkspaceHash(link.getAttribute("href")));
+  nav.innerHTML = links.map((link) => {
+    const hash = link.getAttribute("href");
+    const active = hash === activeHash;
+    return `
+      <a href="${escapeHtml(hash)}" class="${active ? "active" : ""}" ${active ? 'aria-current="page"' : ""}>
+        <span>${escapeHtml(dashboardWindowNavIcon(hash))}</span>
+        ${escapeHtml(link.textContent?.trim() || sectionTitleFromHash(hash))}
+      </a>
+    `;
+  }).join("");
+}
+
 function setActiveDashboardSection(hash) {
   const activeHash = hash || "#market-console-section";
   document.querySelectorAll(".sidebar-nav a[href^='#']").forEach((link) => {
     link.classList.toggle("active", link.getAttribute("href") === activeHash);
   });
+  syncDashboardWindowNav(activeHash);
 
   const activeSection = document.getElementById("operator-active-section");
   const activeDetail = document.getElementById("operator-active-section-detail");
@@ -664,8 +713,8 @@ function dashboardWindowSubtitle(hash) {
   return t(subtitles[hash] || "window_default_subtitle");
 }
 
-function closeDashboardWindow({ restoreFocus = true } = {}) {
-  suppressDashboardWindowOpenUntil = Date.now() + 2000;
+function closeDashboardWindow({ restoreFocus = true, suppressReopen = true, updateHistory = true } = {}) {
+  suppressDashboardWindowOpenUntil = suppressReopen ? Date.now() + 2000 : 0;
   const overlay = document.getElementById("dashboard-window");
   const body = document.getElementById("dashboard-window-body");
   const { section, placeholder, lastFocus } = dashboardWindowState;
@@ -696,6 +745,9 @@ function closeDashboardWindow({ restoreFocus = true } = {}) {
   if (restoreFocus && lastFocus instanceof HTMLElement) {
     lastFocus.focus({ preventScroll: true });
   }
+  if (updateHistory && isDashboardWorkspaceHash(window.location.hash)) {
+    window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
+  }
   resizeVisibleCharts();
 }
 
@@ -708,11 +760,33 @@ function closeDashboardWindowFromHash() {
   return true;
 }
 
-function openDashboardWindow(hash, trigger = null) {
-  if (Date.now() < suppressDashboardWindowOpenUntil) {
+function openDashboardWindowFromHash() {
+  if (!document.body.classList.contains("dashboard-body")) {
+    return false;
+  }
+  if (closeDashboardWindowFromHash()) {
     return true;
   }
-  if (!hash || hash === "#") {
+  const hash = window.location.hash;
+  if (!isDashboardWorkspaceHash(hash)) {
+    return false;
+  }
+  const trigger = document.querySelector(`.sidebar-nav a[href="${hash}"]`);
+  return openDashboardWindow(hash, trigger, { ignoreSuppression: true });
+}
+
+function handleDashboardHashChange() {
+  if (openDashboardWindowFromHash()) {
+    return;
+  }
+  setActiveDashboardSection(window.location.hash || "#market-console-section");
+}
+
+function openDashboardWindow(hash, trigger = null, { ignoreSuppression = false } = {}) {
+  if (!ignoreSuppression && Date.now() < suppressDashboardWindowOpenUntil) {
+    return true;
+  }
+  if (!isDashboardWorkspaceHash(hash)) {
     return false;
   }
   const section = document.querySelector(hash);
@@ -724,7 +798,7 @@ function openDashboardWindow(hash, trigger = null) {
     return false;
   }
 
-  closeDashboardWindow({ restoreFocus: false });
+  closeDashboardWindow({ restoreFocus: false, suppressReopen: false, updateHistory: false });
   const placeholder = document.createElement("div");
   placeholder.className = "dashboard-window-placeholder";
   placeholder.hidden = true;
@@ -752,6 +826,7 @@ function openDashboardWindow(hash, trigger = null) {
       : "standard";
   overlay.dataset.windowKind = windowKind;
   overlay.classList.remove("hidden");
+  suppressDashboardWindowOpenUntil = 0;
   document.body.classList.add("dashboard-window-open");
   document.body.classList.toggle("dashboard-window-social-open", windowKind === "social");
   dashboardWindowState = { section, placeholder, lastFocus: trigger };
@@ -761,6 +836,9 @@ function openDashboardWindow(hash, trigger = null) {
   }
   if (subtitle) {
     subtitle.textContent = dashboardWindowSubtitle(hash);
+  }
+  if (window.location.hash !== hash) {
+    window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}${hash}`);
   }
   overlay.querySelectorAll("[data-action='dashboard-window-close']").forEach((button) => {
     const closeFromControl = (event) => {
@@ -5922,7 +6000,7 @@ async function boot() {
       closeDashboardWindow();
     }
   });
-  window.addEventListener("hashchange", closeDashboardWindowFromHash);
+  window.addEventListener("hashchange", handleDashboardHashChange);
   window.addEventListener("beforeunload", clearRefreshTimers);
   window.addEventListener("resize", () => {
     if (chartResizeFrame) {
@@ -5941,6 +6019,7 @@ async function boot() {
 
     if (document.getElementById("dashboard-metrics")) {
       await loadDashboard();
+      openDashboardWindowFromHash();
     }
 
     if (document.getElementById("simulation-form")) {
