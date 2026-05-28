@@ -314,9 +314,11 @@ Regulatory references to track:
 2. Update GitHub and Akash secrets with the rotated database URL.
 3. Add stable DNS-only origin such as `origin.bitprivat.com` or `data.bitprivat.com` for Akash public reads.
 4. Fix Cloudflare Worker GitHub secrets so edge deploys are automatic, not only manual.
-5. Open a UI rebuild branch focused on compact app shell, drawer/window actions, and social trader interaction.
-6. Add `/api/v1/trading/preview` design and risk-engine test plan before any live execution code.
-7. Create a legal launch-memo checklist for EU/Romania counsel.
+5. Run strict origin verification: `.\deploy\verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -RequireLiveOrigin -CheckDirectOrigin`.
+6. Run secret hygiene verification: `.\deploy\security\check-secret-hygiene.ps1 -Strict`.
+7. Open a UI rebuild branch focused on compact app shell, drawer/window actions, and social trader interaction.
+8. Add `/api/v1/trading/preview` design and risk-engine test plan before any live execution code.
+9. Create a legal launch-memo checklist for EU/Romania counsel.
 
 ## Weekly Operating Rhythm
 
@@ -334,6 +336,7 @@ Every weekly update should edit this file and include:
 | Date | Change | Verification |
 | --- | --- | --- |
 | 2026-05-28 | Created the master rebuild and commercialization plan. | Markdown, SVG diagrams, and PDF export added to repo. |
+| 2026-05-28 | Added Phase 1 origin-hardening controls: strict live-origin verification mode, Worker origin probe, fallback reason headers, and secret hygiene scan. | `node --check`, strict/non-strict production verification, Wrangler dry-run, and GitHub CI. |
 
 ## Assumptions
 
@@ -343,4 +346,3 @@ Every weekly update should edit this file and include:
 - EU/Romania is the first commercial planning market.
 - The current FastAPI monolith remains live while service boundaries are extracted.
 - Cloudflare automatic deployment should be fully restored with repository secrets even though manual Wrangler deploy works.
-

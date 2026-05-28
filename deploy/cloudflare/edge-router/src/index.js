@@ -50,13 +50,20 @@ function cacheControl(hostname, pathname, contentType) {
   return "public, max-age=120";
 }
 
-function jsonResponse(payload, status = 200) {
+function headerSafe(value) {
+  return String(value ?? "")
+    .replace(/[\r\n]/g, " ")
+    .slice(0, 180);
+}
+
+function jsonResponse(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex, nofollow",
+      ...extraHeaders,
     },
   });
 }
@@ -124,10 +131,22 @@ function publicApiSnapshot(pathname) {
     : jsonResponse({ detail: "Connector not found" }, 404);
 }
 
-function withDeliveryMode(response, mode) {
+function withDeliveryMode(response, mode, metadata = {}) {
   const deliveredResponse = new Response(response.body, response);
   deliveredResponse.headers.set("Cache-Control", "no-store");
   deliveredResponse.headers.set("X-BITprivat-Data-Mode", mode);
+  if (metadata.reason) {
+    deliveredResponse.headers.set("X-BITprivat-Fallback-Reason", headerSafe(metadata.reason));
+  }
+  if (metadata.originStatus) {
+    deliveredResponse.headers.set("X-BITprivat-Origin-Status", headerSafe(metadata.originStatus));
+  }
+  if (metadata.originError) {
+    deliveredResponse.headers.set("X-BITprivat-Origin-Error", headerSafe(metadata.originError));
+  }
+  if (mode === "edge-fallback" || mode === "edge-snapshot") {
+    deliveredResponse.headers.set("Warning", '199 bitprivat "Serving labeled standby data; verify origin before trading-critical use."');
+  }
   return deliveredResponse;
 }
 
@@ -138,6 +157,39 @@ function isAnonymousPublicRead(request, fallbackResponse) {
     && !request.headers.has("Cookie");
 }
 
+function requestRequiresLiveOrigin(request, incomingUrl) {
+  return incomingUrl.searchParams.get("edge_require_live") === "1"
+    || request.headers.get("X-BITprivat-Require-Live-Origin") === "1";
+}
+
+function buildOriginHeaders(request, incomingUrl, origin, env) {
+  const headers = new Headers(request.headers);
+  // Akash ingress validates the Host header against the SDL accept list.
+  // The current random ingress host is included in AKASH_EXTRA_ACCEPT_HOSTS,
+  // so this pins Cloudflare to the exact lease instead of any shared app host.
+  headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE || origin.hostname);
+  headers.set("x-forwarded-host", incomingUrl.host);
+  headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
+  return headers;
+}
+
+function originUnavailableResponse(origin, incomingUrl, reason, status = 503) {
+  return jsonResponse(
+    {
+      detail: "Live origin was required but the Cloudflare edge could not return a live origin response.",
+      origin: origin.origin,
+      path: incomingUrl.pathname,
+      reason: headerSafe(reason),
+      generated_at: new Date().toISOString(),
+    },
+    status,
+    {
+      "X-BITprivat-Data-Mode": "origin-unavailable",
+      "X-BITprivat-Fallback-Reason": headerSafe(reason),
+    },
+  );
+}
+
 async function fetchWithinDeadline(request, timeoutMilliseconds) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMilliseconds);
@@ -145,6 +197,52 @@ async function fetchWithinDeadline(request, timeoutMilliseconds) {
     return await fetch(new Request(request, { signal: controller.signal }));
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function originHealthResponse(request, env, incomingUrl, origin) {
+  const startedAt = Date.now();
+  const upstreamUrl = new URL("/api/v1/system/pulse?edge_health=1", origin);
+  const upstreamRequest = new Request(upstreamUrl, {
+    method: "GET",
+    headers: buildOriginHeaders(request, incomingUrl, origin, env),
+    redirect: "manual",
+  });
+  try {
+    const upstreamResponse = await fetchWithinDeadline(upstreamRequest, 8000);
+    return jsonResponse(
+      {
+        status: upstreamResponse.ok ? "ok" : "degraded",
+        service: "bitprivat-edge-router",
+        origin: origin.origin,
+        origin_reachable: upstreamResponse.ok,
+        origin_status: upstreamResponse.status,
+        elapsed_ms: Date.now() - startedAt,
+        generated_at: new Date().toISOString(),
+      },
+      upstreamResponse.ok ? 200 : 502,
+      {
+        "X-BITprivat-Data-Mode": upstreamResponse.ok ? "live-origin-probe" : "origin-probe-failed",
+        "X-BITprivat-Origin-Status": String(upstreamResponse.status),
+      },
+    );
+  } catch (error) {
+    return jsonResponse(
+      {
+        status: "degraded",
+        service: "bitprivat-edge-router",
+        origin: origin.origin,
+        origin_reachable: false,
+        origin_error: headerSafe(error?.message || error?.name || "origin fetch failed"),
+        elapsed_ms: Date.now() - startedAt,
+        generated_at: new Date().toISOString(),
+      },
+      503,
+      {
+        "X-BITprivat-Data-Mode": "origin-probe-failed",
+        "X-BITprivat-Origin-Error": headerSafe(error?.message || error?.name || "origin fetch failed"),
+      },
+    );
   }
 }
 
@@ -195,6 +293,7 @@ export default {
       ? `${configuredOrigin.protocol}//${env.ORIGIN_RESOLVE_OVERRIDE}`
       : configuredOrigin.href;
     const origin = normalizeOrigin(originBaseUrl);
+    const requireLiveOrigin = requestRequiresLiveOrigin(request, incomingUrl);
     if (incomingUrl.hostname === "api.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/health")) {
       return jsonResponse({
         status: "ok",
@@ -203,9 +302,14 @@ export default {
         generated_at: new Date().toISOString(),
       });
     }
+    if (request.method === "GET" && incomingUrl.pathname === "/api/runtime/edge-health") {
+      return originHealthResponse(request, env, incomingUrl, origin);
+    }
     if (request.method === "GET" && incomingUrl.pathname === "/api/runtime/public-origin") {
       return jsonResponse({
         social_read_origin: origin.origin,
+        strict_live_query: "edge_require_live=1",
+        edge_health_path: "/api/runtime/edge-health",
         generated_at: new Date().toISOString(),
       });
     }
@@ -246,8 +350,8 @@ export default {
       return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
     }
     const publicFallback = publicApiSnapshot(incomingUrl.pathname);
-    if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback) {
-      return withDeliveryMode(publicFallback, "edge-snapshot");
+    if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback && !requireLiveOrigin) {
+      return withDeliveryMode(publicFallback, "edge-snapshot", { reason: "origin override not configured" });
     }
     const canCachePublicRead = isAnonymousPublicRead(request, publicFallback);
     const bypassPublicCache = incomingUrl.searchParams.get("fresh") === "1";
@@ -267,13 +371,7 @@ export default {
     const upstreamPath = rewritePath(incomingUrl.hostname, incomingUrl.pathname);
     const upstreamUrl = new URL(upstreamPath + incomingUrl.search, origin);
 
-    const headers = new Headers(request.headers);
-    // Akash ingress validates the Host header against the SDL accept list.
-    // The current random ingress host is included in AKASH_EXTRA_ACCEPT_HOSTS,
-    // so this pins Cloudflare to the exact lease instead of any shared app host.
-    headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE || origin.hostname);
-    headers.set("x-forwarded-host", incomingUrl.host);
-    headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
+    const headers = buildOriginHeaders(request, incomingUrl, origin, env);
 
     const upstreamMethod = request.method === "HEAD" ? "GET" : request.method;
     const upstreamRequest = new Request(upstreamUrl, {
@@ -290,13 +388,22 @@ export default {
         ? await fetchWithinDeadline(upstreamRequest, originDeadlineMilliseconds)
         : await fetch(upstreamRequest);
     } catch (error) {
+      if (requireLiveOrigin) {
+        return originUnavailableResponse(origin, incomingUrl, error?.message || error?.name || "origin fetch failed");
+      }
       if (canCachePublicRead && publicFallback) {
-        return withDeliveryMode(publicFallback, "edge-fallback");
+        return withDeliveryMode(publicFallback, "edge-fallback", {
+          reason: "origin fetch failed before deadline",
+          originError: error?.message || error?.name || "origin fetch failed",
+        });
       }
       throw error;
     }
-    if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500) {
-      return withDeliveryMode(publicFallback, "edge-fallback");
+    if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500 && !requireLiveOrigin) {
+      return withDeliveryMode(publicFallback, "edge-fallback", {
+        reason: "origin returned server error",
+        originStatus: upstreamResponse.status,
+      });
     }
 
     const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {

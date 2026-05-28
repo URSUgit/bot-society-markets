@@ -49,12 +49,30 @@ curl.exe https://api.bitprivat.com/api/v1/system/pulse
 curl.exe https://status.bitprivat.com/
 ```
 
+For strict origin verification, use:
+
+```powershell
+.\deploy\verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -RequireLiveOrigin -CheckDirectOrigin
+```
+
+This adds `edge_require_live=1` to trading-critical public API checks. The
+verification fails if Cloudflare serves `edge-fallback`, `edge-snapshot`, or an
+origin-unavailable response where live origin data is expected.
+
+For a direct Cloudflare-to-origin probe:
+
+```powershell
+curl.exe https://bitprivat.com/api/runtime/edge-health
+```
+
 ## Notes
 
 - The Worker preserves `x-forwarded-host`, so the FastAPI app can render the correct landing or status surface.
 - HTML and client-facing API responses are marked `no-store` to avoid browser-stale control-plane pages.
 - Anonymous read-only public API payloads use a short edge cache after a successful live response and fall back to bundled public snapshots if Akash does not respond before the origin deadline. The `X-BITprivat-Data-Mode` header exposes `live-origin`, `edge-live-cache`, or `edge-fallback` delivery.
+- Fallback responses also expose `Warning`, `X-BITprivat-Fallback-Reason`, and when available origin status/error headers so standby data is never silent.
 - `/api/runtime/public-origin` exposes the active Akash read origin so the anonymous Social Traders panel can hydrate live public creator evidence directly when the Worker-to-ingress hop is degraded.
+- `/api/runtime/edge-health` performs a bounded origin probe from inside the Worker and returns origin reachability without exposing secrets.
 - Authenticated reads and all state-changing API requests always reach the FastAPI origin; they are never served from the public fallback cache.
 - Static assets are allowed a short cache window to keep the public site fast without pinning old HTML.
 - The Worker name intentionally matches the route owner already configured in Cloudflare.

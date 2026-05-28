@@ -5,16 +5,46 @@ param(
     [int]$Attempts = 3,
     [int]$RetryDelaySeconds = 2,
     [switch]$ExpectOperatorStrip,
-    [switch]$ExpectSocialTrading
+    [switch]$ExpectSocialTrading,
+    [switch]$RequireLiveOrigin,
+    [switch]$CheckDirectOrigin
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-ResponseHeader {
+    param(
+        $Response,
+        [string]$Name
+    )
+
+    $value = $Response.Headers[$Name]
+    if ($null -eq $value) {
+        return ""
+    }
+    if ($value -is [array]) {
+        return ($value -join ",")
+    }
+    return [string]$value
+}
+
+function Add-QueryFlag {
+    param(
+        [string]$Url,
+        [string]$Name,
+        [string]$Value = "1"
+    )
+
+    $separator = if ($Url.Contains("?")) { "&" } else { "?" }
+    return "$Url$separator$Name=$Value"
+}
 
 function Invoke-ProductionCheck {
     param(
         [string]$Name,
         [string]$Url,
-        [scriptblock]$Assert
+        [scriptblock]$Assert,
+        [bool]$RequireLive = $false
     )
 
     $lastError = $null
@@ -22,12 +52,19 @@ function Invoke-ProductionCheck {
         try {
             $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30
             $passed = & $Assert $response
+            $deliveryMode = Get-ResponseHeader -Response $response -Name "X-BITprivat-Data-Mode"
+            if ($RequireLive -and @("edge-fallback", "edge-snapshot", "origin-unavailable", "origin-probe-failed") -contains $deliveryMode) {
+                $passed = $false
+            }
             if ($passed -or $attempt -ge $Attempts) {
                 return [pscustomobject]@{
                     Name = $Name
                     Status = [int]$response.StatusCode
                     Passed = [bool]$passed
                     Bytes = $response.Content.Length
+                    DataMode = $deliveryMode
+                    OriginStatus = Get-ResponseHeader -Response $response -Name "X-BITprivat-Origin-Status"
+                    FallbackReason = Get-ResponseHeader -Response $response -Name "X-BITprivat-Fallback-Reason"
                     Url = $Url
                     Attempts = $attempt
                 }
@@ -76,6 +113,7 @@ $checks = @(
     @{
         Name = "API pulse"
         Url = "$ApiUrl/api/v1/system/pulse?v=$cacheBust"
+        RequireLive = $true
         Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*system_pulse*" }
     },
     @{
@@ -98,11 +136,13 @@ if ($ExpectSocialTrading) {
         @{
             Name = "Social trading API"
             Url = "$ApiUrl/api/social-trading?v=$cacheBust"
+            RequireLive = $true
             Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*top_traders*" -and $r.Content -like "*safety_notes*" }
         },
         @{
             Name = "Social traders API"
             Url = "$ApiUrl/api/social-traders?v=$cacheBust"
+            RequireLive = $true
             Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*display_name*" -and $r.Content -like "*composite_score*" }
         },
         @{
@@ -113,8 +153,34 @@ if ($ExpectSocialTrading) {
     )
 }
 
+if ($CheckDirectOrigin) {
+    $runtimeUrl = "$RootUrl/api/runtime/public-origin?v=$cacheBust"
+    $runtime = Invoke-RestMethod -Uri $runtimeUrl -TimeoutSec 30
+    if (-not $runtime.social_read_origin) {
+        throw "Could not resolve social_read_origin from $runtimeUrl."
+    }
+    $origin = ([string]$runtime.social_read_origin).TrimEnd("/")
+    $checks += @(
+        @{
+            Name = "Direct origin pulse"
+            Url = "$origin/api/v1/system/pulse?v=$cacheBust"
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*system_pulse*" }
+        },
+        @{
+            Name = "Direct origin social"
+            Url = "$origin/api/social-trading?v=$cacheBust"
+            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*top_traders*" -and $r.Content -like "*safety_notes*" }
+        }
+    )
+}
+
 $results = foreach ($check in $checks) {
-    Invoke-ProductionCheck -Name $check.Name -Url $check.Url -Assert $check.Assert
+    $url = $check.Url
+    $strictLive = [bool]($RequireLiveOrigin -and $check.RequireLive)
+    if ($strictLive) {
+        $url = Add-QueryFlag -Url (Add-QueryFlag -Url $url -Name "fresh" -Value "1") -Name "edge_require_live" -Value "1"
+    }
+    Invoke-ProductionCheck -Name $check.Name -Url $url -Assert $check.Assert -RequireLive:$strictLive
 }
 
 $results | Format-Table -AutoSize
