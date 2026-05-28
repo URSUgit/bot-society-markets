@@ -9936,6 +9936,10 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-wind
   padding: 14px;
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-inline-close {
+  display: none;
+}
+
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-section.in-dashboard-window {
   min-height: calc(100dvh - 132px);
   padding: clamp(16px, 1.45vw, 24px);
