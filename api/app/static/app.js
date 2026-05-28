@@ -2177,6 +2177,18 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
         <strong>${fmtUsd(guidance.suggested_allocation_usd || 0)}</strong>
         <small>${escapeHtml(guidance.rationale || trader.watch_mode_recommendation || "")}</small>
       </div>
+      <label class="social-detail-control">
+        <span>Paper allocation cap</span>
+        <input type="number" min="0" max="100000" step="50" value="${allocation?.allocation_limit_usd || guidance.suggested_allocation_usd || 500}" data-social-allocation-id="${trader.id}" ${disabledAttr(!canEdit)}>
+      </label>
+      <label class="social-detail-control">
+        <span>Max per idea</span>
+        <select data-social-position-id="${trader.id}" ${disabledAttr(!canEdit)}>
+          <option value="0.08">8%</option>
+          <option value="0.12" selected>12%</option>
+          <option value="0.18">18%</option>
+        </select>
+      </label>
       <div class="social-detail-actions">
         <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
           ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
@@ -2328,114 +2340,39 @@ function renderSocialTrading(socialTrading) {
   grid.innerHTML = visibleTraders.map((trader) => {
     const allocation = allocationByTrader.get(trader.id);
     const guidance = trader.allocation_guidance || {};
-    const riskNotes = (trader.risk_notes || []).slice(0, 3).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
-    const evidence = (trader.evidence || []).slice(0, 2).map((item) => `
-      <li>
-        <div class="social-evidence-head">
-          <a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
-          <small data-tone="${socialImpactTone(item.impact_label)}">${escapeHtml(item.impact_label || "evidence")}</small>
-        </div>
-        <span>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtPercent(item.evidence_weight || 0)} weight · ${fmtSignedPercent(item.derived_return)}</span>
-        ${item.risk_flag ? `<em>${escapeHtml(item.risk_flag)}</em>` : ""}
-      </li>
-    `).join("") || "<li><span>No public evidence events indexed yet.</span></li>";
+    const assets = (trader.primary_assets || []).slice(0, 3);
+    const delegated = trader.delegated_usd || allocation?.allocation_limit_usd || 0;
     return `
-      <article class="social-trader-card">
-        <div class="social-trader-head">
-          ${socialAvatarMarkup(trader)}
-          <div>
-            <p class="eyebrow">${escapeHtml(humanizeKey(trader.platform))} · ${escapeHtml(trader.handle)}</p>
-            <h4>${escapeHtml(trader.display_name)}</h4>
-            <p>${escapeHtml(trader.description)}</p>
-          </div>
-          <div class="social-deploy-state">
-            <span class="status-pill" data-variant="${trader.is_deployed ? "positive" : "neutral"}">${trader.is_deployed ? "Deployed" : "Not deployed"}</span>
-            <strong>${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}</strong>
-            <small>${escapeHtml(humanizeKey(trader.deployment_mode || allocation?.mode || guidance.recommended_mode || "signals"))}</small>
-          </div>
-        </div>
-        <div class="social-intel-strip">
-          <span data-tone="${socialRiskTone(trader.risk_level)}">Risk: ${escapeHtml(humanizeKey(trader.risk_level || "medium"))}</span>
-          <span>${escapeHtml(trader.conviction_label || "Signal watchlist")}</span>
+      <button class="social-trader-card social-trader-button" type="button" data-action="social-open-detail" data-social-trader-id="${trader.id}" aria-label="Explore ${escapeHtml(trader.display_name)} social trader profile">
+        <span class="social-card-topline">
+          <span data-tone="${socialRiskTone(trader.risk_level)}">${escapeHtml(humanizeKey(trader.risk_level || "medium"))} risk</span>
           <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
-          <span>${escapeHtml(trader.analysis_basis || "YouTube metadata analysis")}</span>
-        </div>
-        ${socialCreatorBotMarkup(trader)}
-        <div class="social-score-strip">
-          <div><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong></div>
-          <div><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong></div>
-          <div><span>Proxy ROI</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong></div>
-          <div><span>Modeled DD</span><strong>${fmtSignedPercent(trader.max_drawdown)}</strong></div>
-        </div>
-        <div class="social-roi-strip">
-          ${socialRoiWindowsMarkup(trader)}
-        </div>
-        <div class="social-thesis-grid">
-          <article>
-            <span>Strategy</span>
-            <p>${escapeHtml(trader.strategy_profile || "Strategy profile pending.")}</p>
-          </article>
-          <article>
-            <span>Current market view</span>
-            <p>${escapeHtml(trader.current_market_view || "Run discovery to update current view.")}</p>
-          </article>
-          <article>
-            <span>PnL history</span>
-            <p>${escapeHtml(trader.pnl_history_summary || "PnL history pending.")}</p>
-          </article>
-        </div>
-        <div class="social-asset-exposure">
-          ${socialAssetExposureMarkup(trader)}
-        </div>
-        <div class="social-decision-box">
-          <p>${escapeHtml(trader.watch_mode_recommendation || "Start in signal mode, then validate with paper tracking.")}</p>
-          <div>
-            <span>Suggested cap <strong>${fmtUsd(guidance.suggested_allocation_usd || 0)}</strong></span>
-            <span>Max idea <strong>${fmtUsd(guidance.max_single_position_usd || 0)}</strong></span>
-            <span>Mode <strong>${escapeHtml(humanizeKey(guidance.recommended_mode || "signals"))}</strong></span>
-          </div>
-          <small>${escapeHtml(guidance.rationale || trader.evidence_summary || "")}</small>
-        </div>
-        <div class="social-bot-decisions">
-          <div class="workspace-head">
-            <h5>What the bot would do now</h5>
-            <span class="badge">Decision ledger</span>
-          </div>
-          <ul>${socialDecisionFeedMarkup(trader)}</ul>
-        </div>
-        <div class="social-tag-row">
-          ${(trader.primary_assets || []).map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
-          ${(trader.style_tags || []).slice(0, 3).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
-        </div>
-        <p class="social-evidence-summary">${escapeHtml(trader.evidence_summary || "")}</p>
-        <ul class="social-evidence-list">${evidence}</ul>
-        ${riskNotes ? `<ul class="social-risk-note-list">${riskNotes}</ul>` : ""}
-        <div class="social-manager-controls">
-          <label>
-            <span>Paper allocation cap</span>
-            <input type="number" min="0" max="100000" step="50" value="${allocation?.allocation_limit_usd || guidance.suggested_allocation_usd || 500}" data-social-allocation-id="${trader.id}" ${disabledAttr(!canEdit)}>
-          </label>
-          <label>
-            <span>Max per idea</span>
-            <select data-social-position-id="${trader.id}" ${disabledAttr(!canEdit)}>
-              <option value="0.08">8%</option>
-              <option value="0.12" selected>12%</option>
-              <option value="0.18">18%</option>
-            </select>
-          </label>
-          <div class="social-action-row">
-            <button class="button ghost small-button" type="button" data-action="social-open-detail" data-social-trader-id="${trader.id}">
-              Inspect manager
-            </button>
-            <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-              ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
-            </button>
-            <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-              ${allocation?.mode === "managed_paper" ? "Paper bot active" : "Deploy paper bot"}
-            </button>
-          </div>
-        </div>
-      </article>
+          <span>${trader.is_deployed ? "Deployed" : "Not deployed"}</span>
+        </span>
+        <span class="social-trader-head social-trader-head-compact">
+          ${socialAvatarMarkup(trader)}
+          <span>
+            <span class="eyebrow">${escapeHtml(humanizeKey(trader.platform))} · ${escapeHtml(trader.handle)}</span>
+            <strong>${escapeHtml(trader.display_name)}</strong>
+            <small>${escapeHtml(trader.conviction_label || trader.analysis_basis || "Creator signal watchlist")}</small>
+          </span>
+        </span>
+        <span class="social-compact-stat-row">
+          <span><small>Score</small><strong>${fmtScore(trader.composite_score)}</strong></span>
+          <span><small>Win</small><strong>${fmtPercent(trader.win_rate)}</strong></span>
+          <span><small>Proxy ROI</small><strong class="${Number(trader.roi_if_followed || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(trader.roi_if_followed)}</strong></span>
+        </span>
+        <span class="social-tag-row social-compact-tags">
+          ${assets.map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
+        </span>
+        <span class="social-compact-footer">
+          <span>
+            <strong>${trader.signal_count || 0}</strong> signals · <strong>${(trader.evidence || []).length}</strong> evidence
+          </span>
+          <span>${fmtUsd(delegated)} · ${escapeHtml(humanizeKey(allocation?.mode || trader.deployment_mode || guidance.recommended_mode || "signals"))}</span>
+        </span>
+        <span class="social-explore-cue">Explore profile <span aria-hidden="true">&rarr;</span></span>
+      </button>
     `;
   }).join("") || (
     traders.length
@@ -5833,15 +5770,16 @@ function bindInteractions() {
       return;
     }
 
-    const action = target.dataset.action;
+    const actionTarget = target.closest("[data-action]");
+    const action = actionTarget instanceof HTMLElement ? actionTarget.dataset.action : undefined;
     try {
       if (action === "run-connector-check") {
         event.preventDefault();
-        await runConnectorDiagnostic(target.dataset.connectorId, target);
+        await runConnectorDiagnostic(actionTarget.dataset.connectorId, actionTarget);
         return;
       }
       if (action === "select-landing-asset") {
-        selectedLandingAsset = target.dataset.value;
+        selectedLandingAsset = actionTarget.dataset.value;
         if (latestLandingSnapshot?.assets?.length) {
           await renderLandingMarketChart(latestLandingSnapshot.assets);
         } else {
@@ -5851,14 +5789,14 @@ function bindInteractions() {
         return;
       }
       if (action === "select-dashboard-asset") {
-        selectedDashboardAsset = target.dataset.value;
+        selectedDashboardAsset = actionTarget.dataset.value;
         if (latestSnapshot?.assets?.length) {
           await renderDashboardMarketChart(latestSnapshot.assets);
         }
         return;
       }
       if (action === "select-macro-series") {
-        selectedMacroSeries = target.dataset.value;
+        selectedMacroSeries = actionTarget.dataset.value;
         if (latestSnapshot?.macro_snapshot) {
           renderMacroChart(latestSnapshot.macro_snapshot);
         }
@@ -5868,12 +5806,12 @@ function bindInteractions() {
         if (!requireEditable()) {
           return;
         }
-        await followBot(target.dataset.botSlug);
+        await followBot(actionTarget.dataset.botSlug);
         return;
       }
       if (action === "social-open-detail") {
         event.preventDefault();
-        openSocialTraderDetail(target.dataset.socialTraderId);
+        openSocialTraderDetail(actionTarget.dataset.socialTraderId);
         return;
       }
       if (action === "social-close-detail") {
@@ -5886,7 +5824,7 @@ function bindInteractions() {
           return;
         }
         await configureSocialTrader(
-          target.dataset.socialTraderId,
+          actionTarget.dataset.socialTraderId,
           action === "social-follow-managed" ? "managed_paper" : "signals",
         );
         return;
@@ -5895,49 +5833,49 @@ function bindInteractions() {
         if (!requireEditable()) {
           return;
         }
-        await unfollowBot(target.dataset.botSlug);
+        await unfollowBot(actionTarget.dataset.botSlug);
         return;
       }
       if (action === "add-watch") {
         if (!requireEditable()) {
           return;
         }
-        await addWatchlist(target.dataset.asset);
+        await addWatchlist(actionTarget.dataset.asset);
         return;
       }
       if (action === "remove-watch") {
         if (!requireEditable()) {
           return;
         }
-        await removeWatchlist(target.dataset.asset);
+        await removeWatchlist(actionTarget.dataset.asset);
         return;
       }
       if (action === "add-alert-rule") {
         if (!requireEditable()) {
           return;
         }
-        await addAlertRule(target.dataset.asset, target.dataset.confidence || 0.68);
+        await addAlertRule(actionTarget.dataset.asset, actionTarget.dataset.confidence || 0.68);
         return;
       }
       if (action === "delete-alert-rule") {
         if (!requireEditable()) {
           return;
         }
-        await deleteAlertRule(target.dataset.ruleId);
+        await deleteAlertRule(actionTarget.dataset.ruleId);
         return;
       }
       if (action === "mark-alert-read") {
         if (!requireEditable()) {
           return;
         }
-        await markAlertRead(target.dataset.alertId);
+        await markAlertRead(actionTarget.dataset.alertId);
         return;
       }
       if (action === "delete-channel") {
         if (!requireEditable()) {
           return;
         }
-        await deleteNotificationChannel(target.dataset.channelId);
+        await deleteNotificationChannel(actionTarget.dataset.channelId);
         return;
       }
       if (action === "logout") {
@@ -5948,7 +5886,7 @@ function bindInteractions() {
         if (!requireEditable()) {
           return;
         }
-        await startBillingCheckout(target.dataset.planKey || "basic");
+        await startBillingCheckout(actionTarget.dataset.planKey || "basic");
         return;
       }
       if (action === "open-billing-portal") {

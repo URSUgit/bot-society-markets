@@ -371,7 +371,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="order-preview-window"' in dashboard_response.text
         assert 'id="order-preview-submit"' in dashboard_response.text
         assert 'id="simple-trade-symbol"' in dashboard_response.text
-        assert "/static/app.js?v=workspace-fullscreen-1" in dashboard_response.text
+        assert "/static/app.js?v=social-compact-1" in dashboard_response.text
         app_js_response = client.get("/static/app.js")
         assert app_js_response.status_code == 200
         assert "hydrateLiveSocialTrading" in app_js_response.text
