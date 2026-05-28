@@ -33,6 +33,8 @@ This repository contains both the founder documentation package and a profession
 - [BITprivat Business Model Strategy](docs/24-bitprivat-business-model-strategy.md)
 - [BITprivat V1 Technical Architecture](docs/25-bitprivat-v1-technical-architecture.md)
 - [BITprivat V1 Migration Roadmap](docs/26-bitprivat-v1-migration-roadmap.md)
+- [BITprivat Master Rebuild and Commercialization Plan](docs/33-bitprivat-master-rebuild-plan.md)
+- [BITprivat Master Rebuild Plan PDF](docs/33-bitprivat-master-rebuild-plan.pdf)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
@@ -63,6 +65,7 @@ This repository contains both the founder documentation package and a profession
 - [Akash Deploy Readiness Check](deploy/akash/check-deploy-readiness.ps1)
 - [Akash GitHub Secrets Setup](deploy/akash/setup-github-secrets.ps1)
 - [GHCR Publish Workflow](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\container-image.yml)
+- [Master Plan PDF Exporter](tools/export_master_plan_pdf.py)
 
 ## Current Implementation
 

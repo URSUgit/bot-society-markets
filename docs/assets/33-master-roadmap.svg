@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">BITprivat rebuild roadmap</title>
+  <desc id="desc">A phased roadmap from the master plan artifact through production hardening, UI rebuild, market data, social trader engine, Strategy Lab v2, crypto paper execution, legal readiness, gated live beta, and desktop app.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef6ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <style>
+      .title{font-family:Inter,Arial,sans-serif;font-size:34px;font-weight:900;fill:#0f172a}
+      .kicker{font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;fill:#2563eb}
+      .phase{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.5;rx:18;filter:url(#shadow)}
+      .phase-active{fill:#eff6ff;stroke:#60a5fa}
+      .phase-risk{fill:#fffbeb;stroke:#f59e0b}
+      .phase-live{fill:#fff1f2;stroke:#fb7185}
+      .num{font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:900;fill:#ffffff}
+      .pill{fill:#0f172a;rx:14}
+      .h{font-family:Inter,Arial,sans-serif;font-size:18px;font-weight:900;fill:#0f172a}
+      .p{font-family:Inter,Arial,sans-serif;font-size:13px;font-weight:650;fill:#475569}
+      .gate{font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;fill:#b45309;text-transform:uppercase;letter-spacing:1px}
+      .line{stroke:#94a3b8;stroke-width:4;stroke-linecap:round}
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <text x="56" y="60" class="kicker">Execution Roadmap</text>
+  <text x="56" y="104" class="title">Stabilize the live product, then modularize into a commercial platform</text>
+  <line x1="92" y1="254" x2="1188" y2="254" class="line"/>
+  <line x1="92" y1="500" x2="1188" y2="500" class="line"/>
+
+  <g transform="translate(56 164)">
+    <rect width="204" height="142" class="phase phase-active"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">0</text>
+    <text x="20" y="72" class="h">Master Plan</text>
+    <text x="20" y="98" class="p">Markdown, diagrams, PDF</text>
+    <text x="20" y="122" class="gate">Gate: approved source of truth</text>
+  </g>
+  <g transform="translate(292 164)">
+    <rect width="204" height="142" class="phase phase-risk"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">1</text>
+    <text x="20" y="72" class="h">Hardening</text>
+    <text x="20" y="98" class="p">Secrets, origin, live checks</text>
+    <text x="20" y="122" class="gate">Gate: no fallback surprises</text>
+  </g>
+  <g transform="translate(528 164)">
+    <rect width="204" height="142" class="phase"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">2</text>
+    <text x="20" y="72" class="h">UI Rebuild</text>
+    <text x="20" y="98" class="p">Compact, windows, EN/RO</text>
+    <text x="20" y="122" class="gate">Gate: user can act fast</text>
+  </g>
+  <g transform="translate(764 164)">
+    <rect width="204" height="142" class="phase"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">3</text>
+    <text x="20" y="72" class="h">Market Data</text>
+    <text x="20" y="98" class="p">Prices, candles, indicators</text>
+    <text x="20" y="122" class="gate">Gate: freshness visible</text>
+  </g>
+  <g transform="translate(1000 164)">
+    <rect width="204" height="142" class="phase"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">4</text>
+    <text x="20" y="72" class="h">Social Engine</text>
+    <text x="20" y="98" class="p">Creator bots, evidence, X</text>
+    <text x="20" y="122" class="gate">Gate: validated outcomes</text>
+  </g>
+
+  <g transform="translate(56 410)">
+    <rect width="204" height="142" class="phase"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">5</text>
+    <text x="20" y="72" class="h">Strategy Lab v2</text>
+    <text x="20" y="98" class="p">Fast runs, compare, export</text>
+    <text x="20" y="122" class="gate">Gate: reproducible research</text>
+  </g>
+  <g transform="translate(292 410)">
+    <rect width="204" height="142" class="phase phase-risk"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">6</text>
+    <text x="20" y="72" class="h">Crypto Paper</text>
+    <text x="20" y="98" class="p">Preview, risk, testnet</text>
+    <text x="20" y="122" class="gate">Gate: risk engine passes</text>
+  </g>
+  <g transform="translate(528 410)">
+    <rect width="204" height="142" class="phase phase-risk"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">7</text>
+    <text x="20" y="72" class="h">Legal Ready</text>
+    <text x="20" y="98" class="p">KYC, suitability, counsel</text>
+    <text x="20" y="122" class="gate">Gate: launch memo signed</text>
+  </g>
+  <g transform="translate(764 410)">
+    <rect width="204" height="142" class="phase phase-live"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">8</text>
+    <text x="20" y="72" class="h">Live Beta</text>
+    <text x="20" y="98" class="p">Private, capped, monitored</text>
+    <text x="20" y="122" class="gate">Gate: kill switch tested</text>
+  </g>
+  <g transform="translate(1000 410)">
+    <rect width="204" height="142" class="phase"/>
+    <rect x="20" y="18" width="42" height="28" class="pill"/><text x="35" y="38" class="num">9</text>
+    <text x="20" y="72" class="h">Desktop App</text>
+    <text x="20" y="98" class="p">Windows and macOS shell</text>
+    <text x="20" y="122" class="gate">Gate: web stable first</text>
+  </g>
+
+  <text x="56" y="650" class="p">Operating rule: no phase advances unless its acceptance criteria and risk gate are verified in GitHub, production, or counsel-approved documentation.</text>
+</svg>

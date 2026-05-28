@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">BITprivat Market Intelligence OS target architecture</title>
+  <desc id="desc">A visual flow from users into UI, edge gateway, market data, social intelligence, strategy lab, risk engine, paper execution, gated live execution, evidence, history, and audit storage.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e2edf7"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .label{font-family:Inter,Arial,sans-serif;font-size:23px;font-weight:800;fill:#0f172a}
+      .sub{font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:600;fill:#475569}
+      .small{font-family:Inter,Arial,sans-serif;font-size:13px;font-weight:650;fill:#64748b}
+      .box{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.5;rx:22;filter:url(#shadow)}
+      .box-blue{fill:#eff6ff;stroke:#93c5fd}
+      .box-green{fill:#ecfdf5;stroke:#86efac}
+      .box-amber{fill:#fffbeb;stroke:#fcd34d}
+      .box-red{fill:#fff1f2;stroke:#fda4af}
+      .box-dark{fill:#0f172a;stroke:#1e293b}
+      .dark-label{font-family:Inter,Arial,sans-serif;font-size:23px;font-weight:800;fill:#f8fafc}
+      .dark-sub{font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:600;fill:#cbd5e1}
+      .lane{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 8}
+      .line{stroke:#334155;stroke-width:2.5;fill:none;marker-end:url(#arrow)}
+      .title{font-family:Inter,Arial,sans-serif;font-size:34px;font-weight:900;fill:#0f172a}
+      .kicker{font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;fill:#0f766e}
+    </style>
+  </defs>
+  <rect width="1280" height="760" fill="url(#bg)"/>
+  <text x="58" y="64" class="kicker">BITprivat Target Operating Model</text>
+  <text x="58" y="106" class="title">Market Intelligence OS with gated execution</text>
+  <text x="58" y="134" class="sub">Research, social evidence, strategy testing, paper execution, and live crypto beta behind legal and risk gates.</text>
+
+  <rect x="56" y="176" width="208" height="104" class="box box-dark"/>
+  <text x="84" y="222" class="dark-label">Retail / Pro User</text>
+  <text x="84" y="250" class="dark-sub">Learns, tests, allocates</text>
+
+  <rect x="340" y="164" width="246" height="128" class="box box-blue"/>
+  <text x="372" y="211" class="label">Compact Trading UI</text>
+  <text x="372" y="240" class="sub">Windowed actions</text>
+  <text x="372" y="264" class="small">EN default, RO support, day/night</text>
+
+  <rect x="662" y="164" width="236" height="128" class="box box-blue"/>
+  <text x="694" y="211" class="label">API / Edge Gateway</text>
+  <text x="694" y="240" class="sub">Auth, routing, cache labels</text>
+  <text x="694" y="264" class="small">Cloudflare + Akash origin</text>
+
+  <rect x="976" y="164" width="236" height="128" class="box box-green"/>
+  <text x="1008" y="211" class="label">Market Data Layer</text>
+  <text x="1008" y="240" class="sub">Prices, candles, freshness</text>
+  <text x="1008" y="264" class="small">Binance, CoinGecko, Hyperliquid</text>
+
+  <rect x="176" y="392" width="240" height="126" class="box box-green"/>
+  <text x="208" y="439" class="label">Social Intelligence</text>
+  <text x="208" y="468" class="sub">Creator bots and evidence</text>
+  <text x="208" y="492" class="small">YouTube live, X planned</text>
+
+  <rect x="516" y="392" width="240" height="126" class="box box-green"/>
+  <text x="548" y="439" class="label">Strategy Lab v2</text>
+  <text x="548" y="468" class="sub">Fast backtests</text>
+  <text x="548" y="492" class="small">Runs, comparisons, exports</text>
+
+  <rect x="856" y="392" width="240" height="126" class="box box-amber"/>
+  <text x="888" y="439" class="label">Trading + Risk</text>
+  <text x="888" y="468" class="sub">Preview, caps, kill switch</text>
+  <text x="888" y="492" class="small">Paper first, live gated</text>
+
+  <rect x="56" y="596" width="236" height="96" class="box"/>
+  <text x="84" y="636" class="label">Public Evidence</text>
+  <text x="84" y="664" class="sub">YouTube, X, Telegram, Reddit</text>
+
+  <rect x="356" y="596" width="236" height="96" class="box"/>
+  <text x="384" y="636" class="label">Historical Store</text>
+  <text x="384" y="664" class="sub">Signals, prices, outcomes</text>
+
+  <rect x="656" y="596" width="236" height="96" class="box"/>
+  <text x="684" y="636" class="label">Paper / Sandbox</text>
+  <text x="684" y="664" class="sub">Internal, testnet, broker paper</text>
+
+  <rect x="956" y="596" width="236" height="96" class="box box-red"/>
+  <text x="984" y="636" class="label">Gated Live Crypto</text>
+  <text x="984" y="664" class="sub">Private beta after approvals</text>
+
+  <path d="M 264 228 L 340 228" class="line"/>
+  <path d="M 586 228 L 662 228" class="line"/>
+  <path d="M 898 228 L 976 228" class="line"/>
+  <path d="M 780 292 C 740 346 650 360 636 392" class="line"/>
+  <path d="M 780 292 C 746 348 408 352 296 392" class="line"/>
+  <path d="M 898 292 C 956 330 982 360 976 392" class="line"/>
+  <path d="M 296 518 L 174 596" class="line"/>
+  <path d="M 636 518 L 474 596" class="line"/>
+  <path d="M 976 518 L 774 596" class="line"/>
+  <path d="M 976 518 L 1074 596" class="line"/>
+  <path d="M 416 455 L 516 455" class="line"/>
+  <path d="M 756 455 L 856 455" class="line"/>
+
+  <rect x="58" y="704" width="1160" height="1.5" fill="#cbd5e1"/>
+  <text x="58" y="733" class="small">Rule: live execution is not a feature flag. It requires legal approval, explicit user consent, risk limits, audit logs, and a tested kill switch.</text>
+</svg>
