@@ -209,7 +209,7 @@ async function originHealthResponse(request, env, incomingUrl, origin) {
     redirect: "manual",
   });
   try {
-    const upstreamResponse = await fetchWithinDeadline(upstreamRequest, 8000);
+    const upstreamResponse = await fetchWithinDeadline(upstreamRequest, 20000);
     return jsonResponse(
       {
         status: upstreamResponse.ok ? "ok" : "degraded",
@@ -356,7 +356,9 @@ export default {
     const canCachePublicRead = isAnonymousPublicRead(request, publicFallback);
     const bypassPublicCache = incomingUrl.searchParams.get("fresh") === "1";
     const isSocialRead = incomingUrl.pathname.includes("/social-trad");
-    const originDeadlineMilliseconds = isSocialRead ? 9000 : 4500;
+    const originDeadlineMilliseconds = requireLiveOrigin
+      ? (isSocialRead ? 25000 : 20000)
+      : (isSocialRead ? 9000 : 4500);
     const publicCacheSeconds = isSocialRead ? 60 : 20;
     const cacheUrl = new URL(request.url);
     cacheUrl.search = "";
