@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=creator-bots-1">
+  <link rel="stylesheet" href="/static/styles.css?v=order-preview-1">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en">
   <div class="dashboard-shell">
@@ -296,6 +296,35 @@
         </section>
       </div>
 
+      <div class="order-preview-window hidden" id="order-preview-window" role="dialog" aria-modal="true" aria-labelledby="order-preview-title">
+        <button class="order-preview-backdrop" type="button" data-order-preview-close aria-label="Close order preview"></button>
+        <section class="order-preview-panel" aria-label="Order preview and risk confirmation">
+          <header class="order-preview-titlebar">
+            <div>
+              <p class="eyebrow">Execution preview</p>
+              <h2 id="order-preview-title">Review paper order</h2>
+              <small id="order-preview-subtitle">No order is sent until every risk gate passes and you confirm.</small>
+            </div>
+            <button class="ds-button ghost small" type="button" data-order-preview-close>Close</button>
+          </header>
+          <div class="order-preview-body">
+            <div class="order-preview-summary-grid" id="order-preview-summary"></div>
+            <div class="order-preview-risk-card" id="order-preview-risk-card">
+              <div class="order-preview-risk-head">
+                <span class="status-pill status-pill-delayed" id="order-preview-mode">Awaiting preview</span>
+                <strong id="order-preview-risk-summary">Choose Preview order to evaluate risk.</strong>
+              </div>
+              <ul class="order-preview-check-list" id="order-preview-checks"></ul>
+            </div>
+            <p class="notice notice-warning hidden" id="order-preview-error"></p>
+          </div>
+          <footer class="order-preview-actions">
+            <button class="ds-button ghost" type="button" data-order-preview-close>Cancel</button>
+            <button class="ds-button primary" type="button" id="order-preview-submit" disabled>Submit paper order</button>
+          </footer>
+        </section>
+      </div>
+
       <section class="dashboard-ribbon card">
         <div class="section-head">
           <div>
@@ -508,7 +537,7 @@
           <div class="simple-order-grid">
             <label class="ds-field">
               <span>Simbol</span>
-              <select class="ds-select" aria-label="Selecteaza simbol simplu">
+              <select class="ds-select" id="simple-trade-symbol" aria-label="Select simple symbol">
                 <option>BTC-USD</option>
                 <option>ETH-USD</option>
                 <option>POLY: Fed cut June</option>
@@ -516,7 +545,7 @@
             </label>
             <label class="ds-field">
               <span>Suma fiat</span>
-              <input class="ds-input finance-number" type="number" value="250" min="10" aria-label="Suma fiat pentru ordin">
+              <input class="ds-input finance-number" id="simple-trade-amount" type="number" value="250" min="10" aria-label="Fiat order amount">
             </label>
             <button class="ds-button primary" type="button" data-simple-order="buy" aria-label="Preview ordin buy simplu">Buy</button>
             <button class="ds-button danger" type="button" data-simple-order="sell" aria-label="Preview ordin sell simplu">Sell</button>
@@ -657,7 +686,7 @@
               <div class="ticket-two-col">
                 <label class="ds-field">
                   <span>Quantity BTC</span>
-                  <input class="ds-input finance-number" id="ticket-quantity" type="number" min="0" step="0.001" value="0.05" aria-label="Quantity in asset units">
+                  <input class="ds-input finance-number" id="ticket-quantity" type="number" min="0" step="0.001" value="0.01" aria-label="Quantity in asset units">
                 </label>
                 <label class="ds-field">
                   <span>Price USD</span>
@@ -693,9 +722,9 @@
                 <label><input type="checkbox"> Attach TP/SL</label>
               </div>
               <div class="ticket-estimates" aria-label="Order estimates">
-                <div><span>Est. fee</span><strong class="finance-number">$3.94 USD</strong></div>
-                <div><span>Est. margin</span><strong class="finance-number">$5,192.11 USD</strong></div>
-                <div><span>Preview impact</span><strong>Long +0.05 BTC, avg entry recalculated</strong></div>
+                <div><span>Est. fee</span><strong class="finance-number">$1.04 USD</strong></div>
+                <div><span>Est. margin</span><strong class="finance-number">$1,038.42 USD</strong></div>
+                <div><span>Preview impact</span><strong>Long +0.01 BTC, avg entry recalculated</strong></div>
               </div>
               <button class="ds-button primary" type="button" id="ticket-preview-button">Preview order</button>
               <button class="ds-button danger" type="button" id="ticket-close-all-button" aria-label="Close all positions requires confirmation">Close all positions</button>
@@ -1117,6 +1146,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=creator-bots-3"></script>
+  <script src="/static/app.js?v=order-preview-1"></script>
 </body>
 </html>

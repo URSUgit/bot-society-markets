@@ -392,6 +392,8 @@ let dashboardWindowState = {
   placeholder: null,
   lastFocus: null,
 };
+let currentOrderPreview = null;
+let currentOrderRequest = null;
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -5283,6 +5285,264 @@ function bindForms() {
   }
 }
 
+function normalizeTradingAsset(symbol) {
+  const normalized = String(symbol || "BTC").trim().toUpperCase();
+  if (normalized.startsWith("POLY")) {
+    return "POLY";
+  }
+  return normalized
+    .replace(/^POLY:\s*/, "POLY-")
+    .replace(/-USD$/, "")
+    .replace(/-PERP$/, "")
+    .split(/[\s:/]/)[0]
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeOrderType(value) {
+  const normalized = String(value || "market").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["market", "limit", "stop", "stop_limit", "trailing"].includes(normalized)) {
+    return normalized;
+  }
+  return "market";
+}
+
+function activeTradingSymbol() {
+  return document.getElementById("trading-selected-symbol")?.textContent?.trim() || "BTC-USD";
+}
+
+function buildProfessionalOrderRequest() {
+  const workspace = document.getElementById("trading-workspace-section");
+  const symbol = activeTradingSymbol();
+  const side = workspace?.querySelector("[data-order-side].active")?.dataset.orderSide || "buy";
+  const orderType = normalizeOrderType(document.getElementById("ticket-order-type")?.value || "Market");
+  const quantity = Number(document.getElementById("ticket-quantity")?.value || 0);
+  const price = Number(document.getElementById("ticket-price")?.value || 0);
+  const request = {
+    venue: "paper",
+    asset: normalizeTradingAsset(symbol),
+    side,
+    order_type: orderType,
+    is_paper: true,
+    client_order_id: `ui-${Date.now()}`,
+  };
+  if (quantity > 0) {
+    request.quantity = quantity;
+  }
+  if (orderType === "limit" && price > 0) {
+    request.price = price;
+  }
+  return request;
+}
+
+function buildSimpleOrderRequest(side) {
+  const symbol = document.getElementById("simple-trade-symbol")?.value || "BTC-USD";
+  const amount = Number(document.getElementById("simple-trade-amount")?.value || 0);
+  return {
+    venue: "paper",
+    asset: normalizeTradingAsset(symbol),
+    side,
+    order_type: "market",
+    is_paper: true,
+    notional_usd: amount > 0 ? amount : 250,
+    client_order_id: `simple-${Date.now()}`,
+  };
+}
+
+function openOrderPreviewWindow() {
+  const windowEl = document.getElementById("order-preview-window");
+  if (!windowEl) {
+    return;
+  }
+  windowEl.classList.remove("hidden");
+  document.body.classList.add("order-preview-open");
+  windowEl.querySelector("[data-order-preview-close]")?.focus({ preventScroll: true });
+}
+
+function closeOrderPreviewWindow() {
+  const windowEl = document.getElementById("order-preview-window");
+  if (!windowEl) {
+    return;
+  }
+  windowEl.classList.add("hidden");
+  document.body.classList.remove("order-preview-open");
+}
+
+function renderOrderPreviewLoading(request) {
+  openOrderPreviewWindow();
+  currentOrderPreview = null;
+  currentOrderRequest = request;
+  const title = document.getElementById("order-preview-title");
+  const subtitle = document.getElementById("order-preview-subtitle");
+  const summary = document.getElementById("order-preview-summary");
+  const checks = document.getElementById("order-preview-checks");
+  const mode = document.getElementById("order-preview-mode");
+  const riskSummary = document.getElementById("order-preview-risk-summary");
+  const submit = document.getElementById("order-preview-submit");
+  const error = document.getElementById("order-preview-error");
+  if (title) {
+    title.textContent = `Preview ${request.side.toUpperCase()} ${request.asset}`;
+  }
+  if (subtitle) {
+    subtitle.textContent = "Calculating estimated fill, fee, cash impact, and risk gates.";
+  }
+  if (summary) {
+    summary.innerHTML = Array.from({ length: 6 }, (_, index) => `<div class="order-preview-skeleton" style="--delay:${index * 25}ms"></div>`).join("");
+  }
+  if (checks) {
+    checks.innerHTML = '<li class="order-preview-check check-warn"><span>Checking risk engine...</span><strong>Pending</strong></li>';
+  }
+  if (mode) {
+    mode.textContent = "Previewing";
+    mode.className = "status-pill status-pill-delayed";
+  }
+  if (riskSummary) {
+    riskSummary.textContent = "Running paper ledger checks...";
+  }
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Submit paper order";
+  }
+  if (error) {
+    error.classList.add("hidden");
+    error.textContent = "";
+  }
+}
+
+function renderOrderPreview(preview) {
+  currentOrderPreview = preview;
+  const summary = document.getElementById("order-preview-summary");
+  const checks = document.getElementById("order-preview-checks");
+  const mode = document.getElementById("order-preview-mode");
+  const riskSummary = document.getElementById("order-preview-risk-summary");
+  const submit = document.getElementById("order-preview-submit");
+  const subtitle = document.getElementById("order-preview-subtitle");
+  const approved = Boolean(preview?.risk?.approved);
+  const sideLabel = String(preview.side || "").toUpperCase();
+  const checkTone = (status) => status === "pass" ? "pass" : (status === "warn" ? "warn" : "fail");
+
+  if (summary) {
+    summary.innerHTML = [
+      ["Symbol", `${escapeHtml(preview.asset)} / ${escapeHtml(preview.venue)}`],
+      ["Side", sideLabel],
+      ["Est. fill", preview.estimated_fill_price ? `${fmtUsd(preview.estimated_fill_price, preview.estimated_fill_price > 10 ? 2 : 4)} / unit` : "--"],
+      ["Quantity", Number(preview.quantity || 0).toLocaleString(currentLocale(), { maximumFractionDigits: 8 })],
+      ["Notional", fmtUsd(preview.notional_usd, 2)],
+      ["Fee", fmtUsd(preview.estimated_fee, 2)],
+      ["Total cost", fmtUsd(preview.estimated_total_cost, 2)],
+      ["Cash after", preview.cash_balance === null || preview.cash_balance === undefined ? "--" : fmtUsd(Number(preview.cash_balance) - Number(preview.estimated_total_cost || 0), 2)],
+    ].map(([label, value]) => `
+      <div class="order-preview-metric">
+        <span>${label}</span>
+        <strong class="finance-number">${value}</strong>
+      </div>
+    `).join("");
+  }
+  if (checks) {
+    checks.innerHTML = (preview.risk?.checks || []).map((check) => `
+      <li class="order-preview-check check-${checkTone(check.status)}">
+        <span>${escapeHtml(check.label)}</span>
+        <strong>${escapeHtml(check.status)}</strong>
+        <small>${escapeHtml(check.detail)}</small>
+      </li>
+    `).join("");
+  }
+  if (mode) {
+    mode.textContent = approved ? "Risk passed" : "Blocked";
+    mode.className = approved ? "status-pill status-pill-connected" : "status-pill status-pill-disconnected";
+  }
+  if (riskSummary) {
+    riskSummary.textContent = preview.message || (approved ? "Paper order can be submitted." : "Resolve risk blockers before submitting.");
+  }
+  if (subtitle) {
+    subtitle.textContent = approved
+      ? "This remains internal paper trading. No live venue receives the order."
+      : "The submit button is locked until every blocker is resolved.";
+  }
+  if (submit) {
+    submit.disabled = !approved;
+    submit.textContent = approved ? "Submit paper order" : "Blocked by risk";
+  }
+}
+
+function renderOrderPreviewError(message) {
+  openOrderPreviewWindow();
+  const summary = document.getElementById("order-preview-summary");
+  const checks = document.getElementById("order-preview-checks");
+  const mode = document.getElementById("order-preview-mode");
+  const riskSummary = document.getElementById("order-preview-risk-summary");
+  const submit = document.getElementById("order-preview-submit");
+  const error = document.getElementById("order-preview-error");
+  if (summary) {
+    summary.innerHTML = "";
+  }
+  if (checks) {
+    checks.innerHTML = "";
+  }
+  if (mode) {
+    mode.textContent = "Unavailable";
+    mode.className = "status-pill status-pill-disconnected";
+  }
+  if (riskSummary) {
+    riskSummary.textContent = "Preview could not be generated.";
+  }
+  if (submit) {
+    submit.disabled = true;
+  }
+  if (error) {
+    error.textContent = message;
+    error.classList.remove("hidden");
+  }
+}
+
+async function previewTradingOrder(request) {
+  if (!requireEditable()) {
+    renderOrderPreviewError("Sign in or create an account to preview orders in a personal paper ledger.");
+    return;
+  }
+  renderOrderPreviewLoading(request);
+  try {
+    const preview = await fetchJson("/api/v1/trading/preview", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    renderOrderPreview(preview);
+    setStatus(preview.risk?.approved
+      ? `Preview ready for ${request.side.toUpperCase()} ${request.asset}. Review and confirm in the order window.`
+      : `Preview blocked for ${request.asset}: ${(preview.risk?.blockers || [preview.message])[0]}`);
+  } catch (error) {
+    renderOrderPreviewError(error.message);
+    setStatus(`Order preview failed: ${error.message}`);
+  }
+}
+
+async function submitPreviewedPaperOrder() {
+  if (!currentOrderPreview?.risk?.approved || !currentOrderRequest) {
+    setStatus("Order submit is locked until the preview risk checks pass.");
+    return;
+  }
+  const submit = document.getElementById("order-preview-submit");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Submitting...";
+  }
+  try {
+    const order = await fetchJson("/api/v1/trading/orders", {
+      method: "POST",
+      body: JSON.stringify(currentOrderRequest),
+    });
+    closeOrderPreviewWindow();
+    await loadDashboard({ silent: true });
+    setStatus(`Paper order filled: ${order.side.toUpperCase()} ${order.quantity} ${order.asset} at ${fmtUsd(order.avg_fill_price, 2)}. Fee ${fmtUsd(order.fee, 2)}.`);
+  } catch (error) {
+    renderOrderPreviewError(error.message);
+    setStatus(`Paper order failed: ${error.message}`);
+  } finally {
+    if (submit) {
+      submit.textContent = "Submit paper order";
+    }
+  }
+}
+
 function initProfessionalTradingWorkspace() {
   const workspace = document.getElementById("trading-workspace-section");
   if (!workspace) {
@@ -5396,12 +5656,17 @@ function initProfessionalTradingWorkspace() {
   const previewButton = document.getElementById("ticket-preview-button");
   if (previewButton) {
     previewButton.addEventListener("click", () => {
-      const activeSide = workspace.querySelector("[data-order-side].active")?.dataset.orderSide || "buy";
-      const orderType = document.getElementById("ticket-order-type")?.value || "Market";
-      const quantity = document.getElementById("ticket-quantity")?.value || "0";
-      const price = ticketPrice?.value || "market";
-      setStatus(`Preview ${activeSide.toUpperCase()} ${quantity} ${selectedSymbol?.textContent || "BTC-USD"} via ${orderType} at ${price}. Est. fee and margin are visible in the ticket.`);
+      previewTradingOrder(buildProfessionalOrderRequest());
     });
+  }
+
+  document.querySelectorAll("[data-order-preview-close]").forEach((button) => {
+    button.addEventListener("click", closeOrderPreviewWindow);
+  });
+
+  const submitPreviewButton = document.getElementById("order-preview-submit");
+  if (submitPreviewButton) {
+    submitPreviewButton.addEventListener("click", submitPreviewedPaperOrder);
   }
 
   const closeAllButton = document.getElementById("ticket-close-all-button");
@@ -5426,11 +5691,11 @@ function initProfessionalTradingWorkspace() {
 
   workspace.querySelectorAll("[data-simple-order]").forEach((button) => {
     button.addEventListener("click", () => {
-      const side = button.dataset.simpleOrder === "sell" ? "Sell" : "Buy";
+      const side = button.dataset.simpleOrder === "sell" ? "sell" : "buy";
       if (confirmation) {
-        confirmation.innerHTML = `<strong>${side} preview pregatit</strong><span>Pasul 2: confirma suma, fee-ul estimat si riscul. Ordinul tau nu pleaca fara confirmare explicita.</span>`;
+        confirmation.innerHTML = `<strong>${side.toUpperCase()} preview requested</strong><span>Step 2 opens in a compact risk window. Nothing is sent without explicit confirmation.</span>`;
       }
-      setStatus(`${side} simple preview prepared with two-step confirmation.`);
+      previewTradingOrder(buildSimpleOrderRequest(side));
     });
   });
 }
@@ -5450,6 +5715,9 @@ function bindInteractions() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && selectedSocialTraderId) {
       closeSocialTraderDetail();
+    }
+    if (event.key === "Escape" && !document.getElementById("order-preview-window")?.classList.contains("hidden")) {
+      closeOrderPreviewWindow();
     }
   });
 

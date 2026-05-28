@@ -368,7 +368,10 @@ def test_professional_console_pages_are_served() -> None:
         assert "Bot decision receipt" in dashboard_response.text
         assert "Build Creator Bot" in dashboard_response.text
         assert "Scan New Videos" in dashboard_response.text
-        assert "/static/app.js?v=creator-bots-3" in dashboard_response.text
+        assert 'id="order-preview-window"' in dashboard_response.text
+        assert 'id="order-preview-submit"' in dashboard_response.text
+        assert 'id="simple-trade-symbol"' in dashboard_response.text
+        assert "/static/app.js?v=order-preview-1" in dashboard_response.text
         app_js_response = client.get("/static/app.js")
         assert app_js_response.status_code == 200
         assert "hydrateLiveSocialTrading" in app_js_response.text
@@ -377,6 +380,9 @@ def test_professional_console_pages_are_served() -> None:
         assert "socialTradingRetryTimer" in app_js_response.text
         assert "resolvePublicSocialReadOrigin" in app_js_response.text
         assert "Direct live" in app_js_response.text
+        assert "previewTradingOrder" in app_js_response.text
+        assert "/api/v1/trading/preview" in app_js_response.text
+        assert "/api/v1/trading/orders" in app_js_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
@@ -1430,6 +1436,21 @@ def test_trading_preview_and_risk_check_gate_orders() -> None:
         oversized = oversized_response.json()
         assert oversized["risk"]["approved"] is False
         assert any("max single-order notional" in blocker for blocker in oversized["risk"]["blockers"])
+
+        stop_response = client.post(
+            "/api/v1/trading/preview",
+            json={
+                "venue": "paper",
+                "asset": "BTC",
+                "side": "buy",
+                "order_type": "stop",
+                "notional_usd": 100,
+            },
+        )
+        assert stop_response.status_code == 200
+        stop_preview = stop_response.json()
+        assert stop_preview["risk"]["approved"] is False
+        assert any(check["key"] == "order_type_support" and check["status"] == "blocked" for check in stop_preview["risk"]["checks"])
 
         live_risk_response = client.post(
             "/api/v1/risk/check",
