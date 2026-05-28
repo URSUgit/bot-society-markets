@@ -9919,12 +9919,12 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body > .i
   box-shadow: none !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window {
   place-items: stretch;
   padding: 10px;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-panel {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .dashboard-window-panel {
   width: calc(100vw - 20px);
   max-width: none;
   height: calc(100dvh - 20px);
@@ -9932,12 +9932,44 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-wind
   border-radius: 26px;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-body {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .dashboard-window-body {
   padding: 14px;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-inline-close {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .dashboard-window-inline-close {
   display: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .content-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .live-grid {
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .market-console-grid {
+  grid-template-columns: minmax(260px, 1.18fr) minmax(250px, 1fr) minmax(220px, 0.84fr);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .detail-grid {
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid-large,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .auth-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .preference-control-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .billing-control-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .pulse-metric-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .connector-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .asset-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .chart-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .macro-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .paper-venue-list,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .wallet-watch-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .edge-opportunity-list {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-section.in-dashboard-window {
@@ -10082,16 +10114,25 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
     padding: 12px;
   }
 
-  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] {
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window {
     padding: 8px;
   }
 
-  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-panel {
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .dashboard-window-panel {
     width: calc(100vw - 16px);
     height: calc(100dvh - 16px);
     border-radius: 20px;
   }
 
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .content-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .live-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .market-console-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .detail-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid-large,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .auth-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .preference-control-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .billing-control-grid,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-layout,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-marketplace-toolbar,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-card-grid {
