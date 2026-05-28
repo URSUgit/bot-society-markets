@@ -371,7 +371,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="order-preview-window"' in dashboard_response.text
         assert 'id="order-preview-submit"' in dashboard_response.text
         assert 'id="simple-trade-symbol"' in dashboard_response.text
-        assert "/static/app.js?v=order-preview-1" in dashboard_response.text
+        assert "/static/app.js?v=social-fullscreen-1" in dashboard_response.text
         app_js_response = client.get("/static/app.js")
         assert app_js_response.status_code == 200
         assert "hydrateLiveSocialTrading" in app_js_response.text
@@ -383,6 +383,7 @@ def test_professional_console_pages_are_served() -> None:
         assert "previewTradingOrder" in app_js_response.text
         assert "/api/v1/trading/preview" in app_js_response.text
         assert "/api/v1/trading/orders" in app_js_response.text
+        assert "dashboard-window-social-open" in app_js_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

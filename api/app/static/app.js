@@ -672,8 +672,9 @@ function closeDashboardWindow({ restoreFocus = true } = {}) {
 
   if (overlay) {
     overlay.classList.add("hidden");
+    delete overlay.dataset.windowKind;
   }
-  document.body.classList.remove("dashboard-window-open");
+  document.body.classList.remove("dashboard-window-open", "dashboard-window-social-open");
 
   try {
     section?.querySelector(".dashboard-window-inline-close")?.remove();
@@ -744,8 +745,15 @@ function openDashboardWindow(hash, trigger = null) {
   section.classList.add("in-dashboard-window");
   body.appendChild(section);
   section.prepend(inlineClose);
+  const windowKind = hash === "#social-trader-section"
+    ? "social"
+    : hash === "#trading-workspace-section"
+      ? "trading"
+      : "standard";
+  overlay.dataset.windowKind = windowKind;
   overlay.classList.remove("hidden");
   document.body.classList.add("dashboard-window-open");
+  document.body.classList.toggle("dashboard-window-social-open", windowKind === "social");
   dashboardWindowState = { section, placeholder, lastFocus: trigger };
 
   if (title) {

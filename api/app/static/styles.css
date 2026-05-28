@@ -9919,6 +9919,41 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body > .i
   box-shadow: none !important;
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] {
+  place-items: stretch;
+  padding: 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-panel {
+  width: calc(100vw - 20px);
+  max-width: none;
+  height: calc(100dvh - 20px);
+  max-height: none;
+  border-radius: 26px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-body {
+  padding: 14px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-section.in-dashboard-window {
+  min-height: calc(100dvh - 132px);
+  padding: clamp(16px, 1.45vw, 24px);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.32fr);
+  gap: 16px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-marketplace-toolbar {
+  grid-template-columns: minmax(230px, 1.35fr) repeat(4, minmax(132px, 0.72fr)) auto;
+}
+
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-placeholder {
   display: none;
 }
@@ -10041,6 +10076,22 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
 
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body {
     padding: 12px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] {
+    padding: 8px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .dashboard-window-panel {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    border-radius: 20px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-layout,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-marketplace-toolbar,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-card-grid {
+    grid-template-columns: 1fr;
   }
 }
 
