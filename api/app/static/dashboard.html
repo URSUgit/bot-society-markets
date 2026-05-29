@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=pro-compact-1">
+  <link rel="stylesheet" href="/static/styles.css?v=pro-dual-1">
 </head>
-<body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en">
+<body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en" data-workspace-style="institutional">
   <div class="dashboard-shell">
     <aside class="sidebar">
       <div class="sidebar-brand">
@@ -106,6 +106,10 @@
           <a class="button secondary" href="#trading-workspace-section">Trading workspace</a>
           <a class="button secondary" href="/simulation" target="_blank" rel="noopener">Strategy lab</a>
           <a class="button secondary" href="#social-trader-section">Social traders</a>
+        </div>
+        <div class="workspace-style-switch" role="group" aria-label="Workspace visual style">
+          <button type="button" data-workspace-style="trader" aria-pressed="false">Trader</button>
+          <button class="active" type="button" data-workspace-style="institutional" aria-pressed="true">Institutional</button>
         </div>
         <div class="command-brief-kpis" aria-label="Workspace quick metrics">
           <article>
@@ -1169,6 +1173,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=pro-compact-1"></script>
+  <script src="/static/app.js?v=pro-dual-1"></script>
 </body>
 </html>

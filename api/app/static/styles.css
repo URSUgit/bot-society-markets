@@ -10806,6 +10806,148 @@ body.dashboard-body.command-os.bit-engine-product-ui #social-trader-section {
   }
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .workspace-style-switch {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  gap: 6px;
+  width: max-content;
+  padding: 4px;
+  border: 1px solid var(--modern-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--modern-panel-strong) 72%, transparent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .workspace-style-switch button {
+  min-height: 30px;
+  min-width: 112px;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--modern-muted);
+  background: transparent;
+  font: 800 0.74rem/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .workspace-style-switch button:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .workspace-style-switch button.active {
+  color: var(--modern-ink-strong);
+  border-color: color-mix(in srgb, var(--modern-accent) 28%, var(--modern-line));
+  background: color-mix(in srgb, var(--modern-accent) 12%, var(--modern-panel-strong));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .dashboard-main {
+  gap: 16px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .operator-strip,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .console-panel {
+  border-radius: 20px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .dashboard-hero.command-brief {
+  border-color: color-mix(in srgb, var(--modern-accent) 14%, var(--modern-line));
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.07);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="institutional"] .workspace-style-switch button.active {
+  background: color-mix(in srgb, var(--modern-accent) 9%, white);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .dashboard-main {
+  gap: 10px;
+  max-width: 1920px;
+  padding: 12px 14px 28px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .operator-strip,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .console-panel,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .social-analyze-form,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .social-marketplace-toolbar {
+  border-radius: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .operator-strip {
+  padding: 9px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .dashboard-hero.command-brief {
+  padding: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .dashboard-hero.command-brief h2 {
+  font-size: clamp(1.28rem, 2vw, 1.75rem);
+  letter-spacing: -0.03em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .command-brief-kpis {
+  gap: 8px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .command-brief-kpis article {
+  min-height: 66px;
+  padding: 8px 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .workspace-style-switch button {
+  min-height: 28px;
+  min-width: 100px;
+  font-size: 0.7rem;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .trading-workspace-pro,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .social-trader-section,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .market-console {
+  padding: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .section-head {
+  margin-bottom: 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .section-head h3 {
+  font-size: clamp(1.12rem, 1.7vw, 1.55rem);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .pro-table-head,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .position-row {
+  gap: 7px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .pro-table-head {
+  padding: 7px 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .position-row {
+  margin-top: 6px;
+  padding: 9px 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .watchlist-row,
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .orderbook-row {
+  min-height: 40px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"] .finance-number {
+  font-family: var(--font-finance);
+  letter-spacing: -0.02em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"][data-theme="day"] {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(7, 150, 105, 0.1), transparent 22%),
+    linear-gradient(180deg, #edf3f5 0%, #e7eff2 100%);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-workspace-style="trader"][data-theme="night"] {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(20, 184, 166, 0.18), transparent 24%),
+    linear-gradient(180deg, #050a10 0%, #090f18 100%);
+}
+
 /* Creator-bot intelligence workspace */
 body.dashboard-body.command-os.bit-engine-product-ui .social-bot-factory {
   display: grid;

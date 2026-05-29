@@ -1,10 +1,12 @@
 const DEFAULT_PREFERENCES = {
   theme: "day",
   language: "en",
+  workspaceStyle: "institutional",
 };
 const STORAGE_KEYS = {
   theme: "bitprivat.theme",
   language: "bitprivat.language",
+  workspaceStyle: "bitprivat.workspaceStyle",
 };
 const I18N = {
   en: {
@@ -484,9 +486,13 @@ function loadPreferences() {
   try {
     const storedTheme = window.localStorage.getItem(STORAGE_KEYS.theme);
     const storedLanguage = window.localStorage.getItem(STORAGE_KEYS.language);
+    const storedWorkspaceStyle = window.localStorage.getItem(STORAGE_KEYS.workspaceStyle);
     appPreferences = {
       theme: ["day", "night"].includes(storedTheme) ? storedTheme : DEFAULT_PREFERENCES.theme,
       language: ["en", "ro"].includes(storedLanguage) ? storedLanguage : DEFAULT_PREFERENCES.language,
+      workspaceStyle: ["trader", "institutional"].includes(storedWorkspaceStyle)
+        ? storedWorkspaceStyle
+        : DEFAULT_PREFERENCES.workspaceStyle,
     };
   } catch (error) {
     console.warn("Preferences unavailable; using defaults.", error);
@@ -498,6 +504,7 @@ function savePreferences() {
   try {
     window.localStorage.setItem(STORAGE_KEYS.theme, appPreferences.theme);
     window.localStorage.setItem(STORAGE_KEYS.language, appPreferences.language);
+    window.localStorage.setItem(STORAGE_KEYS.workspaceStyle, appPreferences.workspaceStyle);
   } catch (error) {
     console.warn("Could not persist preferences.", error);
   }
@@ -510,6 +517,12 @@ function syncPreferenceControls() {
   document.querySelectorAll("[data-preference-language]").forEach((select) => {
     select.value = appPreferences.language;
   });
+  document.querySelectorAll("[data-workspace-style]").forEach((button) => {
+    const style = button.getAttribute("data-workspace-style");
+    const active = style === appPreferences.workspaceStyle;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 
 function applyPreferences({ announce = false } = {}) {
@@ -520,6 +533,7 @@ function applyPreferences({ announce = false } = {}) {
 
   body.dataset.theme = appPreferences.theme;
   body.dataset.language = appPreferences.language;
+  body.dataset.workspaceStyle = appPreferences.workspaceStyle;
   document.documentElement.lang = appPreferences.language === "ro" ? "ro" : "en";
   document.title = t("document_title");
 
@@ -565,6 +579,20 @@ function bindPreferenceControls() {
       appPreferences.language = select.value === "ro" ? "ro" : "en";
       savePreferences();
       applyPreferences({ announce: true });
+      resizeVisibleCharts();
+    });
+  });
+  document.querySelectorAll("[data-workspace-style]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestedStyle = button.getAttribute("data-workspace-style");
+      appPreferences.workspaceStyle = requestedStyle === "trader" ? "trader" : "institutional";
+      savePreferences();
+      applyPreferences({ announce: true });
+      setStatus(
+        appPreferences.workspaceStyle === "trader"
+          ? "Trader mode enabled: denser terminal layout."
+          : "Institutional mode enabled: cleaner premium layout.",
+      );
       resizeVisibleCharts();
     });
   });
@@ -884,6 +912,8 @@ function renderOperatorStrip(snapshot) {
   const socialDetail = document.getElementById("operator-social-detail");
   const providerCount = document.getElementById("operator-provider-count");
   const providerDetail = document.getElementById("operator-provider-detail");
+  const briefStatus = document.getElementById("command-brief-status");
+  const briefDetail = document.getElementById("command-brief-detail");
 
   const provider = snapshot.provider_status || {};
   const state = providerState(provider);
@@ -929,6 +959,12 @@ function renderOperatorStrip(snapshot) {
   }
   if (providerDetail) {
     providerDetail.textContent = `${snapshot.system_pulse?.live_provider_count ?? 0} live-capable · ${state.label}`;
+  }
+  if (briefStatus) {
+    briefStatus.textContent = state.label;
+  }
+  if (briefDetail) {
+    briefDetail.textContent = stateDetail?.textContent || "Preparing dashboard data";
   }
 }
 
