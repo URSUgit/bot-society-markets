@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=platform-nav-2">
+  <link rel="stylesheet" href="/static/styles.css?v=ai-cockpit-1">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en">
   <div class="dashboard-shell">
@@ -95,17 +95,51 @@
         </div>
       </section>
 
-      <section class="dashboard-hero card">
-        <div>
-          <p class="eyebrow">Market operating system</p>
-          <h2>Read the market, test the bot, then decide the next simulation.</h2>
-          <p class="hero-submeta" id="hero-submeta">Warming up live market tape and operations cadence...</p>
+      <section class="dashboard-hero card ai-platform-hero">
+        <div class="ai-hero-copy">
+          <p class="eyebrow">AI trading cockpit</p>
+          <h2>Chart, scan, test, and deploy paper bots from one professional workspace.</h2>
+          <p class="hero-submeta" id="hero-submeta">Design benchmark: TrendSpider-class AI strategy workflow, TradingView-class chart clarity, Trade Ideas-style scanner cadence, and Tickeron-style bot performance cards.</p>
+          <div class="hero-actions compact-actions">
+            <button class="button primary" id="run-cycle-button" type="button">Run AI Cycle</button>
+            <a class="button secondary" href="#trading-workspace-section">Open Cockpit</a>
+            <a class="button secondary" href="/simulation" target="_blank" rel="noopener">Strategy Lab</a>
+            <a class="button secondary" href="#social-trader-section">Creator Bots</a>
+          </div>
         </div>
-        <div class="hero-actions compact-actions">
-          <button class="button primary" id="run-cycle-button" type="button">Run Cycle</button>
-          <a class="button secondary" href="/simulation" target="_blank" rel="noopener">Strategy Lab</a>
-          <a class="button secondary" href="#social-trader-section">Social Traders</a>
-          <a class="button secondary" href="#paper-section">Paper Trade</a>
+        <div class="ai-command-terminal" aria-label="AI platform workflow benchmark">
+          <div class="ai-terminal-topline">
+            <span class="status-pill status-pill-connected">Research mode</span>
+            <strong>BITprivat AI desk</strong>
+          </div>
+          <div class="ai-terminal-chart" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <svg viewBox="0 0 320 96" role="presentation">
+              <path d="M0 72 C38 56 52 68 84 44 C118 18 146 32 176 27 C218 20 238 50 272 24 C292 10 306 16 320 8" />
+            </svg>
+          </div>
+          <div class="ai-terminal-grid">
+            <article>
+              <span>01</span>
+              <strong>Live scanner</strong>
+              <small>Freshness, volume, sentiment, venue status.</small>
+            </article>
+            <article>
+              <span>02</span>
+              <strong>AI analyst</strong>
+              <small>Explains thesis, invalidation, and evidence.</small>
+            </article>
+            <article>
+              <span>03</span>
+              <strong>Strategy lab</strong>
+              <small>Backtest before allocation or automation.</small>
+            </article>
+            <article>
+              <span>04</span>
+              <strong>Risk gate</strong>
+              <small>Paper-first, capped, audited execution.</small>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -1147,6 +1181,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=platform-nav-2"></script>
+  <script src="/static/app.js?v=ai-cockpit-1"></script>
 </body>
 </html>

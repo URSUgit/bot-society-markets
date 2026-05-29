@@ -10433,6 +10433,256 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
   }
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero {
+  position: relative;
+  display: grid;
+  order: 1;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.72fr);
+  gap: clamp(16px, 2vw, 26px);
+  align-items: stretch;
+  min-height: 300px;
+  padding: clamp(22px, 2.6vw, 34px);
+  border-color: color-mix(in srgb, var(--modern-accent) 26%, var(--modern-line));
+  background:
+    radial-gradient(circle at 88% 14%, rgba(15, 159, 143, 0.16), transparent 28%),
+    radial-gradient(circle at 16% 0%, rgba(37, 99, 235, 0.11), transparent 32%),
+    linear-gradient(135deg, color-mix(in srgb, var(--modern-panel-strong) 92%, white), var(--modern-panel));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ai-platform-hero {
+  background:
+    radial-gradient(circle at 88% 14%, rgba(45, 212, 191, 0.18), transparent 30%),
+    radial-gradient(circle at 16% 0%, rgba(96, 165, 250, 0.13), transparent 34%),
+    linear-gradient(135deg, rgba(9, 15, 23, 0.96), rgba(15, 23, 42, 0.88));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--modern-accent) 15%, transparent);
+  border-radius: calc(var(--modern-radius) - 8px);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-hero-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  max-width: 900px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero h2 {
+  max-width: 720px;
+  margin: 0;
+  color: var(--modern-ink-strong);
+  font-size: clamp(2rem, 3.45vw, 3.7rem);
+  line-height: 0.98;
+  letter-spacing: -0.068em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero .hero-submeta {
+  max-width: 760px;
+  margin: 0;
+  color: var(--modern-muted);
+  font-size: clamp(0.94rem, 1.25vw, 1.1rem);
+  line-height: 1.55;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero .hero-actions {
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-command-terminal {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--modern-accent) 22%, var(--modern-line));
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(247, 250, 252, 0.62)),
+    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.11), transparent 30%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ai-command-terminal {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.72)),
+    radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.1), transparent 30%);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-topline,
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid article {
+  border: 1px solid var(--modern-line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--modern-panel-strong) 82%, transparent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  color: var(--modern-ink-strong);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart {
+  position: relative;
+  min-height: 112px;
+  overflow: hidden;
+  border: 1px solid var(--modern-line);
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(15, 23, 42, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    color-mix(in srgb, var(--modern-panel-strong) 84%, transparent);
+  background-size: 28px 28px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ai-terminal-chart {
+  background:
+    linear-gradient(rgba(226, 232, 240, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(226, 232, 240, 0.04) 1px, transparent 1px),
+    rgba(2, 6, 23, 0.42);
+  background-size: 28px 28px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span {
+  position: absolute;
+  bottom: 22px;
+  width: 9px;
+  border-radius: 999px;
+  background: var(--color-profit);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-profit) 10%, transparent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(1) {
+  left: 9%;
+  height: 36px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(2) {
+  left: 22%;
+  height: 58px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(3) {
+  left: 35%;
+  height: 42px;
+  background: var(--color-loss);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(4) {
+  left: 52%;
+  height: 78px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(5) {
+  left: 69%;
+  height: 54px;
+  background: var(--color-loss);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart span:nth-child(6) {
+  left: 86%;
+  height: 88px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart svg {
+  position: absolute;
+  inset: auto 12px 30px;
+  width: calc(100% - 24px);
+  height: 92px;
+  overflow: visible;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-chart path {
+  fill: none;
+  stroke: var(--modern-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 8px 14px rgba(15, 159, 143, 0.24));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid article {
+  display: grid;
+  gap: 5px;
+  min-height: 86px;
+  padding: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid span {
+  width: max-content;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--modern-accent-strong);
+  background: color-mix(in srgb, var(--modern-accent) 10%, transparent);
+  font: 900 0.66rem / 1 var(--font-finance);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid strong {
+  color: var(--modern-ink-strong);
+  font-size: 0.95rem;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid small {
+  color: var(--modern-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
+  width: min(1500px, calc(100vw - 24px));
+  max-height: min(92dvh, 1080px);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #trading-workspace-section {
+  order: 3;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body {
+  padding: 14px;
+}
+
+@media (max-width: 1180px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero {
+    grid-template-columns: 1fr;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .ai-command-terminal {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero h2 {
+    font-size: clamp(2rem, 12vw, 3.2rem);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .ai-terminal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Creator-bot intelligence workspace */
 body.dashboard-body.command-os.bit-engine-product-ui .social-bot-factory {
   display: grid;
