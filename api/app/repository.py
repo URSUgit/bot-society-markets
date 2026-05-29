@@ -33,6 +33,7 @@ from .database import (
     user_follows_table,
     user_sessions_table,
     users_table,
+    user_wallet_connections_table,
     user_auth_profiles_table,
     watchlist_items_table,
 )
@@ -770,6 +771,58 @@ class BotSocietyRepository:
         )
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
+
+    def list_user_wallet_connections(self, user_slug: str) -> list[dict[str, Any]]:
+        stmt = (
+            select(user_wallet_connections_table)
+            .where(user_wallet_connections_table.c.user_slug == user_slug)
+            .order_by(desc(user_wallet_connections_table.c.updated_at), desc(user_wallet_connections_table.c.id))
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def upsert_user_wallet_connection(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        stmt = self.database.upsert_insert(user_wallet_connections_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                user_wallet_connections_table.c.user_slug,
+                user_wallet_connections_table.c.address_normalized,
+                user_wallet_connections_table.c.chain,
+            ],
+            set_={
+                "address": stmt.excluded.address,
+                "provider": stmt.excluded.provider,
+                "label": stmt.excluded.label,
+                "is_active": stmt.excluded.is_active,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+            selected = (
+                select(user_wallet_connections_table)
+                .where(
+                    and_(
+                        user_wallet_connections_table.c.user_slug == payload["user_slug"],
+                        user_wallet_connections_table.c.address_normalized == payload["address_normalized"],
+                        user_wallet_connections_table.c.chain == payload["chain"],
+                    )
+                )
+                .order_by(desc(user_wallet_connections_table.c.updated_at), desc(user_wallet_connections_table.c.id))
+                .limit(1)
+            )
+            return self._row(connection.execute(selected))
+
+    def delete_user_wallet_connection(self, user_slug: str, wallet_id: int) -> int:
+        stmt = delete(user_wallet_connections_table).where(
+            and_(
+                user_wallet_connections_table.c.user_slug == user_slug,
+                user_wallet_connections_table.c.id == wallet_id,
+            )
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def upsert_social_traders(self, traders: Iterable[dict[str, Any]]) -> None:
         trader_list = list(traders)

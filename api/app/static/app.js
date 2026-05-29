@@ -416,7 +416,7 @@ function requireEditable() {
 function applyWorkspaceMode(snapshot = latestSnapshot) {
   const canEdit = workspaceEditable(snapshot);
   const workspaceNote = document.getElementById("workspace-mode-note");
-  const forms = ["watchlist-form", "alert-rule-form", "notification-channel-form"];
+  const forms = ["watchlist-form", "alert-rule-form", "notification-channel-form", "wallet-connect-form"];
 
   if (workspaceNote) {
     if (canEdit) {
@@ -4577,6 +4577,40 @@ function renderBillingPanel(billing, authSession) {
   `;
 }
 
+function renderWalletConnections(profile, authSession) {
+  const summary = document.getElementById("wallet-connect-summary");
+  const statusPill = document.getElementById("wallet-connect-status");
+  const list = document.getElementById("wallet-connect-list");
+  const form = document.getElementById("wallet-connect-form");
+  if (!summary || !statusPill || !list) {
+    return;
+  }
+
+  const signedIn = Boolean(authSession?.authenticated && authSession?.user);
+  const canEdit = workspaceEditable({ auth_session: authSession, user_profile: profile });
+  const connected = profile?.wallet_connections || [];
+  statusPill.textContent = signedIn ? (connected.length ? `${connected.length} connected` : "Ready") : "Locked";
+  summary.textContent = signedIn
+    ? "Connect a wallet address for non-custodial workspace context and upcoming execution connectors."
+    : "Sign in to connect wallets. Demo mode keeps wallet management disabled.";
+
+  if (form) {
+    form.querySelectorAll("input, select, button").forEach((field) => {
+      field.disabled = !canEdit;
+    });
+  }
+
+  list.innerHTML = connected.map((wallet) => `
+    <li>
+      <div>
+        <strong>${wallet.label ? `${escapeHtml(wallet.label)} · ` : ""}${wallet.chain.toUpperCase()} · ${escapeHtml(wallet.provider)}</strong>
+        <p><code>${escapeHtml(wallet.address)}</code></p>
+      </div>
+      <button class="button tertiary small-button" type="button" data-action="delete-wallet" data-wallet-id="${wallet.id}" ${disabledAttr(!canEdit)}>Disconnect</button>
+    </li>
+  `).join("") || "<li><p>No wallets connected yet.</p></li>";
+}
+
 function renderNotificationChannels(profile, notificationHealth) {
   const list = document.getElementById("notification-channel-list");
   const badge = document.getElementById("channel-count-badge");
@@ -4705,6 +4739,7 @@ function renderUserProfile(profile, notificationHealth, authSession) {
     `).join("") || "<li><p>No alert rules yet.</p></li>";
   }
 
+  renderWalletConnections(profile, authSession);
   renderNotificationChannels(profile, notificationHealth);
   renderAlertInbox(profile);
 }
@@ -5227,6 +5262,24 @@ async function deleteNotificationChannel(channelId) {
   await loadDashboard();
 }
 
+async function connectWallet(chain, provider, address, label) {
+  await fetchJson("/api/me/wallets", {
+    method: "POST",
+    body: JSON.stringify({
+      chain,
+      provider,
+      address,
+      label: label || null,
+    }),
+  });
+  await loadDashboard();
+}
+
+async function disconnectWallet(walletId) {
+  await fetchJson(`/api/me/wallets/${walletId}`, { method: "DELETE" });
+  await loadDashboard();
+}
+
 async function startBillingCheckout(planKey) {
   const payload = await fetchJson("/api/me/billing/checkout-session", {
     method: "POST",
@@ -5378,6 +5431,7 @@ function bindForms() {
   const mfaDisableForm = document.getElementById("mfa-disable-form");
   const onboardingForm = document.getElementById("onboarding-form");
   const notificationChannelForm = document.getElementById("notification-channel-form");
+  const walletConnectForm = document.getElementById("wallet-connect-form");
   const socialAnalyzeForm = document.getElementById("social-analyze-form");
 
   if (simulationForm) {
@@ -5680,6 +5734,37 @@ function bindForms() {
         await addNotificationChannel(channelType, target, secret);
         notificationChannelForm.reset();
         document.getElementById("channel-type-input").value = "webhook";
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (walletConnectForm) {
+    walletConnectForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      const chain = document.getElementById("wallet-chain-input")?.value || "ethereum";
+      const provider = document.getElementById("wallet-provider-input")?.value || "walletconnect";
+      const address = document.getElementById("wallet-address-input")?.value?.trim();
+      const label = document.getElementById("wallet-label-input")?.value?.trim() || "";
+      if (!address) {
+        return;
+      }
+      try {
+        await connectWallet(chain, provider, address, label);
+        walletConnectForm.reset();
+        const chainSelect = document.getElementById("wallet-chain-input");
+        const providerSelect = document.getElementById("wallet-provider-input");
+        if (chainSelect) {
+          chainSelect.value = "ethereum";
+        }
+        if (providerSelect) {
+          providerSelect.value = "walletconnect";
+        }
+        setStatus("Wallet connected.");
       } catch (error) {
         setStatus(error.message);
       }
@@ -6333,6 +6418,13 @@ function bindInteractions() {
           return;
         }
         await deleteNotificationChannel(actionTarget.dataset.channelId);
+        return;
+      }
+      if (action === "delete-wallet") {
+        if (!requireEditable()) {
+          return;
+        }
+        await disconnectWallet(actionTarget.dataset.walletId);
         return;
       }
       if (action === "logout") {

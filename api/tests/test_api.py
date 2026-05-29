@@ -958,6 +958,70 @@ def test_auth_and_notification_channels_flow() -> None:
         assert notification_health.json()["active_channels"] == 1
 
 
+def test_auth_wallet_connection_flow() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Wallet User",
+                "email": "wallets@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        connect_response = client.post(
+            "/api/me/wallets",
+            json={
+                "chain": "ethereum",
+                "provider": "metamask",
+                "address": "0x1111111111111111111111111111111111111111",
+                "label": "Primary",
+            },
+        )
+        assert connect_response.status_code == 200
+        profile_payload = connect_response.json()
+        assert len(profile_payload["wallet_connections"]) == 1
+        assert profile_payload["wallet_connections"][0]["chain"] == "ethereum"
+        assert profile_payload["wallet_connections"][0]["provider"] == "metamask"
+
+        upsert_response = client.post(
+            "/api/me/wallets",
+            json={
+                "chain": "eth",
+                "provider": "walletconnect",
+                "address": "0X1111111111111111111111111111111111111111",
+                "label": "Main wallet",
+            },
+        )
+        assert upsert_response.status_code == 200
+        upsert_payload = upsert_response.json()
+        assert len(upsert_payload["wallet_connections"]) == 1
+        assert upsert_payload["wallet_connections"][0]["provider"] == "walletconnect"
+        assert upsert_payload["wallet_connections"][0]["label"] == "Main wallet"
+
+        list_response = client.get("/api/me/wallets")
+        assert list_response.status_code == 200
+        wallets_payload = list_response.json()
+        assert len(wallets_payload) == 1
+        wallet_id = wallets_payload[0]["id"]
+
+        invalid_response = client.post(
+            "/api/me/wallets",
+            json={
+                "chain": "ethereum",
+                "provider": "metamask",
+                "address": "0x1234",
+            },
+        )
+        assert invalid_response.status_code == 400
+        assert "Invalid EVM wallet address format" in invalid_response.json()["detail"]
+
+        disconnect_response = client.delete(f"/api/me/wallets/{wallet_id}")
+        assert disconnect_response.status_code == 200
+        assert disconnect_response.json()["wallet_connections"] == []
+
+
 def test_auth_onboarding_profile_flow() -> None:
     with build_client() as client:
         register_response = client.post(

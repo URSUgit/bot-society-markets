@@ -2058,6 +2058,20 @@ form:has(:disabled) {
   margin-top: 18px;
 }
 
+.wallet-control-grid {
+  margin-top: 14px;
+}
+
+.wallet-connect-card {
+  display: grid;
+  gap: 14px;
+}
+
+.wallet-connect-card .workspace-list {
+  max-height: 250px;
+  overflow: auto;
+}
+
 .billing-workspace-card {
   display: grid;
   gap: 16px;
@@ -10254,6 +10268,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspac
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid-large,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .auth-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .preference-control-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .wallet-control-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .billing-control-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -10467,6 +10482,7 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .workspace-grid-large,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .auth-grid,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .preference-control-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .wallet-control-grid,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .billing-control-grid,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-trader-layout,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window[data-window-kind="social"] .social-marketplace-toolbar,

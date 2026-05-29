@@ -86,6 +86,8 @@ from .models import (
     TradingRiskCheckResult,
     TradingOrderView,
     UserProfile,
+    UserWalletConnection,
+    UserWalletConnectRequest,
     WalletIntelligenceSnapshot,
     WatchlistAssetRequest,
 )
@@ -642,6 +644,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/me", response_model=UserProfile)
     def me(request: Request) -> UserProfile:
         return get_service(request).get_user_profile(current_user_slug(request) or active_settings.default_user_slug)
+
+    @app.get("/api/v1/me/wallets", response_model=list[UserWalletConnection])
+    @app.get("/api/me/wallets", response_model=list[UserWalletConnection])
+    def me_wallet_connections(request: Request) -> list[UserWalletConnection]:
+        user_slug = current_user_slug(request) or active_settings.default_user_slug
+        return get_service(request).list_user_wallet_connections(user_slug)
+
+    @app.post("/api/v1/me/wallets", response_model=UserProfile)
+    @app.post("/api/me/wallets", response_model=UserProfile)
+    def connect_wallet(payload: UserWalletConnectRequest, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).connect_user_wallet(user_slug, payload))
+        audit_event(
+            request,
+            action="workspace.wallet_connect",
+            resource_type="wallet_connection",
+            actor_user_slug=user_slug,
+            after_state={
+                "chain": payload.chain,
+                "provider": payload.provider,
+                "address": payload.address,
+                "label": payload.label,
+            },
+        )
+        return profile
+
+    @app.delete("/api/v1/me/wallets/{wallet_id}", response_model=UserProfile)
+    @app.delete("/api/me/wallets/{wallet_id}", response_model=UserProfile)
+    def disconnect_wallet(wallet_id: int, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).disconnect_user_wallet(user_slug, wallet_id))
+        audit_event(
+            request,
+            action="workspace.wallet_disconnect",
+            resource_type="wallet_connection",
+            resource_id=str(wallet_id),
+            actor_user_slug=user_slug,
+        )
+        return profile
 
     @app.get("/api/v1/me/billing", response_model=BillingSnapshot)
     @app.get("/api/me/billing", response_model=BillingSnapshot)

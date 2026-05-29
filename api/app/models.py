@@ -1404,6 +1404,38 @@ class NotificationChannelCreate(BaseModel):
         return self
 
 
+class UserWalletConnection(BaseModel):
+    id: int
+    address: str
+    chain: str
+    provider: str
+    label: str | None = None
+    is_active: bool = True
+    created_at: str
+    updated_at: str
+
+
+class UserWalletConnectRequest(BaseModel):
+    address: str = Field(min_length=4, max_length=128)
+    chain: str = Field(min_length=2, max_length=32)
+    provider: str = Field(default="walletconnect", min_length=2, max_length=64)
+    label: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def normalize_fields(self) -> "UserWalletConnectRequest":
+        self.address = re.sub(r"\s+", "", self.address).strip()
+        self.chain = re.sub(r"[^a-z0-9_-]", "", self.chain.strip().lower())
+        self.provider = re.sub(r"[^a-z0-9_-]", "", self.provider.strip().lower()) or "walletconnect"
+        if self.label is not None:
+            normalized_label = re.sub(r"\s+", " ", self.label).strip()
+            self.label = normalized_label or None
+        if not self.address:
+            raise ValueError("address cannot be empty")
+        if not self.chain:
+            raise ValueError("chain cannot be empty")
+        return self
+
+
 class FollowBotRequest(BaseModel):
     bot_slug: str
 
@@ -1546,6 +1578,7 @@ class UserProfile(BaseModel):
     alert_rules: list[AlertRule]
     recent_alerts: list[AlertDelivery]
     notification_channels: list[NotificationChannel] = Field(default_factory=list)
+    wallet_connections: list[UserWalletConnection] = Field(default_factory=list)
     unread_alert_count: int = Field(ge=0)
     security: UserSecuritySnapshot | None = None
     onboarding: AuthOnboardingSnapshot | None = None

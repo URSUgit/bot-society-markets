@@ -133,6 +133,8 @@ from .models import (
     UserIdentity,
     UserProfile,
     UserSecuritySnapshot,
+    UserWalletConnection,
+    UserWalletConnectRequest,
     VenuePulseItem,
     WalletIntelligenceSnapshot,
     WalletProfileView,
@@ -171,6 +173,9 @@ from .utils import parse_timestamp, to_timestamp
 
 SLUG_RE = re.compile(r"[^a-z0-9]+")
 ONBOARDING_STAGE_SEQUENCE = ("identity", "risk", "suitability", "kyc", "complete")
+EVM_ADDRESS_RE = re.compile(r"^0x[a-f0-9]{40}$")
+SOLANA_ADDRESS_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+BITCOIN_ADDRESS_RE = re.compile(r"^(bc1[ac-hj-np-z02-9]{11,71}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$")
 
 
 class BotSocietyService:
@@ -3213,6 +3218,10 @@ class BotSocietyService:
             NotificationChannel(**{**row, "is_active": bool(row["is_active"])})
             for row in active_repository.list_notification_channels(user_slug)
         ]
+        wallet_connections = [
+            self._to_user_wallet_connection(row)
+            for row in active_repository.list_user_wallet_connections(user_slug)
+        ]
         alert_inbox = alert_inbox or self.get_alert_inbox(user_slug)
         return UserProfile(
             slug=user["slug"],
@@ -3226,6 +3235,7 @@ class BotSocietyService:
             alert_rules=alert_rules,
             recent_alerts=alert_inbox.alerts,
             notification_channels=notification_channels,
+            wallet_connections=wallet_connections,
             unread_alert_count=alert_inbox.unread_count,
             security=self._to_security_snapshot(auth_profile),
             onboarding=self._to_onboarding_snapshot(auth_profile),
@@ -3379,6 +3389,43 @@ class BotSocietyService:
     def remove_watchlist_asset(self, user_slug: str, asset: str) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         repository.delete_watchlist_item(user_slug, asset.upper())
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
+
+    def list_user_wallet_connections(self, user_slug: str) -> list[UserWalletConnection]:
+        repository = BotSocietyRepository(self.database)
+        return [self._to_user_wallet_connection(row) for row in repository.list_user_wallet_connections(user_slug)]
+
+    def connect_user_wallet(self, user_slug: str, payload: UserWalletConnectRequest) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        chain = self._normalize_wallet_chain(payload.chain)
+        provider = self._normalize_wallet_provider(payload.provider)
+        normalized_address = self._normalize_wallet_address(payload.address, chain=chain)
+        now = self._now()
+        try:
+            repository.upsert_user_wallet_connection(
+                {
+                    "user_slug": user_slug,
+                    "address": normalized_address,
+                    "address_normalized": normalized_address,
+                    "chain": chain,
+                    "provider": provider,
+                    "label": payload.label,
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+        except IntegrityError as exc:
+            raise ValueError("Wallet connection already exists for this chain") from exc
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
+
+    def disconnect_user_wallet(self, user_slug: str, wallet_id: int) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        deleted = repository.delete_user_wallet_connection(user_slug, wallet_id)
+        if deleted == 0:
+            raise ValueError("Wallet connection not found")
         self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
@@ -6042,6 +6089,7 @@ class BotSocietyService:
             alert_rules=[],
             recent_alerts=alert_inbox.alerts,
             notification_channels=[],
+            wallet_connections=[],
             unread_alert_count=alert_inbox.unread_count,
             security=self._to_security_snapshot(auth_profile),
             onboarding=self._to_onboarding_snapshot(auth_profile),
@@ -9045,6 +9093,82 @@ class BotSocietyService:
             if isinstance(price, dict) and price.get("id"):
                 return str(price["id"]).strip()
         return None
+
+    @staticmethod
+    def _normalize_wallet_chain(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9_-]", "", value.strip().lower())
+        aliases = {
+            "eth": "ethereum",
+            "erc20": "ethereum",
+            "ethereum": "ethereum",
+            "polygon": "polygon",
+            "matic": "polygon",
+            "arb": "arbitrum",
+            "arbitrum": "arbitrum",
+            "arbitrumone": "arbitrum",
+            "op": "optimism",
+            "optimism": "optimism",
+            "base": "base",
+            "bsc": "bsc",
+            "bnb": "bsc",
+            "avax": "avalanche",
+            "avalanche": "avalanche",
+            "sol": "solana",
+            "solana": "solana",
+            "btc": "bitcoin",
+            "bitcoin": "bitcoin",
+        }
+        return aliases.get(normalized, normalized or "ethereum")
+
+    @staticmethod
+    def _normalize_wallet_provider(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9_-]", "", value.strip().lower())
+        aliases = {
+            "metamask": "metamask",
+            "walletconnect": "walletconnect",
+            "coinbase": "coinbase",
+            "coinbasewallet": "coinbase",
+            "rabby": "rabby",
+            "phantom": "phantom",
+            "ledger": "ledger",
+            "trezor": "trezor",
+            "safe": "safe",
+        }
+        return aliases.get(normalized, normalized or "walletconnect")
+
+    @staticmethod
+    def _normalize_wallet_address(address: str, *, chain: str) -> str:
+        normalized = address.strip()
+        lowered = normalized.lower()
+        if lowered.startswith("0x"):
+            if not EVM_ADDRESS_RE.fullmatch(lowered):
+                raise ValueError("Invalid EVM wallet address format")
+            return lowered
+        if chain == "solana":
+            if not SOLANA_ADDRESS_RE.fullmatch(normalized):
+                raise ValueError("Invalid Solana wallet address format")
+            return normalized
+        if chain == "bitcoin":
+            lowered = normalized.lower()
+            if not BITCOIN_ADDRESS_RE.fullmatch(lowered) and not BITCOIN_ADDRESS_RE.fullmatch(normalized):
+                raise ValueError("Invalid Bitcoin wallet address format")
+            return normalized
+        if len(normalized) < 8:
+            raise ValueError("Wallet address looks too short")
+        return normalized
+
+    @staticmethod
+    def _to_user_wallet_connection(row: dict[str, object]) -> UserWalletConnection:
+        return UserWalletConnection(
+            id=int(row["id"]),
+            address=str(row["address"]),
+            chain=str(row["chain"]),
+            provider=str(row.get("provider") or "walletconnect"),
+            label=str(row["label"]) if row.get("label") else None,
+            is_active=bool(row.get("is_active", True)),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
 
     @staticmethod
     def _to_user_identity(user: dict) -> UserIdentity:

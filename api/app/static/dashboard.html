@@ -1107,6 +1107,55 @@
               <p class="panel-note" data-i18n="preferences_note">Preferences are saved in this browser and applied immediately across the dashboard.</p>
             </article>
           </div>
+          <div class="wallet-control-grid">
+            <article class="workspace-card wallet-connect-card">
+              <div class="workspace-head">
+                <div>
+                  <h4>Connected wallets</h4>
+                  <p class="workspace-subtitle" id="wallet-connect-summary">Sign in to connect and manage non-custodial wallets.</p>
+                </div>
+                <span class="status-pill" id="wallet-connect-status">Locked</span>
+              </div>
+              <form id="wallet-connect-form" class="stack-form compact-stack-form">
+                <div class="onboarding-preferences-grid">
+                  <label>
+                    <span>Chain</span>
+                    <select id="wallet-chain-input" name="chain">
+                      <option value="ethereum">Ethereum</option>
+                      <option value="arbitrum">Arbitrum</option>
+                      <option value="base">Base</option>
+                      <option value="polygon">Polygon</option>
+                      <option value="optimism">Optimism</option>
+                      <option value="bsc">BNB Chain</option>
+                      <option value="solana">Solana</option>
+                      <option value="bitcoin">Bitcoin</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Provider</span>
+                    <select id="wallet-provider-input" name="provider">
+                      <option value="walletconnect">WalletConnect</option>
+                      <option value="metamask">MetaMask</option>
+                      <option value="coinbase">Coinbase Wallet</option>
+                      <option value="phantom">Phantom</option>
+                      <option value="ledger">Ledger</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>Wallet address</span>
+                  <input id="wallet-address-input" name="address" type="text" maxlength="128" placeholder="0x... or chain address" required>
+                </label>
+                <label>
+                  <span>Label (optional)</span>
+                  <input id="wallet-label-input" name="label" type="text" maxlength="64" placeholder="Main trading wallet">
+                </label>
+                <button class="button tertiary" type="submit">Connect wallet</button>
+              </form>
+              <ul class="workspace-list" id="wallet-connect-list"></ul>
+              <p class="panel-note">Wallet connection is read-only and non-custodial. Private keys are never stored by BITprivat.</p>
+            </article>
+          </div>
           <div class="billing-control-grid">
             <article class="workspace-card billing-workspace-card">
               <div class="workspace-head">
