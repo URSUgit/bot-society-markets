@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
 import hashlib
 import hmac
@@ -8,6 +9,7 @@ import json
 from pathlib import Path
 import sqlite3
 import shutil
+import struct
 from tempfile import TemporaryDirectory
 import tempfile
 import time
@@ -47,6 +49,18 @@ def stripe_signature(secret: str, payload: dict[str, object], *, timestamp: int 
     signed_payload = f"{active_timestamp}.{payload_bytes.decode('utf-8')}".encode("utf-8")
     digest = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
     return f"t={active_timestamp},v1={digest}", payload_bytes
+
+
+def generate_totp_code(secret: str, *, epoch_seconds: int | None = None) -> str:
+    normalized = secret.strip().replace(" ", "").upper()
+    padding = "=" * ((8 - (len(normalized) % 8)) % 8)
+    secret_bytes = base64.b32decode(normalized + padding, casefold=True)
+    counter = int((epoch_seconds or int(time.time())) // 30)
+    counter_bytes = struct.pack(">Q", counter)
+    digest = hmac.new(secret_bytes, counter_bytes, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    truncated = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+    return str(truncated % 1_000_000).zfill(6)
 
 
 def test_healthcheck() -> None:
@@ -372,7 +386,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="order-preview-submit"' in dashboard_response.text
         assert 'id="simple-trade-symbol"' in dashboard_response.text
         assert 'id="dashboard-window-nav"' in dashboard_response.text
-        assert "/static/app.js?v=pro-dual-1" in dashboard_response.text
+        assert "/static/app.js?v=pro-auth-1" in dashboard_response.text
         app_js_response = client.get("/static/app.js")
         assert app_js_response.status_code == 200
         assert "hydrateLiveSocialTrading" in app_js_response.text
@@ -942,6 +956,182 @@ def test_auth_and_notification_channels_flow() -> None:
         notification_health = client.get("/api/me/notification-health")
         assert notification_health.status_code == 200
         assert notification_health.json()["active_channels"] == 1
+
+
+def test_auth_onboarding_profile_flow() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Onboarding User",
+                "email": "onboarding@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        assert register_response.json()["authenticated"] is True
+
+        onboarding_response = client.get("/api/auth/onboarding")
+        assert onboarding_response.status_code == 200
+        onboarding = onboarding_response.json()
+        assert onboarding["stage"] == "identity"
+        assert onboarding["completed"] is False
+
+        update_response = client.put(
+            "/api/auth/onboarding",
+            json={
+                "stage": "risk",
+                "accept_risk_disclosure": True,
+                "suitability_score": 76,
+                "kyc_status": "pending",
+                "preferred_language": "ro",
+                "preferred_theme": "night",
+                "preferred_workspace_mode": "simple",
+                "timezone": "Europe/Bucharest",
+                "completed": False,
+            },
+        )
+        assert update_response.status_code == 200
+        updated = update_response.json()
+        assert updated["stage"] == "kyc"
+        assert updated["preferred_language"] == "ro"
+        assert updated["preferred_theme"] == "night"
+        assert updated["preferred_workspace_mode"] == "simple"
+        assert updated["kyc_status"] == "pending"
+        assert updated["risk_disclosure_accepted_at"] is not None
+
+        dashboard_response = client.get("/api/dashboard")
+        assert dashboard_response.status_code == 200
+        dashboard = dashboard_response.json()
+        assert dashboard["user_profile"]["onboarding"]["stage"] == "kyc"
+        assert dashboard["user_profile"]["security"]["mfa_enabled"] is False
+
+        complete_response = client.put(
+            "/api/auth/onboarding",
+            json={"kyc_status": "approved", "completed": True},
+        )
+        assert complete_response.status_code == 200
+        complete_payload = complete_response.json()
+        assert complete_payload["stage"] == "complete"
+        assert complete_payload["completed"] is True
+        assert complete_payload["kyc_status"] == "approved"
+
+
+def test_auth_password_reset_flow() -> None:
+    settings = Settings(auth_debug_tokens=True)
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Reset User",
+                "email": "reset@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        logout_response = client.post("/api/auth/logout")
+        assert logout_response.status_code == 200
+
+        forgot_response = client.post(
+            "/api/auth/forgot-password",
+            json={"email": "reset@example.com"},
+        )
+        assert forgot_response.status_code == 200
+        forgot_payload = forgot_response.json()
+        assert "message" in forgot_payload
+        assert forgot_payload["debug_reset_token"]
+
+        reset_response = client.post(
+            "/api/auth/reset-password",
+            json={"token": forgot_payload["debug_reset_token"], "new_password": "NewSecurePass456"},
+        )
+        assert reset_response.status_code == 200
+        assert reset_response.json()["authenticated"] is True
+
+        client.post("/api/auth/logout")
+
+        old_login = client.post(
+            "/api/auth/login",
+            json={"email": "reset@example.com", "password": "SuperSecure123"},
+        )
+        assert old_login.status_code == 400
+
+        new_login = client.post(
+            "/api/auth/login",
+            json={"email": "reset@example.com", "password": "NewSecurePass456"},
+        )
+        assert new_login.status_code == 200
+        assert new_login.json()["authenticated"] is True
+
+
+def test_auth_mfa_enable_disable_and_login_challenge() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "MFA User",
+                "email": "mfa@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        setup_response = client.post("/api/auth/mfa/setup")
+        assert setup_response.status_code == 200
+        setup_payload = setup_response.json()
+        assert setup_payload["pending_setup"] is True
+        secret = setup_payload["secret"]
+        assert secret
+
+        enable_response = client.post(
+            "/api/auth/mfa/enable",
+            json={"code": generate_totp_code(secret)},
+        )
+        assert enable_response.status_code == 200
+        assert enable_response.json()["enabled"] is True
+
+        client.post("/api/auth/logout")
+
+        missing_code_login = client.post(
+            "/api/auth/login",
+            json={"email": "mfa@example.com", "password": "SuperSecure123"},
+        )
+        assert missing_code_login.status_code == 400
+        assert "Two-factor code required" in missing_code_login.json()["detail"]
+
+        bad_code_login = client.post(
+            "/api/auth/login",
+            json={"email": "mfa@example.com", "password": "SuperSecure123", "otp_code": "000000"},
+        )
+        assert bad_code_login.status_code == 400
+
+        good_code_login = client.post(
+            "/api/auth/login",
+            json={
+                "email": "mfa@example.com",
+                "password": "SuperSecure123",
+                "otp_code": generate_totp_code(secret),
+            },
+        )
+        assert good_code_login.status_code == 200
+        assert good_code_login.json()["authenticated"] is True
+        assert good_code_login.json()["mfa_enabled"] is True
+
+        disable_response = client.post(
+            "/api/auth/mfa/disable",
+            json={"code": generate_totp_code(secret)},
+        )
+        assert disable_response.status_code == 200
+        assert disable_response.json()["enabled"] is False
+
+        client.post("/api/auth/logout")
+        login_without_mfa = client.post(
+            "/api/auth/login",
+            json={"email": "mfa@example.com", "password": "SuperSecure123"},
+        )
+        assert login_without_mfa.status_code == 200
+        assert login_without_mfa.json()["authenticated"] is True
 
 
 def test_stripe_billing_snapshot_checkout_and_portal_flow() -> None:

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
-  <link rel="stylesheet" href="/static/styles.css?v=pro-dual-1">
+  <link rel="stylesheet" href="/static/styles.css?v=pro-auth-1">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en" data-workspace-style="institutional">
   <div class="dashboard-shell">
@@ -922,6 +922,10 @@
                   <span>Password</span>
                   <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
                 </label>
+                <label>
+                  <span>2FA code (if enabled)</span>
+                  <input id="login-otp" name="otp_code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="123456">
+                </label>
                 <button class="button tertiary" type="submit">Sign In</button>
               </form>
             </article>
@@ -944,6 +948,134 @@
                   <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
                 </label>
                 <button class="button tertiary" type="submit">Create Account</button>
+              </form>
+            </article>
+          </div>
+          <div class="auth-extended-grid">
+            <article class="workspace-card auth-form-card" id="recovery-card">
+              <div class="workspace-head">
+                <h4>Password recovery</h4>
+                <span class="badge">Self-service</span>
+              </div>
+              <form id="forgot-password-form" class="stack-form">
+                <label>
+                  <span>Email</span>
+                  <input id="forgot-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                </label>
+                <button class="button tertiary" type="submit">Send reset instructions</button>
+              </form>
+              <form id="reset-password-form" class="stack-form compact-stack-form">
+                <label>
+                  <span>Reset token</span>
+                  <input id="reset-token" name="token" type="text" autocomplete="one-time-code" placeholder="Paste token" required>
+                </label>
+                <label>
+                  <span>New password</span>
+                  <input id="reset-password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
+                </label>
+                <button class="button tertiary" type="submit">Reset password</button>
+              </form>
+              <p class="panel-note" id="recovery-note">Use forgot password first. In production, reset instructions should be delivered by email.</p>
+            </article>
+            <article class="workspace-card auth-form-card" id="mfa-card">
+              <div class="workspace-head">
+                <div>
+                  <h4>Two-factor authentication</h4>
+                  <p class="workspace-subtitle" id="mfa-summary">Sign in to configure MFA.</p>
+                </div>
+                <span class="status-pill" id="mfa-status-pill">Locked</span>
+              </div>
+              <div class="hero-actions compact-actions">
+                <button class="button secondary" id="mfa-start-setup-button" type="button">Start setup</button>
+              </div>
+              <div class="auth-session-card hidden" id="mfa-setup-card">
+                <p class="panel-note">Scan this URI in Google Authenticator, Authy, or 1Password OTP:</p>
+                <code id="mfa-otpauth-uri"></code>
+                <p class="panel-note">Then enter the current 6-digit code to enable MFA.</p>
+              </div>
+              <form id="mfa-enable-form" class="stack-form">
+                <label>
+                  <span>Authenticator code</span>
+                  <input id="mfa-enable-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="123456">
+                </label>
+                <button class="button tertiary" type="submit">Enable MFA</button>
+              </form>
+              <form id="mfa-disable-form" class="stack-form compact-stack-form">
+                <label>
+                  <span>Disable with code</span>
+                  <input id="mfa-disable-code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="123456">
+                </label>
+                <button class="button tertiary" type="submit">Disable MFA</button>
+              </form>
+            </article>
+            <article class="workspace-card auth-form-card auth-onboarding-card" id="onboarding-card">
+              <div class="workspace-head">
+                <div>
+                  <h4>Client onboarding</h4>
+                  <p class="workspace-subtitle" id="onboarding-summary">Sign in to complete onboarding gates.</p>
+                </div>
+                <span class="status-pill" id="onboarding-stage-pill">Demo</span>
+              </div>
+              <form id="onboarding-form" class="stack-form">
+                <label>
+                  <span>Onboarding stage</span>
+                  <select id="onboarding-stage" name="stage">
+                    <option value="identity">Identity</option>
+                    <option value="risk">Risk disclosure</option>
+                    <option value="suitability">Suitability</option>
+                    <option value="kyc">KYC</option>
+                    <option value="complete">Complete</option>
+                  </select>
+                </label>
+                <label class="checkbox-field">
+                  <input id="onboarding-risk" name="accept_risk_disclosure" type="checkbox">
+                  <span>I confirm I have read and accepted the risk disclosure.</span>
+                </label>
+                <label>
+                  <span>Suitability score (0-100)</span>
+                  <input id="onboarding-suitability-score" name="suitability_score" type="number" min="0" max="100" step="1" placeholder="70">
+                </label>
+                <label>
+                  <span>KYC status</span>
+                  <select id="onboarding-kyc-status" name="kyc_status">
+                    <option value="not_started">Not started</option>
+                    <option value="pending">Pending review</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </label>
+                <div class="onboarding-preferences-grid">
+                  <label>
+                    <span>Language</span>
+                    <select id="onboarding-language" name="preferred_language">
+                      <option value="en">English</option>
+                      <option value="ro">Romana</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Theme</span>
+                    <select id="onboarding-theme" name="preferred_theme">
+                      <option value="day">Day</option>
+                      <option value="night">Night</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Workspace mode</span>
+                    <select id="onboarding-workspace-mode" name="preferred_workspace_mode">
+                      <option value="pro">Pro</option>
+                      <option value="simple">Simple</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Timezone</span>
+                    <input id="onboarding-timezone" name="timezone" type="text" maxlength="64" placeholder="Europe/Bucharest">
+                  </label>
+                </div>
+                <label class="checkbox-field">
+                  <input id="onboarding-complete" name="completed" type="checkbox">
+                  <span>Mark onboarding complete.</span>
+                </label>
+                <button class="button tertiary" type="submit">Save onboarding profile</button>
               </form>
             </article>
           </div>
@@ -1173,6 +1305,6 @@
     </main>
   </div>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=pro-dual-1"></script>
+  <script src="/static/app.js?v=pro-auth-1"></script>
 </body>
 </html>

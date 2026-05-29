@@ -33,7 +33,15 @@ This directory contains the Python-first MVP foundation for `Bot Society Markets
 - `GET /api/auth/session`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
 - `POST /api/auth/logout`
+- `GET /api/auth/onboarding`
+- `PUT /api/auth/onboarding`
+- `GET /api/auth/mfa/status`
+- `POST /api/auth/mfa/setup`
+- `POST /api/auth/mfa/enable`
+- `POST /api/auth/mfa/disable`
 - `GET /api/me`
 - `GET /api/me/alerts`
 - `GET /api/me/notification-health`

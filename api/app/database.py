@@ -261,6 +261,40 @@ user_sessions_table = Table(
     Column("last_seen_at", String(64), nullable=False),
 )
 
+user_auth_profiles_table = Table(
+    "user_auth_profiles",
+    metadata,
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), primary_key=True),
+    Column("mfa_enabled", Boolean, nullable=False, default=False, server_default=text("false")),
+    Column("mfa_secret", String(255)),
+    Column("mfa_pending_secret", String(255)),
+    Column("mfa_enrolled_at", String(64)),
+    Column("onboarding_stage", String(32), nullable=False, default="identity", server_default="identity"),
+    Column("onboarding_completed", Boolean, nullable=False, default=False, server_default=text("false")),
+    Column("risk_disclosure_accepted_at", String(64)),
+    Column("suitability_score", Integer),
+    Column("suitability_completed_at", String(64)),
+    Column("kyc_status", String(32), nullable=False, default="not_started", server_default="not_started"),
+    Column("kyc_completed_at", String(64)),
+    Column("preferred_language", String(16), nullable=False, default="en", server_default="en"),
+    Column("preferred_theme", String(16), nullable=False, default="day", server_default="day"),
+    Column("preferred_workspace_mode", String(16), nullable=False, default="pro", server_default="pro"),
+    Column("timezone", String(64), nullable=False, default="UTC", server_default="UTC"),
+    Column("last_login_at", String(64)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
+password_reset_tokens_table = Table(
+    "password_reset_tokens",
+    metadata,
+    Column("token_hash", String(128), primary_key=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("created_at", String(64), nullable=False),
+    Column("expires_at", String(64), nullable=False),
+    Column("used_at", String(64)),
+)
+
 user_follows_table = Table(
     "user_follows",
     metadata,
@@ -479,6 +513,8 @@ Index("idx_social_traders_score", social_traders_table.c.composite_score.desc())
 Index("idx_social_discovery_runs_started", social_discovery_runs_table.c.started_at.desc())
 Index("idx_social_trader_events_trader_observed", social_trader_events_table.c.trader_id, social_trader_events_table.c.observed_at.desc())
 Index("idx_social_trader_allocations_user", social_trader_allocations_table.c.user_slug, social_trader_allocations_table.c.updated_at.desc())
+Index("idx_user_auth_profiles_onboarding", user_auth_profiles_table.c.onboarding_stage, user_auth_profiles_table.c.updated_at.desc())
+Index("idx_password_reset_tokens_user_expires", password_reset_tokens_table.c.user_slug, password_reset_tokens_table.c.expires_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
 Index("idx_billing_customers_user_provider", billing_customers_table.c.user_slug, billing_customers_table.c.provider)
 Index(

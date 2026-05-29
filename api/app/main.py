@@ -19,8 +19,16 @@ from .models import (
     AlertRuleCreate,
     AssetHistoryEnvelope,
     AssetSnapshot,
+    AuthForgotPasswordRequest,
+    AuthForgotPasswordResponse,
     AuthLoginRequest,
+    AuthMfaCodeRequest,
+    AuthMfaSetupResponse,
+    AuthMfaStatusResponse,
+    AuthOnboardingSnapshot,
+    AuthOnboardingUpdateRequest,
     AuthRegisterRequest,
+    AuthResetPasswordRequest,
     AuthSessionSnapshot,
     AuditLogEnvelope,
     BillingCheckoutSessionRequest,
@@ -325,6 +333,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return session
 
+    @app.post("/api/v1/auth/forgot-password", response_model=AuthForgotPasswordResponse)
+    @app.post("/api/auth/forgot-password", response_model=AuthForgotPasswordResponse)
+    def auth_forgot_password(payload: AuthForgotPasswordRequest, request: Request) -> AuthForgotPasswordResponse:
+        result = run_validated(lambda: get_service(request).forgot_password(payload))
+        audit_event(
+            request,
+            action="auth.forgot_password",
+            resource_type="auth",
+            after_state={"email": payload.email.strip().lower()},
+        )
+        return result
+
+    @app.post("/api/v1/auth/reset-password", response_model=AuthSessionSnapshot)
+    @app.post("/api/auth/reset-password", response_model=AuthSessionSnapshot)
+    def auth_reset_password(payload: AuthResetPasswordRequest, request: Request, response: Response) -> AuthSessionSnapshot:
+        session, token = run_validated(lambda: get_service(request).reset_password(payload))
+        set_session_cookie(response, token)
+        audit_event(
+            request,
+            action="auth.reset_password",
+            resource_type="user",
+            resource_id=session.user.slug if session.user else None,
+            actor_user_slug=session.user.slug if session.user else None,
+        )
+        return session
+
     @app.post("/api/v1/auth/logout", response_model=AuthSessionSnapshot)
     @app.post("/api/auth/logout", response_model=AuthSessionSnapshot)
     def auth_logout(request: Request, response: Response) -> AuthSessionSnapshot:
@@ -339,6 +373,80 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             actor_user_slug=actor,
         )
         return AuthSessionSnapshot(authenticated=False, user=None)
+
+    @app.get("/api/v1/auth/onboarding", response_model=AuthOnboardingSnapshot)
+    @app.get("/api/auth/onboarding", response_model=AuthOnboardingSnapshot)
+    def auth_onboarding(request: Request) -> AuthOnboardingSnapshot:
+        user_slug = authenticated_user_slug(request)
+        return get_service(request).get_auth_onboarding(user_slug)
+
+    @app.put("/api/v1/auth/onboarding", response_model=AuthOnboardingSnapshot)
+    @app.put("/api/auth/onboarding", response_model=AuthOnboardingSnapshot)
+    def auth_onboarding_update(payload: AuthOnboardingUpdateRequest, request: Request) -> AuthOnboardingSnapshot:
+        user_slug = authenticated_user_slug(request)
+        snapshot = run_validated(lambda: get_service(request).update_auth_onboarding(user_slug, payload))
+        audit_event(
+            request,
+            action="auth.onboarding.update",
+            resource_type="user_profile",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            after_state=snapshot.model_dump(),
+        )
+        return snapshot
+
+    @app.get("/api/v1/auth/mfa/status", response_model=AuthMfaStatusResponse)
+    @app.get("/api/auth/mfa/status", response_model=AuthMfaStatusResponse)
+    def auth_mfa_status(request: Request) -> AuthMfaStatusResponse:
+        user_slug = authenticated_user_slug(request)
+        return get_service(request).get_auth_mfa_status(user_slug)
+
+    @app.post("/api/v1/auth/mfa/setup", response_model=AuthMfaSetupResponse)
+    @app.post("/api/auth/mfa/setup", response_model=AuthMfaSetupResponse)
+    def auth_mfa_setup(request: Request) -> AuthMfaSetupResponse:
+        user_slug = authenticated_user_slug(request)
+        session = get_service(request).get_session_snapshot(request.cookies.get(active_settings.auth_cookie_name))
+        email = session.user.email if session.user else "workspace@bitprivat.com"
+        result = run_validated(lambda: get_service(request).begin_mfa_setup(user_slug, email))
+        audit_event(
+            request,
+            action="auth.mfa.setup",
+            resource_type="security",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            after_state={"pending_setup": result.pending_setup, "enabled": result.enabled},
+        )
+        return result
+
+    @app.post("/api/v1/auth/mfa/enable", response_model=AuthMfaStatusResponse)
+    @app.post("/api/auth/mfa/enable", response_model=AuthMfaStatusResponse)
+    def auth_mfa_enable(payload: AuthMfaCodeRequest, request: Request) -> AuthMfaStatusResponse:
+        user_slug = authenticated_user_slug(request)
+        result = run_validated(lambda: get_service(request).enable_mfa(user_slug, payload))
+        audit_event(
+            request,
+            action="auth.mfa.enable",
+            resource_type="security",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            after_state=result.model_dump(),
+        )
+        return result
+
+    @app.post("/api/v1/auth/mfa/disable", response_model=AuthMfaStatusResponse)
+    @app.post("/api/auth/mfa/disable", response_model=AuthMfaStatusResponse)
+    def auth_mfa_disable(payload: AuthMfaCodeRequest, request: Request) -> AuthMfaStatusResponse:
+        user_slug = authenticated_user_slug(request)
+        result = run_validated(lambda: get_service(request).disable_mfa(user_slug, payload))
+        audit_event(
+            request,
+            action="auth.mfa.disable",
+            resource_type="security",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            after_state=result.model_dump(),
+        )
+        return result
 
     @app.get("/api/v1/landing/stats", response_model=LandingSnapshot)
     @app.get("/api/landing", response_model=LandingSnapshot)

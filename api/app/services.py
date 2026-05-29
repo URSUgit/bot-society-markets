@@ -31,8 +31,16 @@ from .models import (
     BillingSessionLaunch,
     BillingSnapshot,
     BillingWebhookAck,
+    AuthForgotPasswordRequest,
+    AuthForgotPasswordResponse,
     AuthLoginRequest,
+    AuthMfaCodeRequest,
+    AuthMfaSetupResponse,
+    AuthMfaStatusResponse,
+    AuthOnboardingSnapshot,
+    AuthOnboardingUpdateRequest,
     AuthRegisterRequest,
+    AuthResetPasswordRequest,
     AuthSessionSnapshot,
     BusinessModelMilestone,
     BusinessModelMoatStep,
@@ -124,6 +132,7 @@ from .models import (
     TradingOrderView,
     UserIdentity,
     UserProfile,
+    UserSecuritySnapshot,
     VenuePulseItem,
     WalletIntelligenceSnapshot,
     WalletProfileView,
@@ -161,6 +170,7 @@ from .social_intelligence import (
 from .utils import parse_timestamp, to_timestamp
 
 SLUG_RE = re.compile(r"[^a-z0-9]+")
+ONBOARDING_STAGE_SEQUENCE = ("identity", "risk", "suitability", "kyc", "complete")
 
 
 class BotSocietyService:
@@ -295,7 +305,8 @@ class BotSocietyService:
         user = repository.get_user(user_slug)
         if not user:
             return AuthSessionSnapshot(authenticated=False, user=None)
-        return AuthSessionSnapshot(authenticated=True, user=self._to_user_identity(user))
+        auth_profile = self._load_or_create_auth_profile(repository, str(user["slug"]))
+        return self._build_session_snapshot(user, auth_profile)
 
     def register_user(self, payload: AuthRegisterRequest) -> tuple[AuthSessionSnapshot, str]:
         repository = BotSocietyRepository(self.database)
@@ -316,6 +327,8 @@ class BotSocietyService:
                     "is_demo_user": False,
                 }
             )
+            now = self._now()
+            repository.upsert_user_auth_profile(self._default_auth_profile_payload(slug, now=now))
         except IntegrityError as exc:
             raise ValueError("Unable to create account with that email") from exc
         return self._create_session_for_user(slug)
@@ -328,6 +341,20 @@ class BotSocietyService:
             raise ValueError("Invalid email or password")
         if not bool(user.get("is_active", True)):
             raise ValueError("This account is inactive")
+        auth_profile = self._load_or_create_auth_profile(repository, str(user["slug"]))
+        if bool(auth_profile.get("mfa_enabled")):
+            otp_code = payload.otp_code or ""
+            if not otp_code:
+                raise ValueError("Two-factor code required")
+            if not self.auth.verify_totp_code(auth_profile.get("mfa_secret"), otp_code):
+                raise ValueError("Invalid two-factor code")
+        repository.upsert_user_auth_profile(
+            {
+                **auth_profile,
+                "last_login_at": self._now(),
+                "updated_at": self._now(),
+            }
+        )
         return self._create_session_for_user(str(user["slug"]))
 
     def logout_session(self, session_token: str | None) -> None:
@@ -335,6 +362,215 @@ class BotSocietyService:
             return
         repository = BotSocietyRepository(self.database)
         repository.delete_session(self.auth.hash_session_token(session_token))
+
+    def forgot_password(self, payload: AuthForgotPasswordRequest) -> AuthForgotPasswordResponse:
+        repository = BotSocietyRepository(self.database)
+        email = payload.email.strip().lower()
+        user = repository.get_user_by_email(email)
+        debug_token = None
+        now = datetime.now(timezone.utc)
+        repository.delete_expired_password_reset_tokens(to_timestamp(now))
+
+        if user and bool(user.get("is_active", True)):
+            token = self.auth.new_password_reset_token()
+            repository.create_password_reset_token(
+                {
+                    "token_hash": token.token_hash,
+                    "user_slug": str(user["slug"]),
+                    "created_at": self._now(),
+                    "expires_at": to_timestamp(now + timedelta(minutes=self.settings.password_reset_token_minutes)),
+                    "used_at": None,
+                }
+            )
+            if self.settings.auth_debug_tokens:
+                debug_token = token.raw_token
+
+        return AuthForgotPasswordResponse(
+            message="If that email exists, reset instructions were generated.",
+            debug_reset_token=debug_token,
+        )
+
+    def reset_password(self, payload: AuthResetPasswordRequest) -> tuple[AuthSessionSnapshot, str]:
+        repository = BotSocietyRepository(self.database)
+        token_hash = self.auth.hash_password_reset_token(payload.token)
+        token_row = repository.get_password_reset_token(token_hash)
+        if not token_row:
+            raise ValueError("Reset token is invalid or expired")
+        if token_row.get("used_at"):
+            raise ValueError("Reset token has already been used")
+        if parse_timestamp(str(token_row["expires_at"])) <= datetime.now(timezone.utc):
+            raise ValueError("Reset token is invalid or expired")
+        if not bool(token_row.get("is_active", True)):
+            raise ValueError("This account is inactive")
+
+        user_slug = str(token_row["user_slug"])
+        repository.update_user(
+            user_slug,
+            {
+                "password_hash": self.auth.hash_password(payload.new_password),
+            },
+        )
+        now = self._now()
+        repository.mark_password_reset_token_used(token_hash, now)
+        repository.delete_password_reset_tokens_for_user(user_slug)
+        repository.delete_sessions_for_user(user_slug)
+        return self._create_session_for_user(user_slug)
+
+    def get_auth_mfa_status(self, user_slug: str) -> AuthMfaStatusResponse:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        return AuthMfaStatusResponse(
+            enabled=bool(auth_profile.get("mfa_enabled")),
+            enrolled_at=auth_profile.get("mfa_enrolled_at"),
+            pending_setup=bool(auth_profile.get("mfa_pending_secret")),
+            last_login_at=auth_profile.get("last_login_at"),
+        )
+
+    def begin_mfa_setup(self, user_slug: str, account_email: str) -> AuthMfaSetupResponse:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        if bool(auth_profile.get("mfa_enabled")):
+            return AuthMfaSetupResponse(enabled=True, pending_setup=False)
+
+        secret = self.auth.new_totp_secret()
+        now = self._now()
+        repository.upsert_user_auth_profile(
+            {
+                **auth_profile,
+                "mfa_pending_secret": secret,
+                "updated_at": now,
+            }
+        )
+        return AuthMfaSetupResponse(
+            enabled=False,
+            pending_setup=True,
+            secret=secret,
+            issuer=self.settings.mfa_totp_issuer,
+            account_label=account_email,
+            otpauth_uri=self.auth.totp_provisioning_uri(
+                secret=secret,
+                issuer=self.settings.mfa_totp_issuer,
+                account_name=account_email,
+            ),
+        )
+
+    def enable_mfa(self, user_slug: str, payload: AuthMfaCodeRequest) -> AuthMfaStatusResponse:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        pending_secret = auth_profile.get("mfa_pending_secret")
+        if not pending_secret:
+            raise ValueError("Start MFA setup before confirming a code")
+        if not self.auth.verify_totp_code(pending_secret, payload.code):
+            raise ValueError("Invalid authenticator code")
+
+        now = self._now()
+        repository.upsert_user_auth_profile(
+            {
+                **auth_profile,
+                "mfa_enabled": True,
+                "mfa_secret": pending_secret,
+                "mfa_pending_secret": None,
+                "mfa_enrolled_at": now,
+                "updated_at": now,
+            }
+        )
+        return self.get_auth_mfa_status(user_slug)
+
+    def disable_mfa(self, user_slug: str, payload: AuthMfaCodeRequest) -> AuthMfaStatusResponse:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        secret = auth_profile.get("mfa_secret")
+        if not bool(auth_profile.get("mfa_enabled")) or not secret:
+            raise ValueError("MFA is not enabled for this workspace")
+        if not self.auth.verify_totp_code(secret, payload.code):
+            raise ValueError("Invalid authenticator code")
+
+        now = self._now()
+        repository.upsert_user_auth_profile(
+            {
+                **auth_profile,
+                "mfa_enabled": False,
+                "mfa_secret": None,
+                "mfa_pending_secret": None,
+                "mfa_enrolled_at": None,
+                "updated_at": now,
+            }
+        )
+        return self.get_auth_mfa_status(user_slug)
+
+    def get_auth_onboarding(self, user_slug: str) -> AuthOnboardingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        return self._to_onboarding_snapshot(auth_profile)
+
+    def update_auth_onboarding(self, user_slug: str, payload: AuthOnboardingUpdateRequest) -> AuthOnboardingSnapshot:
+        repository = BotSocietyRepository(self.database)
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        now = self._now()
+
+        next_stage = payload.stage or auth_profile.get("onboarding_stage") or "identity"
+        onboarding_completed = bool(auth_profile.get("onboarding_completed"))
+        risk_accepted_at = auth_profile.get("risk_disclosure_accepted_at")
+        suitability_score = auth_profile.get("suitability_score")
+        suitability_completed_at = auth_profile.get("suitability_completed_at")
+        kyc_status = payload.kyc_status or auth_profile.get("kyc_status") or "not_started"
+        kyc_completed_at = auth_profile.get("kyc_completed_at")
+        preferred_language = payload.preferred_language or auth_profile.get("preferred_language") or "en"
+        preferred_theme = payload.preferred_theme or auth_profile.get("preferred_theme") or "day"
+        preferred_workspace_mode = payload.preferred_workspace_mode or auth_profile.get("preferred_workspace_mode") or "pro"
+        timezone_value = payload.timezone or auth_profile.get("timezone") or "UTC"
+
+        if payload.accept_risk_disclosure is True:
+            risk_accepted_at = now
+            if next_stage == "identity":
+                next_stage = "risk"
+        elif payload.accept_risk_disclosure is False:
+            risk_accepted_at = None
+
+        if payload.suitability_score is not None:
+            suitability_score = int(payload.suitability_score)
+            suitability_completed_at = now
+            if next_stage in {"identity", "risk"}:
+                next_stage = "suitability"
+
+        if payload.kyc_status is not None:
+            if payload.kyc_status == "approved":
+                kyc_completed_at = now
+                next_stage = "complete"
+                onboarding_completed = True
+            elif payload.kyc_status in {"pending", "rejected"}:
+                kyc_completed_at = None
+                next_stage = "kyc"
+            else:
+                kyc_completed_at = None
+
+        if payload.completed is True:
+            next_stage = "complete"
+            onboarding_completed = True
+        elif payload.completed is False:
+            onboarding_completed = False
+            if next_stage == "complete":
+                next_stage = "kyc"
+
+        repository.upsert_user_auth_profile(
+            {
+                **auth_profile,
+                "onboarding_stage": next_stage if next_stage in ONBOARDING_STAGE_SEQUENCE else "identity",
+                "onboarding_completed": onboarding_completed,
+                "risk_disclosure_accepted_at": risk_accepted_at,
+                "suitability_score": suitability_score,
+                "suitability_completed_at": suitability_completed_at,
+                "kyc_status": kyc_status,
+                "kyc_completed_at": kyc_completed_at,
+                "preferred_language": preferred_language,
+                "preferred_theme": preferred_theme,
+                "preferred_workspace_mode": preferred_workspace_mode,
+                "timezone": timezone_value,
+                "updated_at": now,
+            }
+        )
+        updated_profile = self._load_or_create_auth_profile(repository, user_slug)
+        return self._to_onboarding_snapshot(updated_profile)
 
     def record_audit_event(
         self,
@@ -1839,6 +2075,7 @@ class BotSocietyService:
         user = active_repository.get_user(user_slug)
         if not user:
             raise ValueError(f"User {user_slug} is not available")
+        auth_profile = self._load_or_create_auth_profile(active_repository, user_slug)
 
         generated_at = self._now()
         latest_assets = {row["asset"]: row for row in active_repository.list_latest_market_snapshots()}
@@ -2953,6 +3190,7 @@ class BotSocietyService:
         user = active_repository.get_user(user_slug)
         if not user:
             raise ValueError(f"User {user_slug} is not available")
+        auth_profile = self._load_or_create_auth_profile(active_repository, user_slug)
 
         leaderboard_map = leaderboard_map or {
             bot.slug: bot for bot in self._build_bot_summaries(active_repository, user_slug)
@@ -2989,6 +3227,8 @@ class BotSocietyService:
             recent_alerts=alert_inbox.alerts,
             notification_channels=notification_channels,
             unread_alert_count=alert_inbox.unread_count,
+            security=self._to_security_snapshot(auth_profile),
+            onboarding=self._to_onboarding_snapshot(auth_profile),
         )
 
     def get_notification_health(self, user_slug: str) -> NotificationHealthSnapshot:
@@ -4999,6 +5239,18 @@ class BotSocietyService:
             pending_predictions=pending_predictions,
         )
         paper_venues = self.get_paper_venues()
+        user_profile = self.get_user_profile(
+            user_slug,
+            repository=repository,
+            leaderboard_map=leaderboard_map,
+            alert_inbox=alert_inbox,
+        )
+        if user_slug != self.settings.default_user_slug:
+            user_row = repository.get_user(user_slug)
+            auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+            auth_session = self._build_session_snapshot(user_row, auth_profile) if user_row else AuthSessionSnapshot(authenticated=False, user=None)
+        else:
+            auth_session = AuthSessionSnapshot(authenticated=False, user=None)
         snapshot = DashboardSnapshot(
             summary=self.get_summary(
                 user_slug,
@@ -5025,13 +5277,8 @@ class BotSocietyService:
             paper_venues=paper_venues,
             social_trading=self.get_social_trading_snapshot(user_slug, repository),
             latest_operation=latest_operation,
-            auth_session=AuthSessionSnapshot(authenticated=user_slug != self.settings.default_user_slug, user=self._to_user_identity(repository.get_user(user_slug)) if user_slug != self.settings.default_user_slug else None),
-            user_profile=self.get_user_profile(
-                user_slug,
-                repository=repository,
-                leaderboard_map=leaderboard_map,
-                alert_inbox=alert_inbox,
-            ),
+            auth_session=auth_session,
+            user_profile=user_profile,
             notification_health=notification_health,
             provider_status=provider_status,
             launch_readiness=self.get_launch_readiness(provider_status=provider_status),
@@ -5770,6 +6017,7 @@ class BotSocietyService:
         )
 
     def _fast_public_user_profile(self, user_slug: str, alert_inbox: AlertInbox) -> UserProfile:
+        auth_profile = self._default_auth_profile_payload(user_slug, now=self._now())
         return UserProfile(
             slug=user_slug,
             display_name="BITprivat Demo Operator",
@@ -5795,6 +6043,8 @@ class BotSocietyService:
             recent_alerts=alert_inbox.alerts,
             notification_channels=[],
             unread_alert_count=alert_inbox.unread_count,
+            security=self._to_security_snapshot(auth_profile),
+            onboarding=self._to_onboarding_snapshot(auth_profile),
         )
 
     def get_system_pulse(
@@ -8806,11 +9056,103 @@ class BotSocietyService:
             is_demo_user=bool(user.get("is_demo_user")),
         )
 
+    def _build_session_snapshot(self, user: dict, auth_profile: dict[str, object]) -> AuthSessionSnapshot:
+        return AuthSessionSnapshot(
+            authenticated=True,
+            user=self._to_user_identity(user),
+            mfa_enabled=bool(auth_profile.get("mfa_enabled")),
+            onboarding=self._to_onboarding_snapshot(auth_profile),
+        )
+
+    def _default_auth_profile_payload(self, user_slug: str, *, now: str | None = None) -> dict[str, object]:
+        timestamp = now or self._now()
+        return {
+            "user_slug": user_slug,
+            "mfa_enabled": False,
+            "mfa_secret": None,
+            "mfa_pending_secret": None,
+            "mfa_enrolled_at": None,
+            "onboarding_stage": "identity",
+            "onboarding_completed": False,
+            "risk_disclosure_accepted_at": None,
+            "suitability_score": None,
+            "suitability_completed_at": None,
+            "kyc_status": "not_started",
+            "kyc_completed_at": None,
+            "preferred_language": "en",
+            "preferred_theme": "day",
+            "preferred_workspace_mode": "pro",
+            "timezone": "UTC",
+            "last_login_at": None,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+
+    def _load_or_create_auth_profile(self, repository: BotSocietyRepository, user_slug: str) -> dict[str, object]:
+        auth_profile = repository.get_user_auth_profile(user_slug)
+        if auth_profile:
+            return {**self._default_auth_profile_payload(user_slug), **auth_profile}
+        default_profile = self._default_auth_profile_payload(user_slug)
+        repository.upsert_user_auth_profile(default_profile)
+        return default_profile
+
+    def _to_security_snapshot(self, auth_profile: dict[str, object]) -> UserSecuritySnapshot:
+        return UserSecuritySnapshot(
+            mfa_enabled=bool(auth_profile.get("mfa_enabled")),
+            mfa_enrolled_at=auth_profile.get("mfa_enrolled_at"),
+            mfa_pending_setup=bool(auth_profile.get("mfa_pending_secret")),
+            last_login_at=auth_profile.get("last_login_at"),
+        )
+
+    def _recommended_onboarding_step(self, auth_profile: dict[str, object]) -> str:
+        if bool(auth_profile.get("onboarding_completed")) or auth_profile.get("onboarding_stage") == "complete":
+            return "Onboarding complete. You can keep operating in paper mode or continue to billing and connectors."
+        if not auth_profile.get("risk_disclosure_accepted_at"):
+            return "Accept the risk disclosure to unlock suitability and KYC stages."
+        if auth_profile.get("suitability_score") is None:
+            return "Complete the suitability check to profile the risk configuration for this workspace."
+        if auth_profile.get("kyc_status") != "approved":
+            return "Start KYC verification and wait for approval before requesting any live execution privileges."
+        return "Finish profile preferences and confirm onboarding completion."
+
+    def _to_onboarding_snapshot(self, auth_profile: dict[str, object]) -> AuthOnboardingSnapshot:
+        stage = str(auth_profile.get("onboarding_stage") or "identity")
+        if stage not in ONBOARDING_STAGE_SEQUENCE:
+            stage = "identity"
+        kyc_status = str(auth_profile.get("kyc_status") or "not_started")
+        if kyc_status not in {"not_started", "pending", "approved", "rejected"}:
+            kyc_status = "not_started"
+        preferred_language = str(auth_profile.get("preferred_language") or "en")
+        if preferred_language not in {"en", "ro"}:
+            preferred_language = "en"
+        preferred_theme = str(auth_profile.get("preferred_theme") or "day")
+        if preferred_theme not in {"day", "night"}:
+            preferred_theme = "day"
+        preferred_workspace_mode = str(auth_profile.get("preferred_workspace_mode") or "pro")
+        if preferred_workspace_mode not in {"simple", "pro"}:
+            preferred_workspace_mode = "pro"
+        return AuthOnboardingSnapshot(
+            stage=stage,
+            completed=bool(auth_profile.get("onboarding_completed")),
+            risk_disclosure_accepted_at=auth_profile.get("risk_disclosure_accepted_at"),
+            suitability_score=int(auth_profile["suitability_score"]) if auth_profile.get("suitability_score") is not None else None,
+            suitability_completed_at=auth_profile.get("suitability_completed_at"),
+            kyc_status=kyc_status,
+            kyc_completed_at=auth_profile.get("kyc_completed_at"),
+            preferred_language=preferred_language,
+            preferred_theme=preferred_theme,
+            preferred_workspace_mode=preferred_workspace_mode,
+            timezone=str(auth_profile.get("timezone") or "UTC"),
+            updated_at=auth_profile.get("updated_at"),
+            recommended_next_step=self._recommended_onboarding_step(auth_profile),
+        )
+
     def _create_session_for_user(self, user_slug: str) -> tuple[AuthSessionSnapshot, str]:
         repository = BotSocietyRepository(self.database)
         user = repository.get_user(user_slug)
         if not user:
             raise ValueError("Unable to start a session for that account")
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
         now = self._now()
         session_token = self.auth.new_session_token()
         repository.create_session(
@@ -8822,7 +9164,7 @@ class BotSocietyService:
                 "last_seen_at": now,
             }
         )
-        return AuthSessionSnapshot(authenticated=True, user=self._to_user_identity(user)), session_token.raw_token
+        return self._build_session_snapshot(user, auth_profile), session_token.raw_token
 
     def _generate_user_slug(self, repository: BotSocietyRepository, display_name: str, email: str) -> str:
         base = display_name.strip().lower() or email.split("@", 1)[0].lower()

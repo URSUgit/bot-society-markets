@@ -4351,6 +4351,8 @@ function renderAuthPanel(authSession, profile) {
   }
 
   if (authSession?.authenticated && authSession.user) {
+    const mfaState = profile?.security?.mfa_enabled ? "Enabled" : "Disabled";
+    const onboardingStage = profile?.onboarding?.stage ? humanizeKey(profile.onboarding.stage) : "Identity";
     badge.textContent = "Signed in";
     note.textContent = `You are working in the ${authSession.user.display_name} workspace.`;
     sessionCard.innerHTML = `
@@ -4359,6 +4361,8 @@ function renderAuthPanel(authSession, profile) {
         <div><dt>Email</dt><dd>${authSession.user.email}</dd></div>
         <div><dt>Tier</dt><dd>${authSession.user.tier}</dd></div>
         <div><dt>Workspace</dt><dd>${profile.slug}</dd></div>
+        <div><dt>MFA</dt><dd>${mfaState}</dd></div>
+        <div><dt>Onboarding</dt><dd>${onboardingStage}</dd></div>
       </dl>
     `;
     actions.innerHTML = '<button class="button tertiary" type="button" data-action="logout">Sign Out</button>';
@@ -4375,11 +4379,127 @@ function renderAuthPanel(authSession, profile) {
       <div><dt>Tier</dt><dd>${profile.tier}</dd></div>
       <div><dt>Email</dt><dd>${profile.email}</dd></div>
       <div><dt>Mode</dt><dd>Shared demo</dd></div>
+      <div><dt>MFA</dt><dd>Sign in required</dd></div>
+      <div><dt>Onboarding</dt><dd>Sign in required</dd></div>
     </dl>
   `;
   actions.innerHTML = "";
   loginCard.hidden = false;
   registerCard.hidden = false;
+}
+
+function renderOnboardingPanel(authSession, profile) {
+  const form = document.getElementById("onboarding-form");
+  const summary = document.getElementById("onboarding-summary");
+  const stagePill = document.getElementById("onboarding-stage-pill");
+  if (!form || !summary || !stagePill) {
+    return;
+  }
+
+  const stageInput = document.getElementById("onboarding-stage");
+  const riskInput = document.getElementById("onboarding-risk");
+  const suitabilityInput = document.getElementById("onboarding-suitability-score");
+  const kycInput = document.getElementById("onboarding-kyc-status");
+  const languageInput = document.getElementById("onboarding-language");
+  const themeInput = document.getElementById("onboarding-theme");
+  const workspaceModeInput = document.getElementById("onboarding-workspace-mode");
+  const timezoneInput = document.getElementById("onboarding-timezone");
+  const completeInput = document.getElementById("onboarding-complete");
+
+  const signedIn = Boolean(authSession?.authenticated && authSession?.user);
+  const onboarding = profile?.onboarding || null;
+
+  if (!signedIn || !onboarding) {
+    stagePill.textContent = "Demo";
+    summary.textContent = "Sign in to complete identity, risk, suitability, and KYC onboarding gates.";
+    form.querySelectorAll("input, select, button").forEach((field) => {
+      field.disabled = true;
+    });
+    return;
+  }
+
+  form.querySelectorAll("input, select, button").forEach((field) => {
+    field.disabled = false;
+  });
+  stagePill.textContent = onboarding.completed
+    ? "Complete"
+    : humanizeKey(onboarding.stage || "identity");
+  summary.textContent = onboarding.recommended_next_step
+    || `Stage: ${humanizeKey(onboarding.stage || "identity")}`;
+
+  if (stageInput) {
+    stageInput.value = onboarding.stage || "identity";
+  }
+  if (riskInput) {
+    riskInput.checked = Boolean(onboarding.risk_disclosure_accepted_at);
+  }
+  if (suitabilityInput) {
+    suitabilityInput.value = onboarding.suitability_score ?? "";
+  }
+  if (kycInput) {
+    kycInput.value = onboarding.kyc_status || "not_started";
+  }
+  if (languageInput) {
+    languageInput.value = onboarding.preferred_language || "en";
+  }
+  if (themeInput) {
+    themeInput.value = onboarding.preferred_theme || "day";
+  }
+  if (workspaceModeInput) {
+    workspaceModeInput.value = onboarding.preferred_workspace_mode || "pro";
+  }
+  if (timezoneInput) {
+    timezoneInput.value = onboarding.timezone || "UTC";
+  }
+  if (completeInput) {
+    completeInput.checked = Boolean(onboarding.completed);
+  }
+}
+
+function renderMfaPanel(authSession, profile) {
+  const summary = document.getElementById("mfa-summary");
+  const statusPill = document.getElementById("mfa-status-pill");
+  const setupButton = document.getElementById("mfa-start-setup-button");
+  const setupCard = document.getElementById("mfa-setup-card");
+  const uriElement = document.getElementById("mfa-otpauth-uri");
+  const enableForm = document.getElementById("mfa-enable-form");
+  const disableForm = document.getElementById("mfa-disable-form");
+  if (!summary || !statusPill || !setupButton || !setupCard || !uriElement || !enableForm || !disableForm) {
+    return;
+  }
+
+  const signedIn = Boolean(authSession?.authenticated && authSession?.user);
+  const security = profile?.security || {};
+  const mfaEnabled = Boolean(security.mfa_enabled);
+
+  if (!signedIn) {
+    statusPill.textContent = "Locked";
+    summary.textContent = "Sign in to configure MFA.";
+    setupCard.classList.add("hidden");
+    [setupButton, ...enableForm.querySelectorAll("input, button"), ...disableForm.querySelectorAll("input, button")].forEach((node) => {
+      node.disabled = true;
+    });
+    return;
+  }
+
+  [setupButton, ...enableForm.querySelectorAll("input, button"), ...disableForm.querySelectorAll("input, button")].forEach((node) => {
+    node.disabled = false;
+  });
+
+  statusPill.textContent = mfaEnabled ? "Enabled" : (security.mfa_pending_setup ? "Pending setup" : "Not enabled");
+  summary.textContent = mfaEnabled
+    ? `MFA enrolled${security.mfa_enrolled_at ? ` ${fmtRelativeTime(security.mfa_enrolled_at)}` : ""}.`
+    : "Protect this workspace with authenticator-based two-factor login.";
+
+  if (security.mfa_pending_setup) {
+    setupCard.classList.remove("hidden");
+    if (!uriElement.textContent) {
+      uriElement.textContent = "Pending setup is active. Click Start setup to regenerate the provisioning URI.";
+    }
+  } else {
+    setupCard.classList.add("hidden");
+    uriElement.textContent = "";
+  }
 }
 
 function renderBillingPanel(billing, authSession) {
@@ -4781,6 +4901,8 @@ async function loadDashboard(options = {}) {
     renderPredictions(snapshot.recent_predictions);
     renderSignals(snapshot.recent_signals);
     renderAuthPanel(snapshot.auth_session, snapshot.user_profile);
+    renderOnboardingPanel(snapshot.auth_session, snapshot.user_profile);
+    renderMfaPanel(snapshot.auth_session, snapshot.user_profile);
     renderBillingPanel(snapshot.user_profile?.billing, snapshot.auth_session);
     renderNotificationHealth(snapshot.notification_health);
     renderUserProfile(snapshot.user_profile, snapshot.notification_health, snapshot.auth_session);
@@ -5127,10 +5249,18 @@ async function openBillingPortal() {
   window.location.assign(payload.url);
 }
 
-async function loginUser(email, password) {
+async function loginUser(email, password, otpCode = "") {
+  const payload = {
+    email,
+    password,
+  };
+  const normalizedOtp = String(otpCode || "").trim();
+  if (normalizedOtp) {
+    payload.otp_code = normalizedOtp;
+  }
   await fetchJson("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(payload),
   });
   await loadDashboard();
   setStatus("Signed in successfully.");
@@ -5151,12 +5281,102 @@ async function logoutUser() {
   setStatus("Signed out. You are back in demo mode.");
 }
 
+async function forgotPassword(email) {
+  const payload = await fetchJson("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  if (payload?.debug_reset_token) {
+    const tokenField = document.getElementById("reset-token");
+    if (tokenField) {
+      tokenField.value = payload.debug_reset_token;
+    }
+    setStatus(`Recovery token generated for testing: ${payload.debug_reset_token}`);
+  } else {
+    setStatus(payload?.message || "If that email exists, reset instructions were generated.");
+  }
+}
+
+async function resetPassword(token, newPassword) {
+  await fetchJson("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  await loadDashboard();
+  setStatus("Password reset complete. You are now signed in.");
+}
+
+function renderMfaSetupPayload(payload) {
+  const setupCard = document.getElementById("mfa-setup-card");
+  const uriElement = document.getElementById("mfa-otpauth-uri");
+  if (!setupCard || !uriElement) {
+    return;
+  }
+  if (payload?.otpauth_uri) {
+    setupCard.classList.remove("hidden");
+    uriElement.textContent = payload.otpauth_uri;
+  } else {
+    setupCard.classList.add("hidden");
+    uriElement.textContent = "";
+  }
+}
+
+async function startMfaSetup() {
+  const payload = await fetchJson("/api/auth/mfa/setup", {
+    method: "POST",
+  });
+  renderMfaSetupPayload(payload);
+  await loadDashboard({ silent: true });
+  setStatus(payload?.pending_setup ? "MFA setup initialized. Scan the URI and confirm with your code." : "MFA is already enabled.");
+}
+
+async function enableMfa(code) {
+  await fetchJson("/api/auth/mfa/enable", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  const setupCard = document.getElementById("mfa-setup-card");
+  const uriElement = document.getElementById("mfa-otpauth-uri");
+  if (setupCard) {
+    setupCard.classList.add("hidden");
+  }
+  if (uriElement) {
+    uriElement.textContent = "";
+  }
+  await loadDashboard({ silent: true });
+  setStatus("MFA enabled for this workspace.");
+}
+
+async function disableMfa(code) {
+  await fetchJson("/api/auth/mfa/disable", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  await loadDashboard({ silent: true });
+  setStatus("MFA disabled.");
+}
+
+async function saveOnboardingProfile(payload) {
+  await fetchJson("/api/auth/onboarding", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  await loadDashboard({ silent: true });
+  setStatus("Onboarding profile saved.");
+}
+
 function bindForms() {
   const simulationForm = document.getElementById("simulation-form");
   const watchlistForm = document.getElementById("watchlist-form");
   const alertRuleForm = document.getElementById("alert-rule-form");
   const loginForm = document.getElementById("login-form");
   const registerForm = document.getElementById("register-form");
+  const forgotPasswordForm = document.getElementById("forgot-password-form");
+  const resetPasswordForm = document.getElementById("reset-password-form");
+  const mfaStartButton = document.getElementById("mfa-start-setup-button");
+  const mfaEnableForm = document.getElementById("mfa-enable-form");
+  const mfaDisableForm = document.getElementById("mfa-disable-form");
+  const onboardingForm = document.getElementById("onboarding-form");
   const notificationChannelForm = document.getElementById("notification-channel-form");
   const socialAnalyzeForm = document.getElementById("social-analyze-form");
 
@@ -5291,11 +5511,12 @@ function bindForms() {
       event.preventDefault();
       const email = document.getElementById("login-email")?.value?.trim();
       const password = document.getElementById("login-password")?.value || "";
+      const otpCode = document.getElementById("login-otp")?.value || "";
       if (!email || !password) {
         return;
       }
       try {
-        await loginUser(email, password);
+        await loginUser(email, password, otpCode);
         loginForm.reset();
       } catch (error) {
         setStatus(error.message);
@@ -5315,6 +5536,128 @@ function bindForms() {
       try {
         await registerUser(displayName, email, password);
         registerForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (forgotPasswordForm) {
+    forgotPasswordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("forgot-email")?.value?.trim();
+      if (!email) {
+        return;
+      }
+      try {
+        await forgotPassword(email);
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (resetPasswordForm) {
+    resetPasswordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const token = document.getElementById("reset-token")?.value?.trim();
+      const newPassword = document.getElementById("reset-password")?.value || "";
+      if (!token || !newPassword) {
+        return;
+      }
+      try {
+        await resetPassword(token, newPassword);
+        resetPasswordForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (mfaStartButton) {
+    mfaStartButton.addEventListener("click", async () => {
+      try {
+        if (!requireEditable()) {
+          return;
+        }
+        await startMfaSetup();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (mfaEnableForm) {
+    mfaEnableForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      const code = document.getElementById("mfa-enable-code")?.value?.trim();
+      if (!code) {
+        return;
+      }
+      try {
+        await enableMfa(code);
+        mfaEnableForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (mfaDisableForm) {
+    mfaDisableForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      const code = document.getElementById("mfa-disable-code")?.value?.trim();
+      if (!code) {
+        return;
+      }
+      try {
+        await disableMfa(code);
+        mfaDisableForm.reset();
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  }
+
+  if (onboardingForm) {
+    onboardingForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!requireEditable()) {
+        return;
+      }
+      const stage = document.getElementById("onboarding-stage")?.value || "identity";
+      const acceptRiskDisclosure = Boolean(document.getElementById("onboarding-risk")?.checked);
+      const suitabilityRaw = document.getElementById("onboarding-suitability-score")?.value;
+      const suitabilityScore = suitabilityRaw === "" || suitabilityRaw === undefined ? null : Number(suitabilityRaw);
+      const kycStatus = document.getElementById("onboarding-kyc-status")?.value || "not_started";
+      const preferredLanguage = document.getElementById("onboarding-language")?.value || "en";
+      const preferredTheme = document.getElementById("onboarding-theme")?.value || "day";
+      const preferredWorkspaceMode = document.getElementById("onboarding-workspace-mode")?.value || "pro";
+      const timezone = document.getElementById("onboarding-timezone")?.value?.trim() || "UTC";
+      const completed = Boolean(document.getElementById("onboarding-complete")?.checked);
+
+      const payload = {
+        stage,
+        accept_risk_disclosure: acceptRiskDisclosure,
+        kyc_status: kycStatus,
+        preferred_language: preferredLanguage,
+        preferred_theme: preferredTheme,
+        preferred_workspace_mode: preferredWorkspaceMode,
+        timezone,
+        completed,
+      };
+      if (suitabilityScore !== null && Number.isFinite(suitabilityScore)) {
+        payload.suitability_score = suitabilityScore;
+      }
+
+      try {
+        await saveOnboardingProfile(payload);
       } catch (error) {
         setStatus(error.message);
       }

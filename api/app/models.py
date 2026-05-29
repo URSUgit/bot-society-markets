@@ -29,6 +29,11 @@ SocialRiskLevel = Literal["low", "medium", "high"]
 SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
 SocialSourceState = Literal["live", "indexed", "ready_to_scan", "planned", "connector_build_required"]
 CreatorBotLearningStage = Literal["awaiting_evidence", "youtube_profile_active", "multi_source_profile", "paper_validation"]
+AuthOnboardingStage = Literal["identity", "risk", "suitability", "kyc", "complete"]
+KycStatus = Literal["not_started", "pending", "approved", "rejected"]
+UiTheme = Literal["day", "night"]
+UiLanguage = Literal["en", "ro"]
+WorkspaceMode = Literal["simple", "pro"]
 
 
 class Summary(BaseModel):
@@ -1415,6 +1420,29 @@ class UserIdentity(BaseModel):
     is_demo_user: bool = False
 
 
+class AuthOnboardingSnapshot(BaseModel):
+    stage: AuthOnboardingStage = "identity"
+    completed: bool = False
+    risk_disclosure_accepted_at: str | None = None
+    suitability_score: int | None = Field(default=None, ge=0, le=100)
+    suitability_completed_at: str | None = None
+    kyc_status: KycStatus = "not_started"
+    kyc_completed_at: str | None = None
+    preferred_language: UiLanguage = "en"
+    preferred_theme: UiTheme = "day"
+    preferred_workspace_mode: WorkspaceMode = "pro"
+    timezone: str = "UTC"
+    updated_at: str | None = None
+    recommended_next_step: str | None = None
+
+
+class UserSecuritySnapshot(BaseModel):
+    mfa_enabled: bool = False
+    mfa_enrolled_at: str | None = None
+    mfa_pending_setup: bool = False
+    last_login_at: str | None = None
+
+
 class AuthRegisterRequest(BaseModel):
     display_name: str = Field(min_length=2, max_length=120)
     email: str = Field(min_length=5, max_length=320)
@@ -1424,11 +1452,86 @@ class AuthRegisterRequest(BaseModel):
 class AuthLoginRequest(BaseModel):
     email: str = Field(min_length=5, max_length=320)
     password: str = Field(min_length=8, max_length=128)
+    otp_code: str | None = Field(default=None, min_length=6, max_length=8)
+
+    @model_validator(mode="after")
+    def normalize_otp_code(self) -> "AuthLoginRequest":
+        if self.otp_code is not None:
+            self.otp_code = "".join(ch for ch in self.otp_code if ch.isdigit())
+            if self.otp_code and len(self.otp_code) != 6:
+                raise ValueError("otp_code must be a 6-digit code")
+            if not self.otp_code:
+                self.otp_code = None
+        return self
+
+
+class AuthForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+
+
+class AuthForgotPasswordResponse(BaseModel):
+    message: str
+    debug_reset_token: str | None = None
+
+
+class AuthResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AuthOnboardingUpdateRequest(BaseModel):
+    stage: AuthOnboardingStage | None = None
+    completed: bool | None = None
+    accept_risk_disclosure: bool | None = None
+    suitability_score: int | None = Field(default=None, ge=0, le=100)
+    kyc_status: KycStatus | None = None
+    preferred_language: UiLanguage | None = None
+    preferred_theme: UiTheme | None = None
+    preferred_workspace_mode: WorkspaceMode | None = None
+    timezone: str | None = Field(default=None, min_length=2, max_length=64)
+
+    @model_validator(mode="after")
+    def normalize_timezone(self) -> "AuthOnboardingUpdateRequest":
+        if self.timezone is not None:
+            normalized = re.sub(r"\s+", " ", self.timezone).strip()
+            if not normalized:
+                raise ValueError("timezone cannot be empty")
+            self.timezone = normalized
+        return self
+
+
+class AuthMfaSetupResponse(BaseModel):
+    enabled: bool
+    pending_setup: bool
+    secret: str | None = None
+    otpauth_uri: str | None = None
+    issuer: str | None = None
+    account_label: str | None = None
+
+
+class AuthMfaCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=8)
+
+    @model_validator(mode="after")
+    def normalize_code(self) -> "AuthMfaCodeRequest":
+        self.code = "".join(ch for ch in self.code if ch.isdigit())
+        if len(self.code) != 6:
+            raise ValueError("code must be a 6-digit value")
+        return self
+
+
+class AuthMfaStatusResponse(BaseModel):
+    enabled: bool
+    enrolled_at: str | None = None
+    pending_setup: bool = False
+    last_login_at: str | None = None
 
 
 class AuthSessionSnapshot(BaseModel):
     authenticated: bool
     user: UserIdentity | None = None
+    mfa_enabled: bool = False
+    onboarding: AuthOnboardingSnapshot | None = None
 
 
 class UserProfile(BaseModel):
@@ -1444,6 +1547,8 @@ class UserProfile(BaseModel):
     recent_alerts: list[AlertDelivery]
     notification_channels: list[NotificationChannel] = Field(default_factory=list)
     unread_alert_count: int = Field(ge=0)
+    security: UserSecuritySnapshot | None = None
+    onboarding: AuthOnboardingSnapshot | None = None
 
 
 class AuditLogEntry(BaseModel):

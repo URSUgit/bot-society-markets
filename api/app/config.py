@@ -137,6 +137,9 @@ class Settings:
     alert_inbox_limit: int = 10
     auth_cookie_name: str = "bsm_session"
     session_ttl_hours: int = 168
+    password_reset_token_minutes: int = 30
+    mfa_totp_issuer: str = "BITprivat"
+    auth_debug_tokens: bool = True
     fiat_billing_provider: FiatBillingProvider = "none"
     stripe_publishable_key: str | None = None
     stripe_secret_key: str | None = None
@@ -321,6 +324,9 @@ def get_settings() -> Settings:
     worker_max_cycles = max(0, int(os.getenv("BSM_WORKER_MAX_CYCLES", "0")))
     alert_inbox_limit = max(1, min(50, int(os.getenv("BSM_ALERT_INBOX_LIMIT", "10"))))
     session_ttl_hours = max(1, int(os.getenv("BSM_SESSION_TTL_HOURS", "168")))
+    password_reset_token_minutes = max(5, min(240, int(os.getenv("BSM_PASSWORD_RESET_TOKEN_MINUTES", "30"))))
+    inferred_debug_default = os.getenv("BSM_ENVIRONMENT_NAME", "development").strip().lower() != "production"
+    auth_debug_tokens = _env_bool("BSM_AUTH_DEBUG_TOKENS", inferred_debug_default)
     outbound_timeout_seconds = max(3, int(os.getenv("BSM_OUTBOUND_TIMEOUT_SECONDS", "10")))
     reddit_post_limit = max(5, min(50, int(os.getenv("BSM_REDDIT_POST_LIMIT", "15"))))
     youtube_video_limit = max(3, min(50, int(os.getenv("BSM_YOUTUBE_VIDEO_LIMIT", "12"))))
@@ -393,6 +399,9 @@ def get_settings() -> Settings:
         alert_inbox_limit=alert_inbox_limit,
         auth_cookie_name=os.getenv("BSM_AUTH_COOKIE_NAME", "bsm_session"),
         session_ttl_hours=session_ttl_hours,
+        password_reset_token_minutes=password_reset_token_minutes,
+        mfa_totp_issuer=os.getenv("BSM_MFA_TOTP_ISSUER", "BITprivat"),
+        auth_debug_tokens=auth_debug_tokens,
         fiat_billing_provider=fiat_billing_provider,
         stripe_publishable_key=os.getenv("BSM_STRIPE_PUBLISHABLE_KEY") or None,
         stripe_secret_key=os.getenv("BSM_STRIPE_SECRET_KEY") or None,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import and_, case, delete, desc, func, select, update
+from sqlalchemy import and_, case, delete, desc, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .database import (
@@ -20,6 +20,7 @@ from .database import (
     market_snapshots_table,
     notification_channels_table,
     orders_table,
+    password_reset_tokens_table,
     paper_positions_table,
     pipeline_runs_table,
     predictions_table,
@@ -32,6 +33,7 @@ from .database import (
     user_follows_table,
     user_sessions_table,
     users_table,
+    user_auth_profiles_table,
     watchlist_items_table,
 )
 from .providers import derive_signal_quality
@@ -549,6 +551,38 @@ class BotSocietyRepository:
 
     def update_user(self, user_slug: str, payload: dict[str, Any]) -> None:
         stmt = update(users_table).where(users_table.c.slug == user_slug).values(**payload)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def get_user_auth_profile(self, user_slug: str) -> dict[str, Any] | None:
+        stmt = select(user_auth_profiles_table).where(user_auth_profiles_table.c.user_slug == user_slug)
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_user_auth_profile(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(user_auth_profiles_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[user_auth_profiles_table.c.user_slug],
+            set_={
+                "mfa_enabled": stmt.excluded.mfa_enabled,
+                "mfa_secret": stmt.excluded.mfa_secret,
+                "mfa_pending_secret": stmt.excluded.mfa_pending_secret,
+                "mfa_enrolled_at": stmt.excluded.mfa_enrolled_at,
+                "onboarding_stage": stmt.excluded.onboarding_stage,
+                "onboarding_completed": stmt.excluded.onboarding_completed,
+                "risk_disclosure_accepted_at": stmt.excluded.risk_disclosure_accepted_at,
+                "suitability_score": stmt.excluded.suitability_score,
+                "suitability_completed_at": stmt.excluded.suitability_completed_at,
+                "kyc_status": stmt.excluded.kyc_status,
+                "kyc_completed_at": stmt.excluded.kyc_completed_at,
+                "preferred_language": stmt.excluded.preferred_language,
+                "preferred_theme": stmt.excluded.preferred_theme,
+                "preferred_workspace_mode": stmt.excluded.preferred_workspace_mode,
+                "timezone": stmt.excluded.timezone,
+                "last_login_at": stmt.excluded.last_login_at,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
         with self.database.connect() as connection:
             connection.execute(stmt)
 
@@ -1238,8 +1272,63 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             connection.execute(stmt)
 
+    def delete_sessions_for_user(self, user_slug: str) -> int:
+        stmt = delete(user_sessions_table).where(user_sessions_table.c.user_slug == user_slug)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
     def delete_expired_sessions(self, now: str) -> int:
         stmt = delete(user_sessions_table).where(user_sessions_table.c.expires_at < now)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def create_password_reset_token(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(password_reset_tokens_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[password_reset_tokens_table.c.token_hash],
+            set_={
+                "user_slug": stmt.excluded.user_slug,
+                "created_at": stmt.excluded.created_at,
+                "expires_at": stmt.excluded.expires_at,
+                "used_at": stmt.excluded.used_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def get_password_reset_token(self, token_hash: str) -> dict[str, Any] | None:
+        stmt = (
+            select(password_reset_tokens_table, users_table.c.is_active)
+            .join(users_table, users_table.c.slug == password_reset_tokens_table.c.user_slug)
+            .where(password_reset_tokens_table.c.token_hash == token_hash)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def mark_password_reset_token_used(self, token_hash: str, used_at: str) -> None:
+        stmt = (
+            update(password_reset_tokens_table)
+            .where(password_reset_tokens_table.c.token_hash == token_hash)
+            .values(used_at=used_at)
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def delete_password_reset_tokens_for_user(self, user_slug: str) -> int:
+        stmt = delete(password_reset_tokens_table).where(password_reset_tokens_table.c.user_slug == user_slug)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def delete_expired_password_reset_tokens(self, now: str) -> int:
+        stmt = delete(password_reset_tokens_table).where(
+            or_(
+                password_reset_tokens_table.c.expires_at < now,
+                password_reset_tokens_table.c.used_at.is_not(None),
+            )
+        )
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
