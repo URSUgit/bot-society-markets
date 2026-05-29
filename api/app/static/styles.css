@@ -10683,6 +10683,129 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-body {
   }
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.command-brief {
+  order: 1 !important;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  min-height: 0 !important;
+  padding: 16px 18px;
+  border-color: color-mix(in srgb, var(--modern-accent) 20%, var(--modern-line));
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--modern-panel-strong) 94%, white), var(--modern-panel)),
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.12), transparent 30%);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .dashboard-hero.command-brief {
+  background:
+    linear-gradient(160deg, rgba(9, 15, 23, 0.95), rgba(15, 23, 42, 0.82)),
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.2), transparent 34%);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.command-brief h2 {
+  margin: 0;
+  color: var(--modern-ink-strong);
+  font-size: clamp(1.5rem, 2.5vw, 2.3rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.command-brief .hero-submeta {
+  max-width: none;
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-main {
+  display: grid;
+  gap: 6px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: start;
+  justify-content: flex-end;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis article {
+  display: grid;
+  gap: 3px;
+  min-height: 78px;
+  padding: 10px 12px;
+  border: 1px solid var(--modern-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--modern-panel-strong) 78%, transparent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis span {
+  color: var(--modern-dim);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis strong {
+  color: var(--modern-ink-strong);
+  font-size: 1.02rem;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis small {
+  color: var(--modern-muted);
+  font-size: 0.74rem;
+  line-height: 1.32;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #trading-workspace-section {
+  order: 2 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #market-console-section {
+  order: 3 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-ribbon {
+  order: 4 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #dashboard-metrics {
+  order: 5 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #social-trader-section {
+  order: 6 !important;
+}
+
+@media (max-width: 900px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.command-brief {
+    grid-template-columns: 1fr;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions {
+    justify-content: flex-start;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Creator-bot intelligence workspace */
 body.dashboard-body.command-os.bit-engine-product-ui .social-bot-factory {
   display: grid;
