@@ -325,6 +325,26 @@ user_wallet_connections_table = Table(
     ),
 )
 
+user_wallet_connect_challenges_table = Table(
+    "user_wallet_connect_challenges",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("address", String(128), nullable=False),
+    Column("address_normalized", String(128), nullable=False),
+    Column("chain", String(32), nullable=False),
+    Column("provider", String(64), nullable=False, default="walletconnect", server_default="walletconnect"),
+    Column("label", String(64)),
+    Column("message", Text, nullable=False),
+    Column("nonce", String(64), nullable=False),
+    Column("nonce_hash", String(128), nullable=False, unique=True),
+    Column("issued_at", String(64), nullable=False),
+    Column("expires_at", String(64), nullable=False),
+    Column("consumed_at", String(64)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
 social_traders_table = Table(
     "social_traders",
     metadata,
@@ -535,6 +555,11 @@ Index("idx_social_discovery_runs_started", social_discovery_runs_table.c.started
 Index("idx_social_trader_events_trader_observed", social_trader_events_table.c.trader_id, social_trader_events_table.c.observed_at.desc())
 Index("idx_social_trader_allocations_user", social_trader_allocations_table.c.user_slug, social_trader_allocations_table.c.updated_at.desc())
 Index("idx_user_wallet_connections_user_updated", user_wallet_connections_table.c.user_slug, user_wallet_connections_table.c.updated_at.desc())
+Index(
+    "idx_user_wallet_connect_challenges_user_expires",
+    user_wallet_connect_challenges_table.c.user_slug,
+    user_wallet_connect_challenges_table.c.expires_at.desc(),
+)
 Index("idx_user_auth_profiles_onboarding", user_auth_profiles_table.c.onboarding_stage, user_auth_profiles_table.c.updated_at.desc())
 Index("idx_password_reset_tokens_user_expires", password_reset_tokens_table.c.user_slug, password_reset_tokens_table.c.expires_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
@@ -720,6 +745,7 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_social_trader_events_trader_observed_id ON social_trader_events (trader_id, observed_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_social_trader_allocations_user_updated ON social_trader_allocations (user_slug, is_active DESC, updated_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_user_wallet_connections_user_updated ON user_wallet_connections (user_slug, updated_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_user_wallet_connect_challenges_user_expires ON user_wallet_connect_challenges (user_slug, expires_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_created_id ON alert_delivery_events (user_slug, created_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_read_created ON alert_delivery_events (user_slug, read_at, created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_status_created ON alert_delivery_events (user_slug, delivery_status, created_at DESC)",

@@ -7,3 +7,4 @@ uvicorn[standard]==0.37.0
 python-dotenv==1.1.1
 fredapi==0.5.2
 httpx==0.28.1
+eth-account==0.13.7

@@ -5262,16 +5262,84 @@ async function deleteNotificationChannel(channelId) {
   await loadDashboard();
 }
 
+function isEvmWalletChain(chain) {
+  return new Set(["ethereum", "arbitrum", "base", "polygon", "optimism", "bsc", "avalanche"]).has(String(chain || "").toLowerCase());
+}
+
+async function requestEvmWalletAddress(preferredAddress = "") {
+  const provider = window.ethereum;
+  if (!provider || typeof provider.request !== "function") {
+    throw new Error("No EVM wallet detected. Install MetaMask, Rabby, or Coinbase Wallet.");
+  }
+  const accounts = await provider.request({ method: "eth_requestAccounts" });
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    throw new Error("Wallet did not expose any account.");
+  }
+  const normalizedPreferred = String(preferredAddress || "").trim().toLowerCase();
+  if (!normalizedPreferred) {
+    return String(accounts[0]).toLowerCase();
+  }
+  const matched = accounts.find((account) => String(account).toLowerCase() === normalizedPreferred);
+  if (!matched) {
+    throw new Error("Selected wallet address does not match the connected wallet account.");
+  }
+  return String(matched).toLowerCase();
+}
+
+async function signEvmChallengeMessage(message, address) {
+  const provider = window.ethereum;
+  if (!provider || typeof provider.request !== "function") {
+    throw new Error("No EVM wallet provider available for message signing.");
+  }
+  try {
+    return await provider.request({
+      method: "personal_sign",
+      params: [message, address],
+    });
+  } catch (primaryError) {
+    try {
+      return await provider.request({
+        method: "personal_sign",
+        params: [address, message],
+      });
+    } catch {
+      throw primaryError;
+    }
+  }
+}
+
 async function connectWallet(chain, provider, address, label) {
-  await fetchJson("/api/me/wallets", {
-    method: "POST",
-    body: JSON.stringify({
-      chain,
-      provider,
-      address,
-      label: label || null,
-    }),
-  });
+  const normalizedChain = String(chain || "ethereum").toLowerCase();
+  if (isEvmWalletChain(normalizedChain)) {
+    const verifiedAddress = await requestEvmWalletAddress(address);
+    const challenge = await fetchJson("/api/me/wallets/challenge", {
+      method: "POST",
+      body: JSON.stringify({
+        chain: normalizedChain,
+        provider,
+        address: verifiedAddress,
+        label: label || null,
+      }),
+    });
+    const signature = await signEvmChallengeMessage(challenge.message, verifiedAddress);
+    await fetchJson("/api/me/wallets/verify", {
+      method: "POST",
+      body: JSON.stringify({
+        challenge_id: challenge.challenge_id,
+        signature,
+      }),
+    });
+  } else {
+    await fetchJson("/api/me/wallets", {
+      method: "POST",
+      body: JSON.stringify({
+        chain: normalizedChain,
+        provider,
+        address,
+        label: label || null,
+      }),
+    });
+  }
   await loadDashboard();
 }
 
@@ -5754,6 +5822,11 @@ function bindForms() {
         return;
       }
       try {
+        setStatus(
+          isEvmWalletChain(chain)
+            ? "Open your wallet and approve the BITprivat signature challenge."
+            : "Connecting wallet to workspace..."
+        );
         await connectWallet(chain, provider, address, label);
         walletConnectForm.reset();
         const chainSelect = document.getElementById("wallet-chain-input");
@@ -5764,7 +5837,11 @@ function bindForms() {
         if (providerSelect) {
           providerSelect.value = "walletconnect";
         }
-        setStatus("Wallet connected.");
+        setStatus(
+          isEvmWalletChain(chain)
+            ? "Wallet connected and signature verified."
+            : "Wallet connected."
+        );
       } catch (error) {
         setStatus(error.message);
       }

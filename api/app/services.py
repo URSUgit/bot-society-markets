@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import hashlib
 import json
 from pathlib import Path
 import re
+import secrets
 from textwrap import dedent
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
 import zipfile
 
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from sqlalchemy.exc import IntegrityError
 
 from .auth import AuthManager
@@ -133,8 +137,10 @@ from .models import (
     UserIdentity,
     UserProfile,
     UserSecuritySnapshot,
+    UserWalletConnectChallenge,
     UserWalletConnection,
     UserWalletConnectRequest,
+    UserWalletVerifyRequest,
     VenuePulseItem,
     WalletIntelligenceSnapshot,
     WalletProfileView,
@@ -176,6 +182,16 @@ ONBOARDING_STAGE_SEQUENCE = ("identity", "risk", "suitability", "kyc", "complete
 EVM_ADDRESS_RE = re.compile(r"^0x[a-f0-9]{40}$")
 SOLANA_ADDRESS_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 BITCOIN_ADDRESS_RE = re.compile(r"^(bc1[ac-hj-np-z02-9]{11,71}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$")
+EVM_WALLET_CHAINS = {
+    "ethereum",
+    "arbitrum",
+    "base",
+    "polygon",
+    "optimism",
+    "bsc",
+    "avalanche",
+}
+WALLET_CONNECT_CHALLENGE_TTL_SECONDS = 10 * 60
 
 
 class BotSocietyService:
@@ -261,6 +277,7 @@ class BotSocietyService:
         macro_refreshed = self._refresh_macro_data(repository)
         refreshed_signals = repository.refresh_signal_quality_scores()
         repository.delete_expired_sessions(self._now())
+        repository.delete_expired_wallet_connect_challenges(self._now())
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
         demo_paper_positions = self._seed_demo_paper_trading(repository)
@@ -3396,11 +3413,129 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         return [self._to_user_wallet_connection(row) for row in repository.list_user_wallet_connections(user_slug)]
 
+    def create_wallet_connect_challenge(
+        self,
+        user_slug: str,
+        payload: UserWalletConnectRequest,
+        *,
+        origin: str,
+    ) -> UserWalletConnectChallenge:
+        repository = BotSocietyRepository(self.database)
+        chain = self._normalize_wallet_chain(payload.chain)
+        provider = self._normalize_wallet_provider(payload.provider)
+        normalized_address = self._normalize_wallet_address(payload.address, chain=chain)
+        if chain not in EVM_WALLET_CHAINS:
+            raise ValueError("Signed wallet connect is currently available for EVM chains only.")
+
+        now_dt = datetime.now(timezone.utc).replace(microsecond=0)
+        expires_dt = now_dt + timedelta(seconds=WALLET_CONNECT_CHALLENGE_TTL_SECONDS)
+        issued_at = to_timestamp(now_dt)
+        expires_at = to_timestamp(expires_dt)
+        nonce = secrets.token_hex(16)
+        message = self._wallet_connect_message(
+            origin=origin,
+            address=normalized_address,
+            chain=chain,
+            nonce=nonce,
+            issued_at=issued_at,
+            expires_at=expires_at,
+        )
+        nonce_hash = hashlib.sha256(f"{user_slug}:{nonce}".encode("utf-8")).hexdigest()
+        now = self._now()
+        repository.delete_expired_wallet_connect_challenges(now)
+        row = repository.create_user_wallet_connect_challenge(
+            {
+                "user_slug": user_slug,
+                "address": normalized_address,
+                "address_normalized": normalized_address,
+                "chain": chain,
+                "provider": provider,
+                "label": payload.label,
+                "message": message,
+                "nonce": nonce,
+                "nonce_hash": nonce_hash,
+                "issued_at": issued_at,
+                "expires_at": expires_at,
+                "consumed_at": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        if not row:
+            raise ValueError("Unable to create wallet signature challenge")
+        return UserWalletConnectChallenge(
+            challenge_id=int(row["id"]),
+            address=str(row["address"]),
+            chain=str(row["chain"]),
+            provider=str(row.get("provider") or "walletconnect"),
+            label=str(row["label"]) if row.get("label") else None,
+            message=str(row["message"]),
+            nonce=str(row["nonce"]),
+            issued_at=str(row["issued_at"]),
+            expires_at=str(row["expires_at"]),
+        )
+
+    def verify_wallet_connect(self, user_slug: str, payload: UserWalletVerifyRequest) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        challenge = repository.get_user_wallet_connect_challenge(user_slug, payload.challenge_id)
+        if not challenge:
+            raise ValueError("Wallet signature challenge not found")
+        if challenge.get("consumed_at"):
+            raise ValueError("Wallet signature challenge was already consumed")
+        expires_at_raw = challenge.get("expires_at")
+        expires_at = parse_timestamp(str(expires_at_raw)) if expires_at_raw else None
+        if not expires_at or expires_at <= datetime.now(timezone.utc):
+            raise ValueError("Wallet signature challenge expired. Request a new challenge.")
+
+        nonce = str(challenge.get("nonce") or "")
+        nonce_hash = str(challenge.get("nonce_hash") or "")
+        expected_nonce_hash = hashlib.sha256(f"{user_slug}:{nonce}".encode("utf-8")).hexdigest()
+        if not nonce or nonce_hash != expected_nonce_hash:
+            raise ValueError("Wallet signature challenge integrity check failed")
+
+        message = str(challenge.get("message") or "")
+        if not message:
+            raise ValueError("Wallet signature challenge message is unavailable")
+        recovered_address = self._recover_evm_signer_address(message=message, signature=payload.signature)
+        expected_address = str(challenge.get("address_normalized") or challenge.get("address") or "").lower()
+        if not recovered_address or recovered_address.lower() != expected_address:
+            raise ValueError("Wallet signature verification failed")
+
+        consumed = repository.consume_user_wallet_connect_challenge(
+            user_slug,
+            payload.challenge_id,
+            consumed_at=self._now(),
+        )
+        if consumed == 0:
+            raise ValueError("Wallet signature challenge was already consumed")
+
+        try:
+            repository.upsert_user_wallet_connection(
+                {
+                    "user_slug": user_slug,
+                    "address": expected_address,
+                    "address_normalized": expected_address,
+                    "chain": str(challenge.get("chain") or "ethereum"),
+                    "provider": str(challenge.get("provider") or "walletconnect"),
+                    "label": challenge.get("label"),
+                    "is_active": True,
+                    "created_at": self._now(),
+                    "updated_at": self._now(),
+                }
+            )
+        except IntegrityError as exc:
+            raise ValueError("Wallet connection already exists for this chain") from exc
+
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
+
     def connect_user_wallet(self, user_slug: str, payload: UserWalletConnectRequest) -> UserProfile:
         repository = BotSocietyRepository(self.database)
         chain = self._normalize_wallet_chain(payload.chain)
         provider = self._normalize_wallet_provider(payload.provider)
         normalized_address = self._normalize_wallet_address(payload.address, chain=chain)
+        if chain in EVM_WALLET_CHAINS:
+            raise ValueError("EVM wallet connections require signed verification. Use the wallet challenge flow.")
         now = self._now()
         try:
             repository.upsert_user_wallet_connection(
@@ -9093,6 +9228,42 @@ class BotSocietyService:
             if isinstance(price, dict) and price.get("id"):
                 return str(price["id"]).strip()
         return None
+
+    @staticmethod
+    def _wallet_connect_message(
+        *,
+        origin: str,
+        address: str,
+        chain: str,
+        nonce: str,
+        issued_at: str,
+        expires_at: str,
+    ) -> str:
+        return dedent(
+            f"""
+            BITprivat Wallet Connect
+
+            URI: {origin}
+            Address: {address}
+            Chain: {chain}
+            Nonce: {nonce}
+            Issued At: {issued_at}
+            Expires At: {expires_at}
+
+            Sign this message to prove wallet ownership for your BITprivat workspace.
+            """
+        ).strip()
+
+    @staticmethod
+    def _recover_evm_signer_address(*, message: str, signature: str) -> str:
+        normalized_signature = signature.strip()
+        if not normalized_signature:
+            raise ValueError("Signature is required")
+        signable = encode_defunct(text=message)
+        try:
+            return str(Account.recover_message(signable, signature=normalized_signature))
+        except Exception as exc:
+            raise ValueError("Invalid wallet signature") from exc
 
     @staticmethod
     def _normalize_wallet_chain(value: str) -> str:

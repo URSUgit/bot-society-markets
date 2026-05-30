@@ -33,6 +33,7 @@ from .database import (
     user_follows_table,
     user_sessions_table,
     users_table,
+    user_wallet_connect_challenges_table,
     user_wallet_connections_table,
     user_auth_profiles_table,
     watchlist_items_table,
@@ -780,6 +781,67 @@ class BotSocietyRepository:
         )
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
+
+    def create_user_wallet_connect_challenge(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        stmt = user_wallet_connect_challenges_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            if not inserted:
+                return None
+            selected = (
+                select(user_wallet_connect_challenges_table)
+                .where(user_wallet_connect_challenges_table.c.id == int(inserted))
+                .limit(1)
+            )
+            return self._row(connection.execute(selected))
+
+    def get_user_wallet_connect_challenge(self, user_slug: str, challenge_id: int) -> dict[str, Any] | None:
+        stmt = (
+            select(user_wallet_connect_challenges_table)
+            .where(
+                and_(
+                    user_wallet_connect_challenges_table.c.id == challenge_id,
+                    user_wallet_connect_challenges_table.c.user_slug == user_slug,
+                )
+            )
+            .limit(1)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def consume_user_wallet_connect_challenge(
+        self,
+        user_slug: str,
+        challenge_id: int,
+        *,
+        consumed_at: str,
+    ) -> int:
+        stmt = (
+            update(user_wallet_connect_challenges_table)
+            .where(
+                and_(
+                    user_wallet_connect_challenges_table.c.id == challenge_id,
+                    user_wallet_connect_challenges_table.c.user_slug == user_slug,
+                    user_wallet_connect_challenges_table.c.consumed_at.is_(None),
+                )
+            )
+            .values(consumed_at=consumed_at, updated_at=consumed_at)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def delete_expired_wallet_connect_challenges(self, now: str) -> int:
+        stmt = delete(user_wallet_connect_challenges_table).where(
+            or_(
+                user_wallet_connect_challenges_table.c.expires_at < now,
+                user_wallet_connect_challenges_table.c.consumed_at.is_not(None),
+            )
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def upsert_user_wallet_connection(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         stmt = self.database.upsert_insert(user_wallet_connections_table).values(**payload)

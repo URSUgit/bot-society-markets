@@ -16,6 +16,7 @@ dependencies = [
     "psycopg[binary]==3.2.10",
     "python-dotenv==1.1.1",
     "fredapi==0.5.2",
+    "eth-account==0.13.7",
     "uvicorn[standard]==0.37.0",
 ]
 

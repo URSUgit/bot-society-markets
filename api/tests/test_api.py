@@ -18,6 +18,8 @@ from urllib.error import HTTPError
 from unittest.mock import patch
 import zipfile
 
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from fastapi.testclient import TestClient
 
 from api.app.config import Settings
@@ -970,7 +972,7 @@ def test_auth_wallet_connection_flow() -> None:
         )
         assert register_response.status_code == 200
 
-        connect_response = client.post(
+        direct_evm_connect_response = client.post(
             "/api/me/wallets",
             json={
                 "chain": "ethereum",
@@ -979,32 +981,73 @@ def test_auth_wallet_connection_flow() -> None:
                 "label": "Primary",
             },
         )
-        assert connect_response.status_code == 200
-        profile_payload = connect_response.json()
-        assert len(profile_payload["wallet_connections"]) == 1
-        assert profile_payload["wallet_connections"][0]["chain"] == "ethereum"
-        assert profile_payload["wallet_connections"][0]["provider"] == "metamask"
+        assert direct_evm_connect_response.status_code == 400
+        assert "signed verification" in direct_evm_connect_response.json()["detail"].lower()
 
-        upsert_response = client.post(
-            "/api/me/wallets",
+        hardhat_private_key = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+        signer_account = Account.from_key(hardhat_private_key)
+        signer_address = signer_account.address.lower()
+
+        challenge_response = client.post(
+            "/api/me/wallets/challenge",
             json={
-                "chain": "eth",
+                "chain": "ethereum",
                 "provider": "walletconnect",
-                "address": "0X1111111111111111111111111111111111111111",
+                "address": signer_address,
                 "label": "Main wallet",
             },
         )
-        assert upsert_response.status_code == 200
-        upsert_payload = upsert_response.json()
-        assert len(upsert_payload["wallet_connections"]) == 1
-        assert upsert_payload["wallet_connections"][0]["provider"] == "walletconnect"
-        assert upsert_payload["wallet_connections"][0]["label"] == "Main wallet"
+        assert challenge_response.status_code == 200
+        challenge_payload = challenge_response.json()
+        assert challenge_payload["address"] == signer_address
+        assert challenge_payload["chain"] == "ethereum"
+        assert challenge_payload["provider"] == "walletconnect"
+        assert challenge_payload["nonce"]
+        assert "BITprivat Wallet Connect" in challenge_payload["message"]
+
+        invalid_verify_response = client.post(
+            "/api/me/wallets/verify",
+            json={
+                "challenge_id": challenge_payload["challenge_id"],
+                "signature": "0xdeadbeef",
+            },
+        )
+        assert invalid_verify_response.status_code == 400
+        assert "invalid wallet signature" in invalid_verify_response.json()["detail"].lower()
+
+        signature = Account.sign_message(
+            encode_defunct(text=challenge_payload["message"]),
+            private_key=hardhat_private_key,
+        ).signature.hex()
+        verify_response = client.post(
+            "/api/me/wallets/verify",
+            json={
+                "challenge_id": challenge_payload["challenge_id"],
+                "signature": signature,
+            },
+        )
+        assert verify_response.status_code == 200
+        verify_payload = verify_response.json()
+        assert len(verify_payload["wallet_connections"]) == 1
+        assert verify_payload["wallet_connections"][0]["chain"] == "ethereum"
+        assert verify_payload["wallet_connections"][0]["provider"] == "walletconnect"
+        assert verify_payload["wallet_connections"][0]["label"] == "Main wallet"
 
         list_response = client.get("/api/me/wallets")
         assert list_response.status_code == 200
         wallets_payload = list_response.json()
         assert len(wallets_payload) == 1
         wallet_id = wallets_payload[0]["id"]
+
+        replay_response = client.post(
+            "/api/me/wallets/verify",
+            json={
+                "challenge_id": challenge_payload["challenge_id"],
+                "signature": signature,
+            },
+        )
+        assert replay_response.status_code == 400
+        assert "already consumed" in replay_response.json()["detail"].lower()
 
         invalid_response = client.post(
             "/api/me/wallets",
@@ -1017,9 +1060,21 @@ def test_auth_wallet_connection_flow() -> None:
         assert invalid_response.status_code == 400
         assert "Invalid EVM wallet address format" in invalid_response.json()["detail"]
 
+        non_evm_connect = client.post(
+            "/api/me/wallets",
+            json={
+                "chain": "solana",
+                "provider": "phantom",
+                "address": "So11111111111111111111111111111111111111112",
+                "label": "Solana research wallet",
+            },
+        )
+        assert non_evm_connect.status_code == 200
+        assert len(non_evm_connect.json()["wallet_connections"]) == 2
+
         disconnect_response = client.delete(f"/api/me/wallets/{wallet_id}")
         assert disconnect_response.status_code == 200
-        assert disconnect_response.json()["wallet_connections"] == []
+        assert len(disconnect_response.json()["wallet_connections"]) == 1
 
 
 def test_auth_onboarding_profile_flow() -> None:

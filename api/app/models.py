@@ -1436,6 +1436,31 @@ class UserWalletConnectRequest(BaseModel):
         return self
 
 
+class UserWalletConnectChallenge(BaseModel):
+    challenge_id: int
+    address: str
+    chain: str
+    provider: str
+    label: str | None = None
+    message: str
+    nonce: str
+    issued_at: str
+    expires_at: str
+
+
+class UserWalletVerifyRequest(BaseModel):
+    challenge_id: int = Field(ge=1)
+    signature: str = Field(min_length=10, max_length=512)
+
+    @model_validator(mode="after")
+    def normalize_signature(self) -> "UserWalletVerifyRequest":
+        normalized = self.signature.strip()
+        if not normalized:
+            raise ValueError("signature cannot be empty")
+        self.signature = normalized
+        return self
+
+
 class FollowBotRequest(BaseModel):
     bot_slug: str
 

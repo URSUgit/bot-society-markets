@@ -86,8 +86,10 @@ from .models import (
     TradingRiskCheckResult,
     TradingOrderView,
     UserProfile,
+    UserWalletConnectChallenge,
     UserWalletConnection,
     UserWalletConnectRequest,
+    UserWalletVerifyRequest,
     WalletIntelligenceSnapshot,
     WatchlistAssetRequest,
 )
@@ -650,6 +652,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def me_wallet_connections(request: Request) -> list[UserWalletConnection]:
         user_slug = current_user_slug(request) or active_settings.default_user_slug
         return get_service(request).list_user_wallet_connections(user_slug)
+
+    @app.post("/api/v1/me/wallets/challenge", response_model=UserWalletConnectChallenge)
+    @app.post("/api/me/wallets/challenge", response_model=UserWalletConnectChallenge)
+    def wallet_connect_challenge(payload: UserWalletConnectRequest, request: Request) -> UserWalletConnectChallenge:
+        user_slug = authenticated_user_slug(request)
+        challenge = run_validated(
+            lambda: get_service(request).create_wallet_connect_challenge(
+                user_slug,
+                payload,
+                origin=_request_origin(request, active_settings),
+            )
+        )
+        audit_event(
+            request,
+            action="workspace.wallet_challenge_create",
+            resource_type="wallet_challenge",
+            resource_id=str(challenge.challenge_id),
+            actor_user_slug=user_slug,
+            after_state={
+                "chain": challenge.chain,
+                "provider": challenge.provider,
+                "address": challenge.address,
+                "expires_at": challenge.expires_at,
+            },
+        )
+        return challenge
+
+    @app.post("/api/v1/me/wallets/verify", response_model=UserProfile)
+    @app.post("/api/me/wallets/verify", response_model=UserProfile)
+    def wallet_connect_verify(payload: UserWalletVerifyRequest, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).verify_wallet_connect(user_slug, payload))
+        audit_event(
+            request,
+            action="workspace.wallet_connect_verified",
+            resource_type="wallet_connection",
+            actor_user_slug=user_slug,
+            after_state={"challenge_id": payload.challenge_id},
+        )
+        return profile
 
     @app.post("/api/v1/me/wallets", response_model=UserProfile)
     @app.post("/api/me/wallets", response_model=UserProfile)
