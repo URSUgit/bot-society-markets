@@ -388,6 +388,7 @@ let selectedSocialTraderId = null;
 let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
+const EDGE_TRANSIENT_STATUS_CODES = new Set([522, 523, 524, 530]);
 let suppressDashboardWindowOpenUntil = 0;
 let dashboardWindowState = {
   section: null,
@@ -447,14 +448,31 @@ function applyWorkspaceMode(snapshot = latestSnapshot) {
 }
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(path, {
+  const requestOptions = {
     credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
     ...options,
-  });
+  };
+  let response = null;
+
+  try {
+    response = await fetch(path, requestOptions);
+  } catch (error) {
+    response = await fetchJsonThroughLiveOrigin(path, requestOptions, error);
+    if (!response) {
+      throw error;
+    }
+  }
+
+  if (!response.ok && shouldRetryViaLiveOrigin(path, response.status)) {
+    const directResponse = await fetchJsonThroughLiveOrigin(path, requestOptions);
+    if (directResponse) {
+      response = directResponse;
+    }
+  }
 
   if (!response.ok) {
     let message = `Failed to load ${path}`;
@@ -473,6 +491,41 @@ async function fetchJson(path, options = {}) {
     return null;
   }
   return response.json();
+}
+
+function isRelativeApiPath(path) {
+  return typeof path === "string" && path.startsWith("/api/");
+}
+
+function shouldRetryViaLiveOrigin(path, statusCode) {
+  return isRelativeApiPath(path)
+    && !path.startsWith("/api/runtime/")
+    && EDGE_TRANSIENT_STATUS_CODES.has(Number(statusCode));
+}
+
+async function fetchJsonThroughLiveOrigin(path, options = {}, sourceError = null) {
+  if (!isRelativeApiPath(path) || path.startsWith("/api/runtime/")) {
+    return null;
+  }
+  const liveOrigin = await resolvePublicSocialReadOrigin();
+  if (!liveOrigin) {
+    return null;
+  }
+  const directUrl = `${liveOrigin}${path}`;
+  try {
+    return await fetch(directUrl, {
+      ...options,
+      credentials: "omit",
+    });
+  } catch (error) {
+    console.warn("Direct live-origin retry failed.", {
+      path,
+      liveOrigin,
+      sourceError: sourceError?.message || sourceError?.name || null,
+      retryError: error?.message || error?.name || null,
+    });
+    return null;
+  }
 }
 
 function setStatus(message) {
