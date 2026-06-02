@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - requirements.txt
+      - pyproject.toml
+      - alembic.ini
+      - alembic/**
+      - api/**
+      - deploy/akash/**
   workflow_dispatch:
 
 jobs:
