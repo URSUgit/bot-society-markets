@@ -1072,6 +1072,8 @@ class BotSocietyRepository:
             ],
             set_={
                 "display_name": stmt.excluded.display_name,
+                "description": stmt.excluded.description,
+                "tags_json": stmt.excluded.tags_json,
                 "category": stmt.excluded.category,
                 "source_type": stmt.excluded.source_type,
                 "source_url": stmt.excluded.source_url,
@@ -1128,6 +1130,17 @@ class BotSocietyRepository:
         )
         with self.database.connect() as connection:
             return self._row(connection.execute(stmt))
+
+    def delete_trader_intelligence_profile(self, user_slug: str, profile_id: int) -> int:
+        stmt = delete(trader_intelligence_profiles_table).where(
+            and_(
+                trader_intelligence_profiles_table.c.user_slug == user_slug,
+                trader_intelligence_profiles_table.c.id == profile_id,
+            )
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def upsert_trader_intelligence_sources(self, sources: Iterable[dict[str, Any]]) -> None:
         source_list = list(sources)

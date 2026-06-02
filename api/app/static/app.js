@@ -55,6 +55,7 @@ const I18N = {
     window_market_console: "Live market provider, bot decision queue, and risk posture.",
     window_trading_workspace: "Trading workspace without leaving the dashboard.",
     window_social_trader: "Creator-trader discovery, follow mode, and managed paper allocation.",
+    window_trader_intelligence: "Expert-model research library, citations, comparison, and ask interface.",
     window_intelligence: "Markets, macro context, and signal intelligence in one focused view.",
     window_paper: "Paper positions, venues, and simulated execution controls.",
     window_leaderboard: "Bot scorecards, provenance, and alert posture.",
@@ -110,6 +111,7 @@ const I18N = {
     window_market_console: "Provider live de piata, coada de decizii bot si postura de risc.",
     window_trading_workspace: "Spatiu de trading fara sa parasesti dashboardul.",
     window_social_trader: "Descoperire creatori-traderi, mod follow si alocare paper administrata.",
+    window_trader_intelligence: "Biblioteca de modele expert, citari, comparatii si interfata de intrebari.",
     window_intelligence: "Piete, context macro si inteligenta de semnal intr-o vedere focalizata.",
     window_paper: "Pozitii paper, venue-uri si controale de executie simulata.",
     window_leaderboard: "Scorecard-uri boti, provenienta si postura alertelor.",
@@ -387,8 +389,24 @@ let socialMarketplaceFilterTimer = null;
 let selectedSocialTraderId = null;
 let traderIntelligenceState = {
   profiles: [],
+  workspace: null,
   selectedProfileId: null,
   selectedCompareIds: new Set(),
+  activeTab: "library",
+  profileTab: "overview",
+  filters: {
+    query: "",
+    category: "all",
+    status: "all",
+    source: "all",
+    confidence: "all",
+    sort: "last_analyzed",
+    insightQuery: "",
+    insightType: "all",
+    insightConfidence: "all",
+  },
+  comparison: null,
+  askAnswers: new Map(),
 };
 let savedStrategies = [];
 let savedBacktestRuns = [];
@@ -709,12 +727,13 @@ function dashboardWindowNavIcon(hash) {
     "#market-console-section": "01",
     "#trading-workspace-section": "02",
     "#social-trader-section": "03",
-    "#intelligence-section": "04",
-    "#paper-section": "05",
-    "#leaderboard-section": "06",
-    "#connectors-section": "07",
-    "#account-section": "08",
-    "#workspace-section": "09",
+    "#trader-intelligence-section": "04",
+    "#intelligence-section": "05",
+    "#paper-section": "06",
+    "#leaderboard-section": "07",
+    "#connectors-section": "08",
+    "#account-section": "09",
+    "#workspace-section": "10",
   };
   return icons[hash] || ">";
 }
@@ -796,6 +815,7 @@ function dashboardWindowSubtitle(hash) {
     "#market-console-section": "window_market_console",
     "#trading-workspace-section": "window_trading_workspace",
     "#social-trader-section": "window_social_trader",
+    "#trader-intelligence-section": "window_trader_intelligence",
     "#intelligence-section": "window_intelligence",
     "#paper-section": "window_paper",
     "#leaderboard-section": "window_leaderboard",
@@ -916,7 +936,9 @@ function openDashboardWindow(hash, trigger = null, { ignoreSuppression = false }
     ? "social"
     : hash === "#trading-workspace-section"
       ? "trading"
-      : "standard";
+      : hash === "#trader-intelligence-section"
+        ? "intelligence"
+        : "standard";
   overlay.dataset.windowKind = windowKind;
   overlay.classList.remove("hidden");
   suppressDashboardWindowOpenUntil = 0;
@@ -2597,34 +2619,507 @@ function renderSocialTrading(socialTrading) {
   renderSocialTraderDrawer(socialTrading);
 }
 
-function traderIntelligenceCitationMarkup(citations = []) {
-  return citations.slice(0, 3).map((citation) => `
-    <a href="${escapeHtml(citation.url || "#")}" target="_blank" rel="noreferrer">
-      ${escapeHtml(citation.title || "Source")}${citation.timestamp ? ` · ${fmtRelativeTime(citation.timestamp)}` : ""}
-    </a>
-  `).join("");
+const TRADER_INTELLIGENCE_PROGRESS_STEPS = [
+  ["queued", "Queued"],
+  ["importing", "Importing sources"],
+  ["transcribing", "Fetching transcripts/content"],
+  ["chunking", "Chunking knowledge base"],
+  ["worldview", "Running worldview analysis"],
+  ["frameworks", "Extracting frameworks"],
+  ["contradictions", "Detecting contradictions"],
+  ["synthesis", "Generating synthesis brief"],
+  ["completed", "Completed"],
+];
+
+function traderIntelligenceProfileById(profileId) {
+  return traderIntelligenceState.profiles.find((profile) => Number(profile.id) === Number(profileId));
 }
 
-function traderIntelligenceClaimsMarkup(claims = [], limit = 3) {
+function traderIntelligenceConfidenceTone(score = 0) {
+  const numeric = Number(score) || 0;
+  if (numeric >= 0.7) {
+    return "positive";
+  }
+  if (numeric >= 0.45) {
+    return "warning";
+  }
+  return "danger";
+}
+
+function traderIntelligenceStatusTone(status = "") {
+  if (status === "completed") {
+    return "positive";
+  }
+  if (status === "failed") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function traderIntelligenceInsightCount(profile = {}) {
+  return [
+    ...(profile.worldview?.claims || []),
+    ...(profile.frameworks?.claims || []),
+    ...(profile.strategy?.claims || []),
+    ...(profile.synthesis?.claims || []),
+    ...(profile.evolution?.claims || []),
+    ...(profile.contradictions || []),
+    ...(profile.vocabulary || []),
+    ...(profile.decision_rules || []),
+    ...(profile.risk_rules || []),
+    ...(profile.recommendations || []),
+  ].length;
+}
+
+function traderIntelligenceAllInsights(profiles = traderIntelligenceState.profiles) {
+  const rows = [];
+  const addClaims = (profile, type, claims = []) => {
+    claims.forEach((claim) => rows.push({ profile, type, claim }));
+  };
+  profiles.forEach((profile) => {
+    addClaims(profile, "belief", profile.worldview?.claims || []);
+    addClaims(profile, "framework", profile.frameworks?.claims || []);
+    addClaims(profile, "strategy", profile.strategy?.claims || []);
+    addClaims(profile, "evolution", profile.evolution?.claims || []);
+    addClaims(profile, "contradiction", profile.contradictions || []);
+    addClaims(profile, "vocabulary", profile.vocabulary || []);
+    addClaims(profile, "decision_rule", profile.decision_rules || []);
+    addClaims(profile, "risk_rule", profile.risk_rules || []);
+  });
+  return rows;
+}
+
+function traderIntelligenceCitationMarkup(citations = []) {
+  return citations.slice(0, 4).map((citation) => {
+    const label = `${citation.title || "Source"}${citation.timestamp ? ` · ${fmtRelativeTime(citation.timestamp)}` : ""}`;
+    if (citation.source_id) {
+      return `<button type="button" data-action="trader-intelligence-open-source" data-source-id="${citation.source_id}" title="${escapeHtml(citation.url || label)}">${escapeHtml(label)}</button>`;
+    }
+    return `<a href="${escapeHtml(citation.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+  }).join("");
+}
+
+function traderIntelligenceClaimsMarkup(claims = [], limit = 4) {
   return claims.slice(0, limit).map((claim) => `
     <li>
       <p>${escapeHtml(claim.claim || "")}</p>
-      <small>${fmtPercent(claim.confidence || 0)} confidence</small>
+      <span class="ti-confidence" data-tone="${traderIntelligenceConfidenceTone(claim.confidence)}">${fmtPercent(claim.confidence || 0)} confidence</span>
       <div class="trader-intelligence-citations">${traderIntelligenceCitationMarkup(claim.citations || [])}</div>
     </li>
   `).join("") || "<li><p>No claims generated yet.</p></li>";
 }
 
+function traderIntelligenceSelectOptions(id, values, allLabel) {
+  const select = document.getElementById(id);
+  if (!select) {
+    return;
+  }
+  const previous = select.value || "all";
+  select.innerHTML = [
+    `<option value="all">${escapeHtml(allLabel)}</option>`,
+    ...values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(humanizeKey(value))}</option>`),
+  ].join("");
+  select.value = values.includes(previous) ? previous : "all";
+}
+
+function traderIntelligenceFilteredProfiles() {
+  const filters = traderIntelligenceState.filters;
+  const query = filters.query.toLowerCase();
+  const profileMatches = (profile) => {
+    const haystack = [
+      profile.display_name,
+      profile.category,
+      profile.source_type,
+      profile.source_url,
+      profile.description,
+      ...(profile.tags || []),
+    ].join(" ").toLowerCase();
+    const confidence = Number(profile.confidence_score || 0);
+    const confidenceMatch = filters.confidence === "all"
+      || (filters.confidence === "high" && confidence >= 0.7)
+      || (filters.confidence === "medium" && confidence >= 0.45 && confidence < 0.7)
+      || (filters.confidence === "low" && confidence < 0.45);
+    return (!query || haystack.includes(query))
+      && (filters.category === "all" || profile.category === filters.category)
+      && (filters.status === "all" || profile.status === filters.status)
+      && (filters.source === "all" || profile.source_type === filters.source)
+      && confidenceMatch;
+  };
+  const sorted = traderIntelligenceState.profiles.filter(profileMatches);
+  sorted.sort((a, b) => {
+    if (filters.sort === "name") {
+      return String(a.display_name || "").localeCompare(String(b.display_name || ""));
+    }
+    if (filters.sort === "confidence") {
+      return Number(b.confidence_score || 0) - Number(a.confidence_score || 0);
+    }
+    if (filters.sort === "source_count") {
+      return Number(b.source_count || 0) - Number(a.source_count || 0);
+    }
+    if (filters.sort === "insights") {
+      return traderIntelligenceInsightCount(b) - traderIntelligenceInsightCount(a);
+    }
+    return String(b.last_analyzed_at || b.updated_at || "").localeCompare(String(a.last_analyzed_at || a.updated_at || ""));
+  });
+  return sorted;
+}
+
+function traderIntelligenceProgressMarkup(profile = null) {
+  const stage = profile?.progress_stage || profile?.latest_run?.stage || "queued";
+  const progress = Number(profile?.latest_run?.progress ?? (profile?.status === "completed" ? 1 : 0.08));
+  const activeIndex = profile?.status === "completed"
+    ? TRADER_INTELLIGENCE_PROGRESS_STEPS.length - 1
+    : Math.max(0, TRADER_INTELLIGENCE_PROGRESS_STEPS.findIndex(([key]) => key === stage));
+  return `
+    <div class="ti-progress-bar" aria-label="Ingestion progress"><span style="width: ${Math.round(clamp(progress, 0, 1) * 100)}%"></span></div>
+    <ul class="ti-progress-list">
+      ${TRADER_INTELLIGENCE_PROGRESS_STEPS.map(([key, label], index) => `
+        <li class="${index < activeIndex ? "is-done" : index === activeIndex ? "is-active" : ""}">
+          <span class="ti-progress-dot"></span>
+          <span>${escapeHtml(label)}</span>
+          <small>${index < activeIndex ? "Done" : index === activeIndex ? escapeHtml(humanizeKey(stage)) : "Waiting"}</small>
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function renderTraderIntelligenceKpis(workspace) {
+  const target = document.getElementById("trader-intelligence-kpis");
+  if (!target) {
+    return;
+  }
+  const profiles = workspace?.profiles || [];
+  const completed = profiles.filter((profile) => profile.status === "completed").length;
+  const sources = profiles.reduce((total, profile) => total + Number(profile.source_count || 0), 0);
+  const insights = traderIntelligenceAllInsights(profiles).length;
+  const averageConfidence = profiles.length
+    ? profiles.reduce((total, profile) => total + Number(profile.confidence_score || 0), 0) / profiles.length
+    : 0;
+  target.innerHTML = `
+    <article><span>Expert models</span><strong>${profiles.length}</strong><small>${completed} completed research brief(s)</small></article>
+    <article><span>Evidence sources</span><strong>${sources.toLocaleString(currentLocale())}</strong><small>YouTube, URLs, docs, and manual sources</small></article>
+    <article><span>Extracted insights</span><strong>${insights.toLocaleString(currentLocale())}</strong><small>Beliefs, rules, frameworks, contradictions</small></article>
+    <article><span>Avg confidence</span><strong>${fmtPercent(averageConfidence)}</strong><small>Citation-weighted research confidence</small></article>
+  `;
+}
+
+function renderTraderIntelligenceLibrary() {
+  const rows = document.getElementById("trader-intelligence-library-rows");
+  if (!rows) {
+    return;
+  }
+  const profiles = traderIntelligenceFilteredProfiles();
+  if (!profiles.length) {
+    rows.innerHTML = `
+      <tr>
+        <td colspan="8">
+          <div class="ti-empty-state">
+            <strong>No expert models match this view</strong>
+            <span>Add an expert or clear filters to build the research library.</span>
+            <button class="button primary small-button" type="button" data-action="trader-intelligence-open-add">Add Expert</button>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  rows.innerHTML = profiles.map((profile) => {
+    const selected = Number(profile.id) === Number(traderIntelligenceState.selectedProfileId);
+    const checked = traderIntelligenceState.selectedCompareIds.has(Number(profile.id));
+    const insightCount = traderIntelligenceInsightCount(profile);
+    const tags = (profile.tags || []).slice(0, 4).map((tag) => `<span class="ti-tag">${escapeHtml(tag)}</span>`).join("");
+    return `
+      <tr class="${selected ? "is-selected" : ""}">
+        <td data-label="Expert">
+          <div class="ti-expert-cell">
+            <strong>${escapeHtml(profile.display_name)}</strong>
+            <span>${escapeHtml(profile.description || profile.source_url || "No internal description")}</span>
+            <div class="ti-tag-row">${tags}</div>
+          </div>
+        </td>
+        <td data-label="Category">${escapeHtml(humanizeKey(profile.category))}</td>
+        <td data-label="Sources">
+          <div class="ti-source-chip-row">
+            <span class="ti-source-chip">${escapeHtml(humanizeKey(profile.source_type))}</span>
+            <span class="ti-source-chip">${Number(profile.source_count || 0)} indexed</span>
+          </div>
+        </td>
+        <td data-label="Insights">${insightCount}</td>
+        <td data-label="Status"><span class="ti-status" data-tone="${traderIntelligenceStatusTone(profile.status)}">${escapeHtml(humanizeKey(profile.status))}</span></td>
+        <td data-label="Confidence"><span class="ti-confidence" data-tone="${traderIntelligenceConfidenceTone(profile.confidence_score)}">${fmtPercent(profile.confidence_score || 0)}</span></td>
+        <td data-label="Last analyzed">${profile.last_analyzed_at ? fmtRelativeTime(profile.last_analyzed_at) : "Not analyzed"}</td>
+        <td data-label="Actions">
+          <div class="ti-actions">
+            <input type="checkbox" aria-label="Compare ${escapeHtml(profile.display_name)}" data-action="trader-intelligence-toggle-compare" data-profile-id="${profile.id}" ${checked ? "checked" : ""}>
+            <button class="button secondary" type="button" data-action="trader-intelligence-select" data-profile-id="${profile.id}">View</button>
+            <button class="button ghost" type="button" data-action="trader-intelligence-rerun" data-profile-id="${profile.id}" ${disabledAttr(!workspaceEditable())}>Rerun</button>
+            <button class="button ghost" type="button" data-action="trader-intelligence-delete" data-profile-id="${profile.id}" ${disabledAttr(!workspaceEditable())}>Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function traderIntelligenceProfileTabs() {
+  const tabs = [
+    ["overview", "Overview"],
+    ["worldview", "Worldview"],
+    ["frameworks", "Frameworks"],
+    ["strategy", "Strategy"],
+    ["contradictions", "Contradictions"],
+    ["evolution", "Evolution"],
+    ["sources", "Sources"],
+    ["ask", "Ask"],
+  ];
+  return `
+    <div class="ti-profile-tabs" role="tablist" aria-label="Expert profile sections">
+      ${tabs.map(([key, label]) => `
+        <button class="${traderIntelligenceState.profileTab === key ? "active" : ""}" type="button" role="tab" aria-selected="${traderIntelligenceState.profileTab === key}" data-action="trader-intelligence-profile-tab" data-ti-profile-tab="${key}">${label}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function traderIntelligenceInsightCard(title, summary, claims = [], limit = 4) {
+  return `
+    <article class="ti-insight-card">
+      <span class="ti-card-label">${escapeHtml(title)}</span>
+      <p>${escapeHtml(summary || "No summary generated yet.")}</p>
+      <ul>${traderIntelligenceClaimsMarkup(claims, limit)}</ul>
+    </article>
+  `;
+}
+
+function renderTraderIntelligenceProfile() {
+  const shell = document.getElementById("trader-intelligence-profile-shell");
+  if (!shell) {
+    return;
+  }
+  const selected = traderIntelligenceProfileById(traderIntelligenceState.selectedProfileId);
+  if (!selected) {
+    shell.innerHTML = `
+      <div class="ti-empty-state">
+        <strong>No expert selected</strong>
+        <span>Select an expert from the library or add a new model.</span>
+        <button class="button primary small-button" type="button" data-action="trader-intelligence-open-add">Add Expert</button>
+      </div>
+    `;
+    return;
+  }
+  const answer = traderIntelligenceState.askAnswers.get(Number(selected.id));
+  const header = `
+    <div class="ti-profile-header">
+      <div>
+        <p class="eyebrow">${escapeHtml(humanizeKey(selected.category))} model</p>
+        <h4>${escapeHtml(selected.display_name)}</h4>
+        <p class="panel-note">${escapeHtml(selected.description || selected.synthesis?.summary || "Research profile generated from public content.")}</p>
+        <div class="ti-tag-row">${(selected.tags || []).map((tag) => `<span class="ti-tag">${escapeHtml(tag)}</span>`).join("")}</div>
+      </div>
+      <div class="ti-profile-metrics">
+        <article><span class="ti-metric-label">Status</span><strong>${escapeHtml(humanizeKey(selected.status))}</strong><small>${escapeHtml(humanizeKey(selected.progress_stage))}</small></article>
+        <article><span class="ti-metric-label">Confidence</span><strong>${fmtPercent(selected.confidence_score || 0)}</strong><small>Citation-backed</small></article>
+        <article><span class="ti-metric-label">Sources</span><strong>${selected.source_count}</strong><small>${escapeHtml(humanizeKey(selected.source_type))}</small></article>
+        <article><span class="ti-metric-label">Insights</span><strong>${traderIntelligenceInsightCount(selected)}</strong><small>Extracted claims</small></article>
+      </div>
+    </div>
+  `;
+  const sidePanel = `
+    <aside class="ti-progress-panel">
+      <span class="ti-card-label">Ingestion progress</span>
+      ${traderIntelligenceProgressMarkup(selected)}
+      <span class="ti-card-label">Source context</span>
+      <div class="ti-source-chip-row">
+        ${(selected.sources || []).slice(0, 5).map((source) => `<button class="ti-source-chip" type="button" data-action="trader-intelligence-open-source" data-source-id="${source.id}">${escapeHtml(source.title)}</button>`).join("") || "<span class=\"ti-source-chip\">No sources indexed</span>"}
+      </div>
+      ${(selected.warnings || []).slice(0, 4).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}
+    </aside>
+  `;
+  const tab = traderIntelligenceState.profileTab;
+  let content = "";
+  if (tab === "worldview") {
+    content = `<div class="ti-insight-grid">${traderIntelligenceInsightCard("Strongest beliefs", selected.worldview?.summary, selected.worldview?.claims)}${traderIntelligenceInsightCard("Belief changes", selected.evolution?.summary, selected.evolution?.claims)}</div>`;
+  } else if (tab === "frameworks") {
+    content = `<div class="ti-insight-grid">${traderIntelligenceInsightCard("Recurring frameworks", selected.frameworks?.summary, selected.frameworks?.claims)}${traderIntelligenceInsightCard("Decision rules", "Rules and heuristics extracted from the indexed source set.", selected.decision_rules)}${traderIntelligenceInsightCard("Risk rules", "Risk management patterns detected in the source set.", selected.risk_rules)}${traderIntelligenceInsightCard("Vocabulary map", "Repeated terms and conceptual vocabulary.", selected.vocabulary, 6)}</div>`;
+  } else if (tab === "strategy") {
+    content = `<div class="ti-insight-grid">${traderIntelligenceInsightCard("Strategy style", selected.strategy?.summary, selected.strategy?.claims)}${traderIntelligenceInsightCard("Recommendations", "Research actions before trusting or paper-following this expert.", selected.recommendations)}${traderIntelligenceInsightCard("Synthesis", selected.synthesis?.summary, selected.synthesis?.claims)}${traderIntelligenceInsightCard("Conflicts and monetization", "Promotions, sponsorships, and visible conflicts should be reviewed manually.", selected.strategy?.claims || [])}</div>`;
+  } else if (tab === "contradictions") {
+    content = `<div class="ti-insight-grid">${traderIntelligenceInsightCard("Contradictory statements", "Detected contradictions or current absence of direct contradictions.", selected.contradictions, 8)}${traderIntelligenceInsightCard("Interpretation", "Contradictions become research prompts, not trade instructions.", selected.risk_rules)}</div>`;
+  } else if (tab === "evolution") {
+    content = `<div class="ti-insight-grid">${traderIntelligenceInsightCard("Evolution timeline", selected.evolution?.summary, selected.evolution?.claims)}${traderIntelligenceInsightCard("Latest synthesis", selected.synthesis?.summary, selected.synthesis?.claims)}</div>`;
+  } else if (tab === "sources") {
+    content = `
+      <article class="ti-source-table-card">
+        <span class="ti-card-label">Source library</span>
+        <div class="trader-intelligence-table-wrap">
+          <table class="trader-intelligence-table">
+            <thead><tr><th>Source</th><th>Type</th><th>Transcript</th><th>Imported</th><th>Action</th></tr></thead>
+            <tbody>
+              ${(selected.sources || []).map((source) => `
+                <tr>
+                  <td data-label="Source"><strong>${escapeHtml(source.title)}</strong><br><span>${escapeHtml(source.summary || "")}</span></td>
+                  <td data-label="Type">${escapeHtml(humanizeKey(source.source_type))}</td>
+                  <td data-label="Transcript">${source.transcript_available ? "Available" : "Missing"}</td>
+                  <td data-label="Imported">${fmtRelativeTime(source.created_at)}</td>
+                  <td data-label="Action"><button class="button secondary small-button" type="button" data-action="trader-intelligence-open-source" data-source-id="${source.id}">Open source</button></td>
+                </tr>
+              `).join("") || "<tr><td colspan=\"5\">No sources indexed yet.</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    `;
+  } else if (tab === "ask") {
+    content = `
+      <article class="ti-ask-panel">
+        <span class="ti-card-label">Ask this expert</span>
+        <form id="trader-intelligence-ask-form" class="trader-intelligence-ask-form">
+          <input id="trader-intelligence-ask-input" type="search" maxlength="800" placeholder="What would this trader likely say about Bitcoin risk right now?">
+          <button class="button primary small-button" type="submit">Ask</button>
+        </form>
+        <p>Answers are AI-generated from indexed public evidence and citations. They are research outputs, not financial advice.</p>
+        ${answer ? `
+          <div class="ti-ask-answer">
+            <strong>${escapeHtml(answer.question)}</strong>
+            <p>${escapeHtml(answer.answer)}</p>
+            <span class="ti-confidence" data-tone="${traderIntelligenceConfidenceTone(answer.confidence)}">${fmtPercent(answer.confidence || 0)} confidence</span>
+            <div class="trader-intelligence-citations">${traderIntelligenceCitationMarkup(answer.citations || [])}</div>
+            ${(answer.warnings || []).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}
+          </div>
+        ` : ""}
+      </article>
+    `;
+  } else {
+    content = `
+      <div class="ti-insight-grid">
+        ${traderIntelligenceInsightCard("One-page synthesis", selected.synthesis?.summary, selected.synthesis?.claims)}
+        ${traderIntelligenceInsightCard("Strongest opinions", selected.worldview?.summary, selected.worldview?.claims)}
+        ${traderIntelligenceInsightCard("Top decision rules", "Rules and heuristics extracted from the indexed source set.", selected.decision_rules)}
+        ${traderIntelligenceInsightCard("Risk philosophy", "Risk posture and live-execution boundaries.", selected.risk_rules)}
+        ${traderIntelligenceInsightCard("Source recommendations", "Best sources to inspect before trusting the brief.", selected.recommendations)}
+        ${traderIntelligenceInsightCard("Hidden insights", selected.synthesis?.summary, (selected.synthesis?.claims || []).slice(1))}
+      </div>
+    `;
+  }
+  shell.innerHTML = `
+    <div class="ti-profile-shell">
+      ${header}
+      ${traderIntelligenceProfileTabs()}
+      <div class="ti-profile-grid">
+        <main>${content}</main>
+        ${sidePanel}
+      </div>
+    </div>
+  `;
+  const askForm = document.getElementById("trader-intelligence-ask-form");
+  if (askForm) {
+    askForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = document.getElementById("trader-intelligence-ask-input")?.value?.trim();
+      if (!question) {
+        setStatus("Ask-this-expert needs a question.");
+        return;
+      }
+      await askTraderIntelligence(question);
+    });
+  }
+}
+
+function renderTraderIntelligenceCompare() {
+  const selector = document.getElementById("trader-intelligence-compare-selector");
+  const output = document.getElementById("trader-intelligence-compare-output");
+  if (!selector || !output) {
+    return;
+  }
+  selector.innerHTML = `
+    <div class="ti-compare-selector">
+      ${traderIntelligenceState.profiles.map((profile) => `
+        <label>
+          <input type="checkbox" data-action="trader-intelligence-toggle-compare" data-profile-id="${profile.id}" ${traderIntelligenceState.selectedCompareIds.has(Number(profile.id)) ? "checked" : ""}>
+          <span>${escapeHtml(profile.display_name)} · ${fmtPercent(profile.confidence_score || 0)}</span>
+        </label>
+      `).join("") || "<p class=\"panel-note\">Add at least two experts before running a comparison.</p>"}
+    </div>
+  `;
+  const comparison = traderIntelligenceState.comparison;
+  if (!comparison) {
+    output.innerHTML = `
+      <div class="ti-empty-state">
+        <strong>No comparison run yet</strong>
+        <span>Select 2 to 5 experts and run a comparison.</span>
+      </div>
+    `;
+    return;
+  }
+  output.innerHTML = `
+    <div class="ti-compare-shell">
+      <p class="panel-note">${escapeHtml(comparison.summary || "")}</p>
+      <div class="ti-compare-grid">
+        <article class="ti-compare-card"><h5>Agreements</h5><ul>${traderIntelligenceClaimsMarkup(comparison.agreement_points || [], 5)}</ul></article>
+        <article class="ti-compare-card"><h5>Disagreements</h5><ul>${traderIntelligenceClaimsMarkup(comparison.disagreement_points || [], 5)}</ul></article>
+        <article class="ti-compare-card"><h5>Unique frameworks</h5><ul>${traderIntelligenceClaimsMarkup(comparison.unique_edges || [], 5)}</ul></article>
+        <article class="ti-compare-card"><h5>Research gaps</h5><ul>${traderIntelligenceClaimsMarkup(comparison.opportunity_gaps || [], 5)}</ul></article>
+      </div>
+      ${(comparison.warnings || []).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}
+    </div>
+  `;
+}
+
+function renderTraderIntelligenceInsights() {
+  const rows = document.getElementById("trader-intelligence-insight-rows");
+  if (!rows) {
+    return;
+  }
+  const filters = traderIntelligenceState.filters;
+  const query = filters.insightQuery.toLowerCase();
+  const visible = traderIntelligenceAllInsights().filter(({ profile, type, claim }) => {
+    const confidence = Number(claim.confidence || 0);
+    const confidenceMatch = filters.insightConfidence === "all"
+      || (filters.insightConfidence === "high" && confidence >= 0.7)
+      || (filters.insightConfidence === "medium" && confidence >= 0.45 && confidence < 0.7)
+      || (filters.insightConfidence === "low" && confidence < 0.45);
+    const haystack = `${profile.display_name} ${profile.category} ${type} ${claim.claim}`.toLowerCase();
+    return (!query || haystack.includes(query))
+      && (filters.insightType === "all" || type === filters.insightType)
+      && confidenceMatch;
+  });
+  rows.innerHTML = visible.map(({ profile, type, claim }) => `
+    <tr>
+      <td data-label="Insight"><strong>${escapeHtml(claim.claim || "")}</strong></td>
+      <td data-label="Expert">${escapeHtml(profile.display_name)}</td>
+      <td data-label="Type">${escapeHtml(humanizeKey(type))}</td>
+      <td data-label="Confidence"><span class="ti-confidence" data-tone="${traderIntelligenceConfidenceTone(claim.confidence)}">${fmtPercent(claim.confidence || 0)}</span></td>
+      <td data-label="Citations"><div class="trader-intelligence-citations">${traderIntelligenceCitationMarkup(claim.citations || [])}</div></td>
+    </tr>
+  `).join("") || `
+    <tr><td colspan="5"><div class="ti-empty-state"><strong>No insights found</strong><span>Change filters or add more expert models.</span></div></td></tr>
+  `;
+}
+
+function renderTraderIntelligenceTabs() {
+  document.querySelectorAll("[data-action='trader-intelligence-main-tab']").forEach((button) => {
+    const active = button.dataset.tiTab === traderIntelligenceState.activeTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  ["library", "profile", "compare", "insights"].forEach((tab) => {
+    const view = document.getElementById(`trader-intelligence-${tab}-view`);
+    if (view) {
+      view.classList.toggle("hidden", traderIntelligenceState.activeTab !== tab);
+    }
+  });
+}
+
 function renderTraderIntelligence(workspace) {
-  const panel = document.getElementById("trader-intelligence-panel");
+  const section = document.getElementById("trader-intelligence-section");
   const badge = document.getElementById("trader-intelligence-badge");
-  const list = document.getElementById("trader-intelligence-list");
-  const detail = document.getElementById("trader-intelligence-detail");
-  const output = document.getElementById("trader-intelligence-output");
-  if (!panel || !badge || !list || !detail || !workspace) {
+  const summary = document.getElementById("trader-intelligence-summary");
+  if (!section || !workspace) {
     return;
   }
   const profiles = workspace.profiles || [];
+  traderIntelligenceState.workspace = workspace;
   traderIntelligenceState.profiles = profiles;
   if (!traderIntelligenceState.selectedProfileId && profiles.length) {
     traderIntelligenceState.selectedProfileId = profiles[0].id;
@@ -2632,111 +3127,93 @@ function renderTraderIntelligence(workspace) {
   if (traderIntelligenceState.selectedProfileId && !profiles.some((profile) => Number(profile.id) === Number(traderIntelligenceState.selectedProfileId))) {
     traderIntelligenceState.selectedProfileId = profiles[0]?.id || null;
   }
-  const canEdit = workspaceEditable();
-  badge.textContent = `${profiles.length} expert model${profiles.length === 1 ? "" : "s"}`;
-  badge.dataset.variant = profiles.some((profile) => profile.status === "completed") ? "positive" : "warning";
-
-  list.innerHTML = profiles.map((profile) => {
-    const selected = Number(profile.id) === Number(traderIntelligenceState.selectedProfileId);
-    const checked = traderIntelligenceState.selectedCompareIds.has(Number(profile.id));
-    return `
-      <article class="trader-intelligence-row ${selected ? "is-selected" : ""}">
-        <button type="button" data-action="trader-intelligence-select" data-profile-id="${profile.id}">
-          <strong>${escapeHtml(profile.display_name)}</strong>
-          <span>${escapeHtml(humanizeKey(profile.category))} · ${escapeHtml(humanizeKey(profile.source_type))}</span>
-          <small>${escapeHtml(humanizeKey(profile.status))} · ${profile.source_count} source(s) · ${fmtPercent(profile.confidence_score || 0)}</small>
-        </button>
-        <label title="Include in comparison">
-          <input type="checkbox" data-action="trader-intelligence-toggle-compare" data-profile-id="${profile.id}" ${checked ? "checked" : ""}>
-        </label>
-      </article>
-    `;
-  }).join("") || `<div class="trader-intelligence-empty">
-    <strong>No expert models yet</strong>
-    <span>Add a public source to generate the four-pass research brief.</span>
-  </div>`;
-
-  const selected = profiles.find((profile) => Number(profile.id) === Number(traderIntelligenceState.selectedProfileId));
-  if (!selected) {
-    detail.innerHTML = `
-      <div class="trader-intelligence-empty">
-        <strong>Expert model waiting</strong>
-        <span>Sign in and extract a source to create the first briefing.</span>
-      </div>
-    `;
-    if (output) {
-      output.innerHTML = (workspace.safety_notes || []).slice(0, 3).map((note) => `<p>${escapeHtml(note)}</p>`).join("");
-    }
-    return;
+  const completed = profiles.filter((profile) => profile.status === "completed").length;
+  if (badge) {
+    badge.textContent = `${profiles.length} model${profiles.length === 1 ? "" : "s"} · ${completed} complete`;
+    badge.dataset.variant = completed ? "positive" : "warning";
   }
-
-  detail.innerHTML = `
-    <div class="trader-intelligence-detail-head">
-      <div>
-        <p class="eyebrow">${escapeHtml(humanizeKey(selected.category))} model</p>
-        <h4>${escapeHtml(selected.display_name)}</h4>
-        <span>${escapeHtml(humanizeKey(selected.progress_stage))} · updated ${fmtRelativeTime(selected.updated_at)}</span>
-      </div>
-      <button class="button ghost small-button" type="button" data-action="trader-intelligence-rerun" data-profile-id="${selected.id}" ${disabledAttr(!canEdit)}>Rerun</button>
-    </div>
-    <div class="trader-intelligence-scoreline">
-      <span><strong>${fmtPercent(selected.confidence_score || 0)}</strong><small>confidence</small></span>
-      <span><strong>${selected.source_count}</strong><small>sources</small></span>
-      <span><strong>${selected.latest_run ? fmtPercent(selected.latest_run.progress || 0) : "0%"}</strong><small>run progress</small></span>
-    </div>
-    <div class="trader-intelligence-section-grid">
-      <article>
-        <span>Worldview</span>
-        <p>${escapeHtml(selected.worldview?.summary || "")}</p>
-        <ul>${traderIntelligenceClaimsMarkup(selected.worldview?.claims || [], 2)}</ul>
-      </article>
-      <article>
-        <span>Frameworks</span>
-        <p>${escapeHtml(selected.frameworks?.summary || "")}</p>
-        <ul>${traderIntelligenceClaimsMarkup(selected.frameworks?.claims || [], 2)}</ul>
-      </article>
-      <article>
-        <span>Strategy</span>
-        <p>${escapeHtml(selected.strategy?.summary || "")}</p>
-        <ul>${traderIntelligenceClaimsMarkup(selected.strategy?.claims || [], 2)}</ul>
-      </article>
-      <article>
-        <span>Synthesis</span>
-        <p>${escapeHtml(selected.synthesis?.summary || "")}</p>
-        <ul>${traderIntelligenceClaimsMarkup(selected.synthesis?.claims || [], 2)}</ul>
-      </article>
-    </div>
-    <div class="trader-intelligence-bottom-grid">
-      <article>
-        <span>Contradictions</span>
-        <ul>${traderIntelligenceClaimsMarkup(selected.contradictions || [], 2)}</ul>
-      </article>
-      <article>
-        <span>Vocabulary</span>
-        <ul>${traderIntelligenceClaimsMarkup(selected.vocabulary || [], 4)}</ul>
-      </article>
-      <article>
-        <span>Risk rules</span>
-        <ul>${traderIntelligenceClaimsMarkup(selected.risk_rules || [], 3)}</ul>
-      </article>
-    </div>
-  `;
+  if (summary) {
+    summary.textContent = workspace.summary || "Trader Intelligence is ready.";
+  }
+  traderIntelligenceSelectOptions(
+    "trader-intelligence-filter-category",
+    [...new Set(profiles.map((profile) => profile.category).filter(Boolean))].sort(),
+    "All categories",
+  );
+  traderIntelligenceSelectOptions(
+    "trader-intelligence-filter-source",
+    [...new Set(profiles.map((profile) => profile.source_type).filter(Boolean))].sort(),
+    "All source types",
+  );
+  renderTraderIntelligenceKpis(workspace);
+  renderTraderIntelligenceTabs();
+  renderTraderIntelligenceLibrary();
+  renderTraderIntelligenceProfile();
+  renderTraderIntelligenceCompare();
+  renderTraderIntelligenceInsights();
 }
 
 async function loadTraderIntelligence() {
-  const panel = document.getElementById("trader-intelligence-panel");
-  if (!panel) {
+  if (!document.getElementById("trader-intelligence-section")) {
     return;
   }
   try {
     const workspace = await fetchJson("/api/me/trader-intelligence");
     renderTraderIntelligence(workspace);
   } catch (error) {
-    const output = document.getElementById("trader-intelligence-output");
-    if (output) {
-      output.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    const summary = document.getElementById("trader-intelligence-summary");
+    if (summary) {
+      summary.textContent = error.message;
     }
   }
+}
+
+function openTraderIntelligenceAddModal() {
+  const modal = document.getElementById("trader-intelligence-add-modal");
+  if (modal) {
+    modal.classList.remove("hidden");
+    document.getElementById("trader-intelligence-name")?.focus({ preventScroll: true });
+  }
+}
+
+function closeTraderIntelligenceAddModal() {
+  document.getElementById("trader-intelligence-add-modal")?.classList.add("hidden");
+}
+
+function openTraderIntelligenceSourceDrawer(sourceId) {
+  const source = traderIntelligenceState.profiles
+    .flatMap((profile) => profile.sources || [])
+    .find((item) => Number(item.id) === Number(sourceId));
+  const drawer = document.getElementById("trader-intelligence-source-drawer");
+  const content = document.getElementById("trader-intelligence-source-content");
+  if (!drawer || !content || !source) {
+    return;
+  }
+  content.innerHTML = `
+    <div class="ti-source-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(humanizeKey(source.source_type))}</p>
+        <h3 id="trader-intelligence-source-title">${escapeHtml(source.title)}</h3>
+        <p>${escapeHtml(source.summary || "No source summary available.")}</p>
+      </div>
+      <button class="button ghost small-button" type="button" data-action="trader-intelligence-close-source">Close</button>
+    </div>
+    <div class="ti-profile-metrics">
+      <article><span class="ti-metric-label">Transcript</span><strong>${source.transcript_available ? "Available" : "Missing"}</strong><small>Content extraction status</small></article>
+      <article><span class="ti-metric-label">Imported</span><strong>${fmtRelativeTime(source.created_at)}</strong><small>${escapeHtml(source.observed_at || "")}</small></article>
+    </div>
+    <div class="ti-source-chip-row">
+      <span class="ti-source-chip">${escapeHtml(source.author || "Unknown author")}</span>
+      <span class="ti-source-chip">${escapeHtml(source.external_id || "source")}</span>
+      ${source.url ? `<a class="ti-source-chip" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">Open original</a>` : ""}
+    </div>
+    <pre class="ti-source-json">${escapeHtml(JSON.stringify(source.metadata || {}, null, 2))}</pre>
+  `;
+  drawer.classList.remove("hidden");
+}
+
+function closeTraderIntelligenceSourceDrawer() {
+  document.getElementById("trader-intelligence-source-drawer")?.classList.add("hidden");
 }
 
 async function createTraderIntelligenceProfile(form) {
@@ -2747,10 +3224,19 @@ async function createTraderIntelligenceProfile(form) {
   const category = document.getElementById("trader-intelligence-category")?.value || "trader";
   const sourceType = document.getElementById("trader-intelligence-source-type")?.value || "youtube_channel";
   const sourceUrl = document.getElementById("trader-intelligence-source-url")?.value?.trim();
+  const description = document.getElementById("trader-intelligence-description")?.value?.trim();
+  const tags = (document.getElementById("trader-intelligence-tags")?.value || "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
   const maxSources = Number(document.getElementById("trader-intelligence-max-sources")?.value || 12);
   if (!name || !sourceUrl) {
     setStatus("Add an expert name and source before extracting the expert model.");
     return;
+  }
+  const progress = document.getElementById("trader-intelligence-progress");
+  if (progress) {
+    progress.innerHTML = traderIntelligenceProgressMarkup({ progress_stage: "importing", latest_run: { progress: 0.22 } });
   }
   setStatus(`Extracting expert model for ${name}...`);
   const profile = await fetchJson("/api/me/trader-intelligence", {
@@ -2760,12 +3246,17 @@ async function createTraderIntelligenceProfile(form) {
       category,
       source_type: sourceType,
       source_url: sourceUrl,
+      description,
+      tags,
       max_sources: maxSources,
     }),
   });
   traderIntelligenceState.selectedProfileId = profile.id;
   traderIntelligenceState.selectedCompareIds.add(Number(profile.id));
+  traderIntelligenceState.activeTab = "profile";
+  traderIntelligenceState.profileTab = "overview";
   form?.reset();
+  closeTraderIntelligenceAddModal();
   await loadTraderIntelligence();
   setStatus(`Trader Intelligence brief completed for ${profile.display_name}.`);
 }
@@ -2774,11 +3265,33 @@ async function rerunTraderIntelligence(profileId) {
   if (!requireEditable()) {
     return;
   }
+  const profile = traderIntelligenceProfileById(profileId);
+  const confirmed = window.confirm(`Rerun analysis for ${profile?.display_name || "this expert"}? Existing brief fields will be refreshed from indexed sources.`);
+  if (!confirmed) {
+    return;
+  }
   setStatus("Rerunning the four-pass expert analysis...");
-  const profile = await fetchJson(`/api/me/trader-intelligence/${profileId}/rerun`, { method: "POST" });
-  traderIntelligenceState.selectedProfileId = profile.id;
+  const updated = await fetchJson(`/api/me/trader-intelligence/${profileId}/rerun`, { method: "POST" });
+  traderIntelligenceState.selectedProfileId = updated.id;
+  traderIntelligenceState.activeTab = "profile";
   await loadTraderIntelligence();
-  setStatus(`Updated expert model: ${profile.display_name}.`);
+  setStatus(`Updated expert model: ${updated.display_name}.`);
+}
+
+async function deleteTraderIntelligenceProfile(profileId) {
+  if (!requireEditable()) {
+    return;
+  }
+  const profile = traderIntelligenceProfileById(profileId);
+  const confirmed = window.confirm(`Delete ${profile?.display_name || "this expert model"} and its indexed sources?`);
+  if (!confirmed) {
+    return;
+  }
+  await fetchJson(`/api/me/trader-intelligence/${profileId}`, { method: "DELETE" });
+  traderIntelligenceState.selectedCompareIds.delete(Number(profileId));
+  traderIntelligenceState.selectedProfileId = null;
+  await loadTraderIntelligence();
+  setStatus("Expert model deleted.");
 }
 
 async function askTraderIntelligence(question) {
@@ -2790,20 +3303,15 @@ async function askTraderIntelligence(question) {
     setStatus("Select an expert model first.");
     return;
   }
-  const output = document.getElementById("trader-intelligence-output");
+  setStatus("Generating cited expert answer...");
   const answer = await fetchJson(`/api/me/trader-intelligence/${profileId}/ask`, {
     method: "POST",
     body: JSON.stringify({ question }),
   });
-  if (output) {
-    output.innerHTML = `
-      <strong>Ask-this-expert answer</strong>
-      <p>${escapeHtml(answer.answer)}</p>
-      <small>${fmtPercent(answer.confidence || 0)} confidence</small>
-      <div class="trader-intelligence-citations">${traderIntelligenceCitationMarkup(answer.citations || [])}</div>
-      ${(answer.warnings || []).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}
-    `;
-  }
+  traderIntelligenceState.askAnswers.set(Number(profileId), answer);
+  traderIntelligenceState.profileTab = "ask";
+  renderTraderIntelligence(traderIntelligenceState.workspace);
+  setStatus("Ask-this-expert answer generated with citations.");
 }
 
 async function compareTraderIntelligence() {
@@ -2815,24 +3323,15 @@ async function compareTraderIntelligence() {
     setStatus("Select 2 to 5 expert models for comparison.");
     return;
   }
-  const output = document.getElementById("trader-intelligence-output");
+  setStatus("Running expert comparison...");
   const comparison = await fetchJson("/api/me/trader-intelligence/compare", {
     method: "POST",
     body: JSON.stringify({ profile_ids: profileIds }),
   });
-  if (output) {
-    output.innerHTML = `
-      <strong>Comparative analysis</strong>
-      <p>${escapeHtml(comparison.summary)}</p>
-      <div class="trader-intelligence-compare-grid">
-        <article><span>Agreement</span><ul>${traderIntelligenceClaimsMarkup(comparison.agreement_points || [], 2)}</ul></article>
-        <article><span>Disagreement</span><ul>${traderIntelligenceClaimsMarkup(comparison.disagreement_points || [], 2)}</ul></article>
-        <article><span>Unique edge</span><ul>${traderIntelligenceClaimsMarkup(comparison.unique_edges || [], 3)}</ul></article>
-        <article><span>Gap</span><ul>${traderIntelligenceClaimsMarkup(comparison.opportunity_gaps || [], 2)}</ul></article>
-      </div>
-      ${(comparison.warnings || []).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}
-    `;
-  }
+  traderIntelligenceState.comparison = comparison;
+  traderIntelligenceState.activeTab = "compare";
+  renderTraderIntelligence(traderIntelligenceState.workspace);
+  setStatus("Expert comparison completed.");
 }
 
 function renderSimulationMultiSeriesChart(targetId, primaryPoints, secondaryPoints, options = {}) {
@@ -5806,7 +6305,6 @@ function bindForms() {
   const walletConnectForm = document.getElementById("wallet-connect-form");
   const socialAnalyzeForm = document.getElementById("social-analyze-form");
   const traderIntelligenceForm = document.getElementById("trader-intelligence-form");
-  const traderIntelligenceAskForm = document.getElementById("trader-intelligence-ask-form");
 
   if (simulationForm) {
     simulationForm.addEventListener("submit", async (event) => {
@@ -5860,23 +6358,40 @@ function bindForms() {
     });
   }
 
-  if (traderIntelligenceAskForm) {
-    traderIntelligenceAskForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const question = document.getElementById("trader-intelligence-ask-input")?.value?.trim();
-      if (!question) {
-        setStatus("Ask-this-expert needs a question.");
-        return;
-      }
-      await askTraderIntelligence(question);
-      traderIntelligenceAskForm.reset();
-    });
-  }
-
   const traderIntelligenceCompareButton = document.getElementById("trader-intelligence-compare-button");
   if (traderIntelligenceCompareButton) {
     traderIntelligenceCompareButton.addEventListener("click", compareTraderIntelligence);
   }
+  const traderIntelligenceAddButton = document.getElementById("trader-intelligence-add-button");
+  if (traderIntelligenceAddButton) {
+    traderIntelligenceAddButton.addEventListener("click", openTraderIntelligenceAddModal);
+  }
+  const traderIntelligenceRefreshButton = document.getElementById("trader-intelligence-refresh-button");
+  if (traderIntelligenceRefreshButton) {
+    traderIntelligenceRefreshButton.addEventListener("click", async () => {
+      await loadTraderIntelligence();
+      setStatus("Trader Intelligence workspace refreshed.");
+    });
+  }
+  [
+    ["trader-intelligence-search", "query", "input"],
+    ["trader-intelligence-filter-category", "category", "change"],
+    ["trader-intelligence-filter-status", "status", "change"],
+    ["trader-intelligence-filter-source", "source", "change"],
+    ["trader-intelligence-filter-confidence", "confidence", "change"],
+    ["trader-intelligence-sort", "sort", "change"],
+    ["trader-intelligence-insight-search", "insightQuery", "input"],
+    ["trader-intelligence-insight-type", "insightType", "change"],
+    ["trader-intelligence-insight-confidence", "insightConfidence", "change"],
+  ].forEach(([id, key, eventName]) => {
+    const control = document.getElementById(id);
+    if (control) {
+      control.addEventListener(eventName, () => {
+        traderIntelligenceState.filters[key] = control.value || "";
+        renderTraderIntelligence(traderIntelligenceState.workspace);
+      });
+    }
+  });
 
   const socialSearch = document.getElementById("social-marketplace-search");
   if (socialSearch) {
@@ -6779,12 +7294,43 @@ function bindInteractions() {
         );
         return;
       }
+      if (action === "trader-intelligence-open-add") {
+        event.preventDefault();
+        openTraderIntelligenceAddModal();
+        return;
+      }
+      if (action === "trader-intelligence-close-add") {
+        event.preventDefault();
+        closeTraderIntelligenceAddModal();
+        return;
+      }
+      if (action === "trader-intelligence-open-source") {
+        event.preventDefault();
+        openTraderIntelligenceSourceDrawer(actionTarget.dataset.sourceId);
+        return;
+      }
+      if (action === "trader-intelligence-close-source") {
+        event.preventDefault();
+        closeTraderIntelligenceSourceDrawer();
+        return;
+      }
+      if (action === "trader-intelligence-main-tab") {
+        event.preventDefault();
+        traderIntelligenceState.activeTab = actionTarget.dataset.tiTab || "library";
+        renderTraderIntelligence(traderIntelligenceState.workspace);
+        return;
+      }
+      if (action === "trader-intelligence-profile-tab") {
+        event.preventDefault();
+        traderIntelligenceState.profileTab = actionTarget.dataset.tiProfileTab || "overview";
+        renderTraderIntelligence(traderIntelligenceState.workspace);
+        return;
+      }
       if (action === "trader-intelligence-select") {
         event.preventDefault();
         traderIntelligenceState.selectedProfileId = Number(actionTarget.dataset.profileId);
-        renderTraderIntelligence({
-          profiles: traderIntelligenceState.profiles,
-        });
+        traderIntelligenceState.activeTab = "profile";
+        renderTraderIntelligence(traderIntelligenceState.workspace);
         setStatus("Expert model selected.");
         return;
       }
@@ -6795,14 +7341,17 @@ function bindInteractions() {
         } else {
           traderIntelligenceState.selectedCompareIds.delete(profileId);
         }
-        renderTraderIntelligence({
-          profiles: traderIntelligenceState.profiles,
-        });
+        renderTraderIntelligence(traderIntelligenceState.workspace);
         return;
       }
       if (action === "trader-intelligence-rerun") {
         event.preventDefault();
         await rerunTraderIntelligence(actionTarget.dataset.profileId);
+        return;
+      }
+      if (action === "trader-intelligence-delete") {
+        event.preventDefault();
+        await deleteTraderIntelligenceProfile(actionTarget.dataset.profileId);
         return;
       }
       if (action === "unfollow") {

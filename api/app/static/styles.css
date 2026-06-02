@@ -10491,176 +10491,409 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
   }
 }
 
-/* Trader Intelligence: compact expert-model research surface inside Social Traders. */
-.trader-intelligence-panel {
+/* Trader Intelligence: professional expert-model research workstation. */
+.trader-intelligence-workspace {
   display: grid;
   gap: 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 14px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
-.trader-intelligence-form {
+.trader-intelligence-kpis {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 150px 170px minmax(220px, 2fr) 100px auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.trader-intelligence-kpis article,
+.trader-intelligence-view,
+.trader-intelligence-modal-panel,
+.trader-intelligence-source-panel {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-kpis article,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-view,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-modal-panel,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-source-panel {
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.trader-intelligence-kpis article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.trader-intelligence-kpis span,
+.trader-intelligence-toolbar span,
+.trader-intelligence-form span,
+.ti-metric-label,
+.ti-card-label,
+.ti-table-caption {
+  color: var(--color-dim, #64748b);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trader-intelligence-kpis strong {
+  color: var(--color-text);
+  font-family: var(--font-finance);
+  font-size: 1.28rem;
+}
+
+.trader-intelligence-kpis small {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+}
+
+.trader-intelligence-tabs,
+.ti-profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.22);
+}
+
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-tabs,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-profile-tabs {
+  background: rgba(241, 245, 249, 0.76);
+}
+
+.trader-intelligence-tabs button,
+.ti-profile-tabs button {
+  min-height: 34px;
+  color: var(--color-muted);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 7px 11px;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.trader-intelligence-tabs button.active,
+.ti-profile-tabs button.active {
+  color: var(--color-text);
+  border-color: rgba(45, 212, 191, 0.26);
+  background: rgba(13, 148, 136, 0.16);
+}
+
+.trader-intelligence-view {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  min-height: 360px;
+}
+
+.trader-intelligence-view.hidden,
+.trader-intelligence-modal.hidden,
+.trader-intelligence-source-drawer.hidden {
+  display: none;
+}
+
+.trader-intelligence-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(5, minmax(128px, 0.72fr));
+  gap: 9px;
   align-items: end;
 }
 
+.trader-intelligence-toolbar label,
 .trader-intelligence-form label,
 .trader-intelligence-ask-form {
   display: grid;
   gap: 5px;
 }
 
-.trader-intelligence-form span,
-.trader-intelligence-section-grid article > span,
-.trader-intelligence-bottom-grid article > span,
-.trader-intelligence-compare-grid article > span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0;
+.trader-intelligence-toolbar input,
+.trader-intelligence-toolbar select,
+.trader-intelligence-form input,
+.trader-intelligence-form select,
+.trader-intelligence-form textarea,
+.trader-intelligence-ask-form input {
+  width: 100%;
+  min-height: 36px;
+  color: var(--color-text);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.26);
+  outline: none;
+}
+
+.trader-intelligence-toolbar input,
+.trader-intelligence-form input,
+.trader-intelligence-form textarea,
+.trader-intelligence-ask-form input {
+  padding: 8px 10px;
+}
+
+.trader-intelligence-toolbar select,
+.trader-intelligence-form select {
+  padding: 0 9px;
+}
+
+.trader-intelligence-form textarea {
+  resize: vertical;
+}
+
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-toolbar input,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-toolbar select,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-form input,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-form select,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-form textarea,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-ask-form input {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.trader-intelligence-toolbar input:focus,
+.trader-intelligence-toolbar select:focus,
+.trader-intelligence-form input:focus,
+.trader-intelligence-form select:focus,
+.trader-intelligence-form textarea:focus,
+.trader-intelligence-ask-form input:focus {
+  border-color: rgba(45, 212, 191, 0.68);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12);
+}
+
+.trader-intelligence-table-wrap {
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+}
+
+.trader-intelligence-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.trader-intelligence-table th,
+.trader-intelligence-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+  vertical-align: top;
+}
+
+.trader-intelligence-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--color-dim);
+  background: rgba(15, 23, 42, 0.92);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.trader-intelligence-form input,
-.trader-intelligence-form select,
-.trader-intelligence-ask-form input {
-  min-height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 7px 9px;
-  background: var(--surface-raised);
-  color: var(--ink);
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-table th {
+  background: rgba(248, 250, 252, 0.96);
 }
 
-.trader-intelligence-grid {
+.trader-intelligence-table tr:hover td {
+  background: rgba(45, 212, 191, 0.05);
+}
+
+.ti-expert-cell {
   display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.6fr);
-  gap: 12px;
-  min-height: 340px;
+  gap: 4px;
+  min-width: 220px;
 }
 
-.trader-intelligence-list,
-.trader-intelligence-detail,
-.trader-intelligence-output {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-raised);
+.ti-expert-cell strong,
+.ti-profile-header h4,
+.trader-intelligence-modal-head h3,
+.trader-intelligence-source-panel h3 {
+  color: var(--color-text);
 }
 
-.trader-intelligence-list {
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  padding: 8px;
-  max-height: 520px;
-  overflow: auto;
-}
-
-.trader-intelligence-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  gap: 6px;
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: 6px;
-}
-
-.trader-intelligence-row.is-selected {
-  border-color: var(--brand);
-  background: color-mix(in srgb, var(--brand) 9%, transparent);
-}
-
-.trader-intelligence-row button {
-  display: grid;
-  gap: 2px;
-  width: 100%;
-  border: 0;
-  border-radius: 6px;
-  padding: 8px;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.trader-intelligence-row strong,
-.trader-intelligence-detail-head h4 {
-  font-size: 14px;
-  letter-spacing: 0;
-}
-
-.trader-intelligence-row span,
-.trader-intelligence-row small,
-.trader-intelligence-detail-head span,
-.trader-intelligence-scoreline small {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.trader-intelligence-detail {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.trader-intelligence-detail-head,
-.trader-intelligence-tools {
+.ti-tag-row,
+.ti-actions,
+.trader-intelligence-citations,
+.ti-source-chip-row {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
-  justify-content: space-between;
 }
 
-.trader-intelligence-scoreline {
+.ti-tag,
+.ti-status,
+.ti-confidence,
+.trader-intelligence-citations button,
+.trader-intelligence-citations a,
+.ti-source-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--color-muted);
+  background: rgba(2, 6, 23, 0.22);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-tag,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-status,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-confidence,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-citations button,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-citations a,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-source-chip {
+  background: rgba(241, 245, 249, 0.82);
+}
+
+.ti-status[data-tone="positive"],
+.ti-confidence[data-tone="positive"] {
+  color: #99f6e4;
+  border-color: rgba(45, 212, 191, 0.28);
+  background: rgba(13, 148, 136, 0.18);
+}
+
+.ti-status[data-tone="warning"],
+.ti-confidence[data-tone="warning"] {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(113, 63, 18, 0.2);
+}
+
+.ti-status[data-tone="danger"],
+.ti-confidence[data-tone="danger"] {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(127, 29, 29, 0.22);
+}
+
+.ti-actions .button,
+.ti-actions button {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.ti-empty-state {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-items: start;
   gap: 8px;
+  padding: 28px;
+  color: var(--color-muted);
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(45, 212, 191, 0.12), transparent 34%),
+    rgba(2, 6, 23, 0.16);
 }
 
-.trader-intelligence-scoreline span {
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-empty-state {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(13, 148, 136, 0.1), transparent 36%),
+    rgba(255, 255, 255, 0.76);
+}
+
+.ti-profile-shell {
   display: grid;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px;
+  gap: 12px;
 }
 
-.trader-intelligence-section-grid,
-.trader-intelligence-bottom-grid,
-.trader-intelligence-compare-grid {
+.ti-profile-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.18);
+}
+
+.ti-profile-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: min(520px, 100%);
+}
+
+.ti-profile-metrics article,
+.ti-insight-card,
+.ti-source-table-card,
+.ti-progress-panel,
+.ti-ask-panel,
+.ti-compare-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.18);
+}
+
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-profile-header,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-profile-metrics article,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-insight-card,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-source-table-card,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-progress-panel,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-ask-panel,
+body.dashboard-body.bit-engine-product-ui[data-theme="day"] .ti-compare-card {
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.ti-profile-metrics strong {
+  color: var(--color-text);
+  font-family: var(--font-finance);
+  font-size: 1.05rem;
+}
+
+.ti-profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.72fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.ti-insight-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.trader-intelligence-section-grid article,
-.trader-intelligence-bottom-grid article,
-.trader-intelligence-compare-grid article {
-  display: grid;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+.ti-insight-card h5,
+.ti-compare-card h5 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
 }
 
-.trader-intelligence-section-grid p,
-.trader-intelligence-bottom-grid p,
-.trader-intelligence-output p {
+.ti-insight-card p,
+.ti-compare-card p,
+.ti-progress-panel p,
+.ti-ask-panel p,
+.trader-intelligence-source-panel p {
   margin: 0;
-  color: var(--ink);
-  font-size: 12px;
+  color: var(--color-muted);
+  font-size: 0.78rem;
   line-height: 1.45;
 }
 
-.trader-intelligence-section-grid ul,
-.trader-intelligence-bottom-grid ul,
-.trader-intelligence-compare-grid ul {
+.ti-insight-card ul,
+.ti-compare-card ul,
+.ti-progress-list {
   display: grid;
   gap: 7px;
   margin: 0;
@@ -10668,64 +10901,303 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
   list-style: none;
 }
 
-.trader-intelligence-section-grid li,
-.trader-intelligence-bottom-grid li,
-.trader-intelligence-compare-grid li {
+.ti-insight-card li,
+.ti-compare-card li {
   display: grid;
-  gap: 3px;
-  border-top: 1px solid var(--line);
-  padding-top: 7px;
-}
-
-.trader-intelligence-citations {
-  display: flex;
-  flex-wrap: wrap;
   gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
 
-.trader-intelligence-citations a {
-  border: 1px solid var(--line);
+.ti-progress-list li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+}
+
+.ti-progress-dot {
+  width: 11px;
+  height: 11px;
+  margin-top: 3px;
   border-radius: 999px;
-  padding: 3px 7px;
-  color: var(--brand);
-  font-size: 11px;
-  text-decoration: none;
+  background: rgba(100, 116, 139, 0.7);
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.08);
 }
 
-.trader-intelligence-tools {
-  align-items: stretch;
+.ti-progress-list li.is-done .ti-progress-dot {
+  background: #14b8a6;
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.12);
+}
+
+.ti-progress-list li.is-active .ti-progress-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+}
+
+.ti-progress-bar {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.ti-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #14b8a6, #38bdf8);
 }
 
 .trader-intelligence-ask-form {
-  grid-template-columns: minmax(180px, 1fr) auto;
-  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
-.trader-intelligence-output {
+.ti-ask-answer {
   display: grid;
   gap: 7px;
-  padding: 10px;
-  min-height: 58px;
+  margin-top: 8px;
 }
 
-.trader-intelligence-empty {
+.ti-compare-shell,
+.trader-intelligence-compare-shell {
   display: grid;
-  gap: 5px;
-  padding: 14px;
-  color: var(--muted);
+  gap: 12px;
 }
 
-@media (max-width: 980px) {
+.ti-compare-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ti-compare-selector label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.ti-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trader-intelligence-modal,
+.trader-intelligence-source-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+
+.trader-intelligence-modal {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.trader-intelligence-source-drawer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 560px);
+}
+
+.trader-intelligence-modal-backdrop,
+.trader-intelligence-source-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(2, 6, 23, 0.52);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.trader-intelligence-modal-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 14px;
+  width: min(920px, 100%);
+  max-height: min(86vh, 820px);
+  overflow: auto;
+  padding: 16px;
+  pointer-events: auto;
+  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.34);
+}
+
+.trader-intelligence-source-panel {
+  z-index: 1;
+  grid-column: 2;
+  overflow: auto;
+  max-height: 100vh;
+  padding: 16px;
+  pointer-events: auto;
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.ti-source-json {
+  overflow: auto;
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  color: var(--color-muted);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.28);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.trader-intelligence-modal-head,
+.trader-intelligence-modal-actions,
+.ti-source-head {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.trader-intelligence-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trader-intelligence-form label:nth-child(4),
+.trader-intelligence-form label:nth-child(5),
+.trader-intelligence-progress,
+.trader-intelligence-modal-actions {
+  grid-column: 1 / -1;
+}
+
+.trader-intelligence-modal-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.trader-intelligence-progress {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .trader-intelligence-toolbar,
+  .ti-profile-grid,
+  .ti-compare-selector {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ti-profile-header {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .trader-intelligence-kpis,
+  .trader-intelligence-toolbar,
   .trader-intelligence-form,
-  .trader-intelligence-grid,
-  .trader-intelligence-section-grid,
-  .trader-intelligence-bottom-grid,
-  .trader-intelligence-compare-grid {
+  .ti-profile-metrics,
+  .ti-profile-grid,
+  .ti-insight-grid,
+  .ti-compare-grid,
+  .ti-compare-selector {
     grid-template-columns: 1fr;
   }
 
-  .trader-intelligence-tools {
+  .trader-intelligence-source-drawer {
+    grid-template-columns: 1fr;
+  }
+
+  .trader-intelligence-source-panel {
+    grid-column: 1;
+  }
+
+  .trader-intelligence-table {
+    min-width: 0;
+  }
+
+  .trader-intelligence-table thead {
+    display: none;
+  }
+
+  .trader-intelligence-table,
+  .trader-intelligence-table tbody,
+  .trader-intelligence-table tr,
+  .trader-intelligence-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .trader-intelligence-table tbody {
     display: grid;
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .trader-intelligence-table tr {
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 15px;
+    background: rgba(2, 6, 23, 0.12);
+  }
+
+  body.dashboard-body.bit-engine-product-ui[data-theme="day"] .trader-intelligence-table tr {
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .trader-intelligence-table td {
+    display: grid;
+    grid-template-columns: minmax(86px, 0.32fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px 10px;
+  }
+
+  .trader-intelligence-table td::before {
+    content: attr(data-label);
+    color: var(--color-dim);
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .trader-intelligence-table td[colspan] {
+    display: block;
+    padding: 0;
+  }
+
+  .trader-intelligence-table td[colspan]::before {
+    display: none;
+  }
+
+  .trader-intelligence-table td .ti-empty-state {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .ti-expert-cell {
+    min-width: 0;
+  }
+
+  .ti-actions {
+    justify-content: flex-start;
+  }
+
+  .trader-intelligence-ask-form {
+    grid-template-columns: 1fr;
   }
 }
 

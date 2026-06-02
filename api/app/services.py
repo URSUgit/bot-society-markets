@@ -1033,6 +1033,8 @@ class BotSocietyService:
                 "user_slug": user_slug,
                 "slug": slug,
                 "display_name": payload.name,
+                "description": payload.description or "",
+                "tags_json": self._encode_json_payload(payload.tags) or "[]",
                 "category": payload.category,
                 "source_type": payload.source_type,
                 "source_url": payload.source_url,
@@ -1070,6 +1072,15 @@ class BotSocietyService:
         if not repository.get_user(user_slug):
             raise ValueError(f"User {user_slug} is not available")
         return self._run_trader_intelligence_analysis(user_slug, profile_id, repository=repository)
+
+    def delete_trader_intelligence_profile(self, user_slug: str, profile_id: int) -> dict[str, object]:
+        repository = BotSocietyRepository(self.database)
+        profile = repository.get_trader_intelligence_profile(user_slug, profile_id)
+        if not profile:
+            raise ValueError("Expert profile was not found")
+        deleted = repository.delete_trader_intelligence_profile(user_slug, profile_id)
+        self._clear_live_caches()
+        return {"deleted": bool(deleted), "profile_id": profile_id, "display_name": profile.get("display_name")}
 
     def ask_trader_intelligence(
         self,
@@ -1649,11 +1660,14 @@ class BotSocietyService:
             return [TraderIntelligenceClaim(**item) for item in payload if isinstance(item, dict)]
 
         warnings_payload = self._decode_json_payload(row.get("warnings_json"))
+        tags_payload = self._decode_json_payload(row.get("tags_json"))
         return TraderIntelligenceProfileView(
             id=int(row["id"]),
             user_slug=str(row["user_slug"]),
             slug=str(row["slug"]),
             display_name=str(row["display_name"]),
+            description=str(row.get("description") or ""),
+            tags=tags_payload if isinstance(tags_payload, list) else [],
             category=str(row["category"]),
             source_type=str(row["source_type"]),
             source_url=str(row["source_url"]),

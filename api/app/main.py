@@ -616,6 +616,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return profile
 
+    @app.delete("/api/v1/me/trader-intelligence/{profile_id}")
+    @app.delete("/api/me/trader-intelligence/{profile_id}")
+    def delete_trader_intelligence_profile(profile_id: int, request: Request) -> dict[str, object]:
+        user_slug = authenticated_user_slug(request)
+        result = run_validated(lambda: get_service(request).delete_trader_intelligence_profile(user_slug, profile_id))
+        audit_event(
+            request,
+            action="trader_intelligence.delete",
+            resource_type="trader_intelligence_profile",
+            resource_id=str(profile_id),
+            actor_user_slug=user_slug,
+            after_state=result,
+        )
+        return result
+
     @app.post("/api/v1/me/trader-intelligence/{profile_id}/ask", response_model=TraderIntelligenceAskResponse)
     @app.post("/api/me/trader-intelligence/{profile_id}/ask", response_model=TraderIntelligenceAskResponse)
     def ask_trader_intelligence(

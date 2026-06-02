@@ -1320,6 +1320,8 @@ class TraderIntelligenceProfileView(BaseModel):
     user_slug: str
     slug: str
     display_name: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
     category: TraderIntelligenceCategory | str
     source_type: TraderIntelligenceSourceType | str
     source_url: str
@@ -1358,12 +1360,22 @@ class TraderIntelligenceCreateRequest(BaseModel):
     category: TraderIntelligenceCategory = "trader"
     source_type: TraderIntelligenceSourceType = "youtube_channel"
     source_url: str = Field(min_length=2, max_length=1000)
+    description: str | None = Field(default=None, max_length=1200)
+    tags: list[str] = Field(default_factory=list, max_length=12)
     max_sources: int = Field(default=12, ge=1, le=50)
 
     @model_validator(mode="after")
     def normalize_create_request(self) -> "TraderIntelligenceCreateRequest":
         self.name = re.sub(r"\s+", " ", self.name).strip()
         self.source_url = re.sub(r"\s+", " ", self.source_url).strip()
+        if self.description is not None:
+            self.description = re.sub(r"\s+", " ", self.description).strip()
+        normalized_tags: list[str] = []
+        for tag in self.tags:
+            normalized = re.sub(r"\s+", " ", str(tag)).strip().lower()
+            if normalized and normalized not in normalized_tags:
+                normalized_tags.append(normalized[:40])
+        self.tags = normalized_tags[:12]
         return self
 
 

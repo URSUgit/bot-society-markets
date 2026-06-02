@@ -433,6 +433,8 @@ trader_intelligence_profiles_table = Table(
     Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
     Column("slug", String(180), nullable=False),
     Column("display_name", String(255), nullable=False),
+    Column("description", Text, nullable=False, default="", server_default=""),
+    Column("tags_json", Text, nullable=False, default="[]", server_default="[]"),
     Column("category", String(48), nullable=False),
     Column("source_type", String(48), nullable=False),
     Column("source_url", Text, nullable=False),
@@ -789,6 +791,10 @@ class Database:
                 "last_attempt_at": "ALTER TABLE alert_delivery_events ADD COLUMN last_attempt_at TEXT",
                 "next_attempt_at": "ALTER TABLE alert_delivery_events ADD COLUMN next_attempt_at TEXT",
                 "error_detail": "ALTER TABLE alert_delivery_events ADD COLUMN error_detail TEXT",
+            },
+            "trader_intelligence_profiles": {
+                "description": "ALTER TABLE trader_intelligence_profiles ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+                "tags_json": "ALTER TABLE trader_intelligence_profiles ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
             },
         }
 

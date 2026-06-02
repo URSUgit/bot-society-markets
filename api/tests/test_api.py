@@ -659,6 +659,8 @@ def test_trader_intelligence_engine_create_ask_and_compare_flow() -> None:
                 "category": "trader",
                 "source_type": "youtube_channel",
                 "source_url": "https://www.youtube.com/@cyclecraft",
+                "description": "Long-form Bitcoin and macro trader research target.",
+                "tags": ["bitcoin", "macro", "youtube"],
                 "max_sources": 8,
             },
         )
@@ -669,6 +671,8 @@ def test_trader_intelligence_engine_create_ask_and_compare_flow() -> None:
         assert first_profile["worldview"]["claims"][0]["citations"]
         assert first_profile["frameworks"]["summary"]
         assert first_profile["synthesis"]["summary"]
+        assert first_profile["description"] == "Long-form Bitcoin and macro trader research target."
+        assert first_profile["tags"] == ["bitcoin", "macro", "youtube"]
         assert "personalized financial advice" in " ".join(first_profile["warnings"]).lower()
 
         second_response = client.post(
@@ -710,6 +714,13 @@ def test_trader_intelligence_engine_create_ask_and_compare_flow() -> None:
         assert compare_payload["agreement_points"]
         assert compare_payload["disagreement_points"]
         assert "research prompts" in " ".join(compare_payload["warnings"]).lower()
+
+        delete_response = client.delete(f"/api/me/trader-intelligence/{second_profile['id']}")
+        assert delete_response.status_code == 200
+        assert delete_response.json()["deleted"] is True
+
+        refreshed_workspace = client.get("/api/me/trader-intelligence").json()
+        assert len(refreshed_workspace["profiles"]) == 1
 
 
 def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> None:
