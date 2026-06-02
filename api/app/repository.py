@@ -30,6 +30,9 @@ from .database import (
     social_trader_events_table,
     social_traders_table,
     strategies_table,
+    trader_intelligence_profiles_table,
+    trader_intelligence_runs_table,
+    trader_intelligence_sources_table,
     user_follows_table,
     user_sessions_table,
     users_table,
@@ -1055,6 +1058,130 @@ class BotSocietyRepository:
         stmt = (
             select(social_discovery_runs_table)
             .order_by(desc(social_discovery_runs_table.c.started_at), desc(social_discovery_runs_table.c.id))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def upsert_trader_intelligence_profile(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        stmt = self.database.upsert_insert(trader_intelligence_profiles_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                trader_intelligence_profiles_table.c.user_slug,
+                trader_intelligence_profiles_table.c.slug,
+            ],
+            set_={
+                "display_name": stmt.excluded.display_name,
+                "category": stmt.excluded.category,
+                "source_type": stmt.excluded.source_type,
+                "source_url": stmt.excluded.source_url,
+                "status": stmt.excluded.status,
+                "progress_stage": stmt.excluded.progress_stage,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+            selected = select(trader_intelligence_profiles_table).where(
+                and_(
+                    trader_intelligence_profiles_table.c.user_slug == payload["user_slug"],
+                    trader_intelligence_profiles_table.c.slug == payload["slug"],
+                )
+            )
+            return self._row(connection.execute(selected))
+
+    def update_trader_intelligence_profile(self, profile_id: int, user_slug: str, payload: dict[str, Any]) -> int:
+        stmt = (
+            update(trader_intelligence_profiles_table)
+            .where(
+                and_(
+                    trader_intelligence_profiles_table.c.id == profile_id,
+                    trader_intelligence_profiles_table.c.user_slug == user_slug,
+                )
+            )
+            .values(**payload)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def list_trader_intelligence_profiles(self, user_slug: str, *, limit: int = 25) -> list[dict[str, Any]]:
+        stmt = (
+            select(trader_intelligence_profiles_table)
+            .where(trader_intelligence_profiles_table.c.user_slug == user_slug)
+            .order_by(desc(trader_intelligence_profiles_table.c.updated_at), desc(trader_intelligence_profiles_table.c.id))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_trader_intelligence_profile(self, user_slug: str, profile_id: int) -> dict[str, Any] | None:
+        stmt = (
+            select(trader_intelligence_profiles_table)
+            .where(
+                and_(
+                    trader_intelligence_profiles_table.c.user_slug == user_slug,
+                    trader_intelligence_profiles_table.c.id == profile_id,
+                )
+            )
+            .limit(1)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_trader_intelligence_sources(self, sources: Iterable[dict[str, Any]]) -> None:
+        source_list = list(sources)
+        if not source_list:
+            return
+        stmt = self.database.upsert_insert(trader_intelligence_sources_table).values(source_list)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                trader_intelligence_sources_table.c.profile_id,
+                trader_intelligence_sources_table.c.external_id,
+            ],
+            set_={
+                "source_type": stmt.excluded.source_type,
+                "title": stmt.excluded.title,
+                "url": stmt.excluded.url,
+                "author": stmt.excluded.author,
+                "observed_at": stmt.excluded.observed_at,
+                "summary": stmt.excluded.summary,
+                "transcript": stmt.excluded.transcript,
+                "metadata_json": stmt.excluded.metadata_json,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def list_trader_intelligence_sources(self, profile_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
+        stmt = (
+            select(trader_intelligence_sources_table)
+            .where(trader_intelligence_sources_table.c.profile_id == profile_id)
+            .order_by(desc(trader_intelligence_sources_table.c.observed_at), desc(trader_intelligence_sources_table.c.id))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def create_trader_intelligence_run(self, payload: dict[str, Any]) -> int:
+        stmt = trader_intelligence_runs_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def update_trader_intelligence_run(self, run_id: int, payload: dict[str, Any]) -> int:
+        stmt = update(trader_intelligence_runs_table).where(trader_intelligence_runs_table.c.id == run_id).values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def list_trader_intelligence_runs(self, profile_id: int, *, limit: int = 5) -> list[dict[str, Any]]:
+        stmt = (
+            select(trader_intelligence_runs_table)
+            .where(trader_intelligence_runs_table.c.profile_id == profile_id)
+            .order_by(desc(trader_intelligence_runs_table.c.created_at), desc(trader_intelligence_runs_table.c.id))
             .limit(limit)
         )
         with self.database.connect() as connection:

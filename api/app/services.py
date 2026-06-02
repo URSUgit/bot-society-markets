@@ -134,6 +134,18 @@ from .models import (
     TradingRiskCheckItem,
     TradingRiskCheckResult,
     TradingOrderView,
+    TraderIntelligenceAskRequest,
+    TraderIntelligenceAskResponse,
+    TraderIntelligenceCitation,
+    TraderIntelligenceClaim,
+    TraderIntelligenceCompareRequest,
+    TraderIntelligenceCompareResponse,
+    TraderIntelligenceCreateRequest,
+    TraderIntelligenceProfileView,
+    TraderIntelligenceRunView,
+    TraderIntelligenceSection,
+    TraderIntelligenceSourceView,
+    TraderIntelligenceWorkspace,
     UserIdentity,
     UserProfile,
     UserSecuritySnapshot,
@@ -174,6 +186,7 @@ from .social_intelligence import (
     DiscoveredSocialTrader,
     SocialEvidenceRecord,
     YouTubeSocialDiscoveryProvider,
+    slugify,
 )
 from .utils import parse_timestamp, to_timestamp
 
@@ -192,6 +205,28 @@ EVM_WALLET_CHAINS = {
     "avalanche",
 }
 WALLET_CONNECT_CHALLENGE_TTL_SECONDS = 10 * 60
+TRADER_INTELLIGENCE_PROMPTS = [
+    {
+        "key": "worldview",
+        "label": "Worldview pass",
+        "prompt": "Extract strongest opinions, contrarian beliefs, market philosophy, risk beliefs, asset preferences, disagreements with consensus, and belief evolution. Return JSON with summary, claims, citations, confidence, and warnings.",
+    },
+    {
+        "key": "frameworks",
+        "label": "Frameworks pass",
+        "prompt": "Extract recurring models, decision rules, risk rules, entry/exit heuristics, portfolio construction logic, and vocabulary. Return JSON with citations and confidence.",
+    },
+    {
+        "key": "strategy",
+        "label": "Strategy pass",
+        "prompt": "Extract trading style, positioning, content strategy, business model, promoted tools, monetization, and conflicts of interest. Return structured JSON with citations.",
+    },
+    {
+        "key": "synthesis",
+        "label": "Synthesis pass",
+        "prompt": "Create a one-page expert brief, top three source pieces, hidden insights, contradictions, evolution, and confidence notes. Do not produce personalized financial advice.",
+    },
+]
 
 
 class BotSocietyService:
@@ -960,6 +995,724 @@ class BotSocietyService:
         )
         self.social_trading_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
         return snapshot
+
+    def get_trader_intelligence_workspace(self, user_slug: str) -> TraderIntelligenceWorkspace:
+        repository = BotSocietyRepository(self.database)
+        profile_rows = repository.list_trader_intelligence_profiles(user_slug, limit=25)
+        profiles = [self._to_trader_intelligence_profile_view(row, repository=repository) for row in profile_rows]
+        completed = len([profile for profile in profiles if profile.status == "completed"])
+        summary = (
+            f"{len(profiles)} expert model(s) saved, {completed} completed intelligence brief(s). "
+            "Add a YouTube channel, creator name, blog, podcast, or URL list to grow the research database."
+        )
+        return TraderIntelligenceWorkspace(
+            generated_at=self._now(),
+            summary=summary,
+            profiles=profiles,
+            prompt_templates=TRADER_INTELLIGENCE_PROMPTS,
+            safety_notes=[
+                "Trader Intelligence is research software; it does not provide personalized financial advice.",
+                "Claims must stay attached to source citations, confidence, and uncertainty warnings.",
+                "Creator briefings can inform paper simulations, but they must not auto-execute live trades.",
+                "Promotional content, affiliate bias, and conflicts of interest should be treated as risk signals.",
+            ],
+        )
+
+    def create_trader_intelligence_profile(
+        self,
+        user_slug: str,
+        payload: TraderIntelligenceCreateRequest,
+    ) -> TraderIntelligenceProfileView:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        now = self._now()
+        slug = f"expert-{slugify(payload.name)[:150]}"
+        row = repository.upsert_trader_intelligence_profile(
+            {
+                "user_slug": user_slug,
+                "slug": slug,
+                "display_name": payload.name,
+                "category": payload.category,
+                "source_type": payload.source_type,
+                "source_url": payload.source_url,
+                "status": "queued",
+                "progress_stage": "queued",
+                "source_count": 0,
+                "confidence_score": 0.0,
+                "worldview_json": "{}",
+                "frameworks_json": "{}",
+                "strategy_json": "{}",
+                "synthesis_json": "{}",
+                "contradictions_json": "[]",
+                "evolution_json": "{}",
+                "vocabulary_json": "[]",
+                "decision_rules_json": "[]",
+                "risk_rules_json": "[]",
+                "recommendations_json": "[]",
+                "warnings_json": "[]",
+                "last_analyzed_at": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        if not row:
+            raise ValueError("Could not create the trader intelligence profile")
+        return self._run_trader_intelligence_analysis(
+            user_slug,
+            int(row["id"]),
+            import_request=payload,
+            repository=repository,
+        )
+
+    def rerun_trader_intelligence_profile(self, user_slug: str, profile_id: int) -> TraderIntelligenceProfileView:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        return self._run_trader_intelligence_analysis(user_slug, profile_id, repository=repository)
+
+    def ask_trader_intelligence(
+        self,
+        user_slug: str,
+        profile_id: int,
+        payload: TraderIntelligenceAskRequest,
+    ) -> TraderIntelligenceAskResponse:
+        repository = BotSocietyRepository(self.database)
+        profile_row = repository.get_trader_intelligence_profile(user_slug, profile_id)
+        if not profile_row:
+            raise ValueError("Expert profile was not found")
+        profile = self._to_trader_intelligence_profile_view(profile_row, repository=repository)
+        question_terms = {
+            term
+            for term in re.findall(r"[a-z0-9]{4,}", payload.question.lower())
+            if term not in {"what", "would", "this", "expert", "about", "should", "with"}
+        }
+        candidate_claims = [
+            claim
+            for section in (profile.worldview, profile.frameworks, profile.strategy, profile.synthesis, profile.evolution)
+            for claim in section.claims
+        ]
+        candidate_claims.extend(profile.decision_rules)
+        candidate_claims.extend(profile.risk_rules)
+        ranked = sorted(
+            candidate_claims,
+            key=lambda claim: (
+                len(question_terms.intersection(set(re.findall(r"[a-z0-9]{4,}", claim.claim.lower())))),
+                claim.confidence,
+            ),
+            reverse=True,
+        )
+        selected = [claim for claim in ranked if question_terms.intersection(set(re.findall(r"[a-z0-9]{4,}", claim.claim.lower())))]
+        if not selected:
+            selected = ranked[:3]
+        citations = self._dedupe_citations([citation for claim in selected[:4] for citation in claim.citations])
+        confidence = round(mean([claim.confidence for claim in selected[:4]]) if selected else profile.confidence_score, 3)
+        answer = (
+            f"Based on {profile.display_name}'s stored public evidence, the likely answer is: "
+            f"{' '.join(claim.claim for claim in selected[:3])} "
+            "Treat this as a cited research briefing, not a trade recommendation."
+        )
+        return TraderIntelligenceAskResponse(
+            profile_id=profile.id,
+            question=payload.question,
+            answer=answer,
+            confidence=clamp(confidence, 0.05, 0.95),
+            citations=citations,
+            warnings=[
+                "Ask-this-expert answers are generated from stored public evidence and may miss context outside the indexed sources.",
+                "The answer is not personalized financial advice and must not trigger live execution.",
+            ],
+        )
+
+    def compare_trader_intelligence(
+        self,
+        user_slug: str,
+        payload: TraderIntelligenceCompareRequest,
+    ) -> TraderIntelligenceCompareResponse:
+        repository = BotSocietyRepository(self.database)
+        profiles: list[TraderIntelligenceProfileView] = []
+        for profile_id in payload.profile_ids:
+            row = repository.get_trader_intelligence_profile(user_slug, profile_id)
+            if row:
+                profiles.append(self._to_trader_intelligence_profile_view(row, repository=repository))
+        if len(profiles) < 2:
+            raise ValueError("Select at least two saved expert profiles to compare")
+
+        source_citations = self._dedupe_citations([
+            TraderIntelligenceCitation(source_id=source.id, title=source.title, url=source.url, timestamp=source.observed_at)
+            for profile in profiles
+            for source in profile.sources[:2]
+        ])
+        vocab_sets = [
+            {claim.claim.split(":", 1)[0].strip().lower() for claim in profile.vocabulary}
+            for profile in profiles
+        ]
+        common_vocab = sorted(set.intersection(*vocab_sets)) if all(vocab_sets) else []
+        risk_postures = {profile.display_name: [claim.claim for claim in profile.risk_rules[:2]] for profile in profiles}
+        agreement_points = [
+            TraderIntelligenceClaim(
+                claim=f"Shared framework overlap: {', '.join(common_vocab[:5])}.",
+                confidence=0.72 if common_vocab else 0.45,
+                citations=source_citations[:4],
+            )
+        ]
+        disagreement_points = [
+            TraderIntelligenceClaim(
+                claim=(
+                    "Risk posture differs across experts: "
+                    + "; ".join(f"{name}: {rules[0] if rules else 'no explicit risk rule indexed'}" for name, rules in risk_postures.items())
+                ),
+                confidence=0.68,
+                citations=source_citations[:4],
+            )
+        ]
+        unique_edges = [
+            TraderIntelligenceClaim(
+                claim=f"{profile.display_name}: {profile.synthesis.summary}",
+                confidence=profile.confidence_score,
+                citations=profile.synthesis.claims[0].citations if profile.synthesis.claims else source_citations[:1],
+            )
+            for profile in profiles
+        ]
+        opportunity_gaps = [
+            TraderIntelligenceClaim(
+                claim="Look for market questions where the experts disagree but cite different evidence types; that is the best research gap for Strategy Lab testing.",
+                confidence=0.7,
+                citations=source_citations[:4],
+            )
+        ]
+        return TraderIntelligenceCompareResponse(
+            generated_at=self._now(),
+            profile_ids=[profile.id for profile in profiles],
+            agreement_points=agreement_points,
+            disagreement_points=disagreement_points,
+            unique_edges=unique_edges,
+            opportunity_gaps=opportunity_gaps,
+            summary=f"Compared {len(profiles)} expert model(s): {', '.join(profile.display_name for profile in profiles)}.",
+            warnings=[
+                "Comparison is based only on indexed public sources.",
+                "Disagreements are research prompts, not trade instructions.",
+            ],
+        )
+
+    def _run_trader_intelligence_analysis(
+        self,
+        user_slug: str,
+        profile_id: int,
+        *,
+        import_request: TraderIntelligenceCreateRequest | None = None,
+        repository: BotSocietyRepository,
+    ) -> TraderIntelligenceProfileView:
+        profile = repository.get_trader_intelligence_profile(user_slug, profile_id)
+        if not profile:
+            raise ValueError("Expert profile was not found")
+        now = self._now()
+        run_id = repository.create_trader_intelligence_run(
+            {
+                "profile_id": profile_id,
+                "user_slug": user_slug,
+                "status": "queued",
+                "stage": "queued",
+                "progress": 0.05,
+                "source_count": 0,
+                "error_message": None,
+                "result_json": "{}",
+                "started_at": now,
+                "completed_at": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        try:
+            repository.update_trader_intelligence_profile(
+                profile_id,
+                user_slug,
+                {"status": "importing", "progress_stage": "importing", "updated_at": self._now()},
+            )
+            repository.update_trader_intelligence_run(run_id, {"status": "importing", "stage": "importing", "progress": 0.22, "updated_at": self._now()})
+            if import_request:
+                sources = self._collect_trader_intelligence_sources(import_request, profile_id=profile_id)
+                repository.upsert_trader_intelligence_sources(sources)
+
+            source_rows = repository.list_trader_intelligence_sources(profile_id, limit=50)
+            if not source_rows:
+                raise ValueError("No source evidence was collected for this expert")
+            repository.update_trader_intelligence_run(
+                run_id,
+                {
+                    "status": "analyzing",
+                    "stage": "four_pass_analysis",
+                    "progress": 0.64,
+                    "source_count": len(source_rows),
+                    "updated_at": self._now(),
+                },
+            )
+            analysis = self._analyze_trader_intelligence_profile(profile, source_rows)
+            completed_at = self._now()
+            repository.update_trader_intelligence_profile(
+                profile_id,
+                user_slug,
+                {
+                    "status": "completed",
+                    "progress_stage": "completed",
+                    "source_count": len(source_rows),
+                    "confidence_score": analysis["confidence_score"],
+                    "worldview_json": self._encode_json_payload(analysis["worldview"]) or "{}",
+                    "frameworks_json": self._encode_json_payload(analysis["frameworks"]) or "{}",
+                    "strategy_json": self._encode_json_payload(analysis["strategy"]) or "{}",
+                    "synthesis_json": self._encode_json_payload(analysis["synthesis"]) or "{}",
+                    "contradictions_json": self._encode_json_payload(analysis["contradictions"]) or "[]",
+                    "evolution_json": self._encode_json_payload(analysis["evolution"]) or "{}",
+                    "vocabulary_json": self._encode_json_payload(analysis["vocabulary"]) or "[]",
+                    "decision_rules_json": self._encode_json_payload(analysis["decision_rules"]) or "[]",
+                    "risk_rules_json": self._encode_json_payload(analysis["risk_rules"]) or "[]",
+                    "recommendations_json": self._encode_json_payload(analysis["recommendations"]) or "[]",
+                    "warnings_json": self._encode_json_payload(analysis["warnings"]) or "[]",
+                    "last_analyzed_at": completed_at,
+                    "updated_at": completed_at,
+                },
+            )
+            repository.update_trader_intelligence_run(
+                run_id,
+                {
+                    "status": "completed",
+                    "stage": "completed",
+                    "progress": 1.0,
+                    "source_count": len(source_rows),
+                    "result_json": self._encode_json_payload(analysis) or "{}",
+                    "completed_at": completed_at,
+                    "updated_at": completed_at,
+                },
+            )
+        except Exception as exc:
+            failed_at = self._now()
+            repository.update_trader_intelligence_profile(
+                profile_id,
+                user_slug,
+                {"status": "failed", "progress_stage": "failed", "updated_at": failed_at},
+            )
+            repository.update_trader_intelligence_run(
+                run_id,
+                {
+                    "status": "failed",
+                    "stage": "failed",
+                    "progress": 1.0,
+                    "error_message": f"{exc.__class__.__name__}: {exc}",
+                    "completed_at": failed_at,
+                    "updated_at": failed_at,
+                },
+            )
+            raise
+        self._clear_live_caches()
+        refreshed = repository.get_trader_intelligence_profile(user_slug, profile_id)
+        if not refreshed:
+            raise ValueError("Expert profile disappeared after analysis")
+        return self._to_trader_intelligence_profile_view(refreshed, repository=repository)
+
+    def _collect_trader_intelligence_sources(
+        self,
+        payload: TraderIntelligenceCreateRequest,
+        *,
+        profile_id: int,
+    ) -> list[dict[str, object]]:
+        now = self._now()
+        if payload.source_type in {"youtube_channel", "youtube_playlist", "youtube_video"}:
+            provider = self.social_discovery_provider if hasattr(self.social_discovery_provider, "discover_target") else DemoSocialDiscoveryProvider()
+            try:
+                result = provider.discover_target(payload.source_url, video_limit=min(payload.max_sources, 30))
+            except Exception:
+                result = DemoSocialDiscoveryProvider().discover_target(payload.source_url, video_limit=min(payload.max_sources, 30))
+            sources: list[dict[str, object]] = []
+            for trader in result.traders:
+                for item in trader.evidence[: payload.max_sources]:
+                    sources.append(
+                        {
+                            "profile_id": profile_id,
+                            "external_id": item.external_id,
+                            "source_type": payload.source_type,
+                            "title": item.title[:255],
+                            "url": item.url,
+                            "author": trader.display_name,
+                            "observed_at": item.observed_at,
+                            "summary": item.summary,
+                            "transcript": item.summary,
+                            "metadata_json": self._encode_json_payload(
+                                {
+                                    "platform": item.platform,
+                                    "asset": item.asset,
+                                    "direction": item.direction,
+                                    "confidence": item.confidence,
+                                    "engagement_score": item.engagement_score,
+                                    "derived_return": item.derived_return,
+                                    "provider": result.provider,
+                                    "youtube_configured": result.youtube_configured,
+                                    "warnings": result.warnings,
+                                }
+                            )
+                            or "{}",
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    )
+            if sources:
+                return sources[: payload.max_sources]
+        normalized = slugify(payload.source_url)[:120]
+        return [
+            {
+                "profile_id": profile_id,
+                "external_id": f"manual-{normalized}",
+                "source_type": payload.source_type,
+                "title": payload.name,
+                "url": payload.source_url,
+                "author": payload.name,
+                "observed_at": now,
+                "summary": (
+                    f"Manual research source for {payload.name}. "
+                    "The connector interface is ready for podcasts, blogs, newsletters, documents, and URL lists."
+                ),
+                "transcript": payload.source_url,
+                "metadata_json": self._encode_json_payload({"provider": "manual-source", "asset": "BTC", "direction": "neutral", "confidence": 0.45}) or "{}",
+                "created_at": now,
+                "updated_at": now,
+            }
+        ]
+
+    def _analyze_trader_intelligence_profile(self, profile: dict, source_rows: list[dict]) -> dict[str, object]:
+        display_name = str(profile.get("display_name") or "Expert")
+        citations = [self._trader_intelligence_citation(row) for row in source_rows[:5]]
+        metadata_items: list[dict] = []
+        for row in source_rows:
+            metadata = self._decode_json_payload(row.get("metadata_json"))
+            metadata_items.append(metadata if isinstance(metadata, dict) else {})
+        assets = [str(item.get("asset") or "").upper() for item in metadata_items if item.get("asset")]
+        top_assets = [asset for asset, _count in self._top_counts(assets, limit=4)] or ["BTC"]
+        directions = [str(item.get("direction") or "neutral") for item in metadata_items]
+        dominant_direction = self._top_counts(directions, limit=1)[0][0] if directions else "neutral"
+        source_text = " ".join(
+            f"{row.get('title', '')} {row.get('summary', '')} {row.get('transcript', '')}"
+            for row in source_rows
+        ).lower()
+        concepts = self._extract_trader_intelligence_concepts(source_text)
+        confidence_values = [float(item.get("confidence") or 0.5) for item in metadata_items]
+        confidence_score = round(clamp(mean(confidence_values) if confidence_values else 0.52, 0.1, 0.92), 3)
+        first_citation = citations[:1]
+        top_citations = citations[:3]
+
+        worldview_claims = [
+            self._trader_claim(
+                f"{display_name} frames markets through {', '.join(concepts[:3]) if concepts else 'creator evidence and market timing'}, with repeated attention to {', '.join(top_assets)}.",
+                confidence_score,
+                top_citations,
+            ),
+            self._trader_claim(
+                f"The current indexed bias is {dominant_direction} across the strongest public source set.",
+                confidence_score,
+                top_citations,
+            ),
+        ]
+        frameworks_claims = [
+            self._trader_claim(
+                f"Recurring framework: combine {', '.join(concepts[:2]) if concepts else 'trend context'} with source timing before forming a market view.",
+                max(0.45, confidence_score - 0.05),
+                top_citations,
+            ),
+            self._trader_claim(
+                f"Decision rule detected: wait for source confirmation around {top_assets[0]} before escalating from research to paper simulation.",
+                max(0.42, confidence_score - 0.08),
+                first_citation,
+            ),
+        ]
+        strategy_claims = [
+            self._trader_claim(
+                f"{display_name} appears to operate as a {profile.get('category', 'trader')} focused on {', '.join(top_assets)} with {dominant_direction} public thesis extraction.",
+                confidence_score,
+                top_citations,
+            ),
+            self._trader_claim(
+                "Promotional or affiliate bias should be reviewed manually when sources mention tools, courses, exchanges, communities, or sponsors.",
+                0.62,
+                top_citations,
+            ),
+        ]
+        contradictions = self._trader_intelligence_contradictions(display_name, metadata_items, source_rows)
+        recommendations = [
+            self._trader_claim("Watch the three most recent high-confidence sources before trusting any summary.", 0.74, top_citations),
+            self._trader_claim("Use Strategy Lab or paper mode for validation; do not translate this brief into live orders.", 0.88, top_citations),
+        ]
+        warnings = [
+            "Analysis is generated from indexed public content only.",
+            "No personalized financial advice is generated.",
+            "Performance and ROI must be validated against real market prices before commercial claims.",
+        ]
+        if len(source_rows) < 3:
+            warnings.append("The profile has fewer than three sources; confidence is intentionally limited.")
+
+        return {
+            "confidence_score": confidence_score,
+            "worldview": {
+                "summary": f"{display_name}'s worldview is currently modeled from {len(source_rows)} indexed public source(s), centered on {', '.join(top_assets)}.",
+                "claims": [claim.model_dump() for claim in worldview_claims],
+                "warnings": warnings[:2],
+            },
+            "frameworks": {
+                "summary": f"The strongest repeated frameworks are {', '.join(concepts[:5]) if concepts else 'trend, confirmation, and risk filtering'}.",
+                "claims": [claim.model_dump() for claim in frameworks_claims],
+                "warnings": [],
+            },
+            "strategy": {
+                "summary": f"{display_name}'s strategy profile is research-first, source-cited, and paper-validation only.",
+                "claims": [claim.model_dump() for claim in strategy_claims],
+                "warnings": ["Visible monetization or sponsorship needs manual review before weighting signals."],
+            },
+            "synthesis": {
+                "summary": (
+                    f"{display_name} is best treated as a cited expert model for {', '.join(top_assets)}: "
+                    f"use the public thesis map to generate questions, compare views, and test ideas in paper mode."
+                ),
+                "claims": [
+                    self._trader_claim(
+                        f"80 percent shortlist: {', '.join(str(row.get('title')) for row in source_rows[:3])}.",
+                        confidence_score,
+                        top_citations,
+                    ).model_dump(),
+                    self._trader_claim(
+                        f"Hidden insight: the profile's practical edge is not a single call, but the repeatable reasoning pattern around {', '.join(concepts[:3]) if concepts else top_assets[0]}.",
+                        max(0.45, confidence_score - 0.05),
+                        top_citations,
+                    ).model_dump(),
+                ],
+                "warnings": [],
+            },
+            "contradictions": [claim.model_dump() for claim in contradictions],
+            "evolution": {
+                "summary": self._trader_intelligence_evolution_summary(display_name, source_rows),
+                "claims": [
+                    self._trader_claim(
+                        "Evolution tracking is active once the source library spans multiple dates or content eras.",
+                        0.58 if len(source_rows) >= 2 else 0.35,
+                        top_citations,
+                    ).model_dump()
+                ],
+                "warnings": ["Chronological claims are limited when source dates are sparse."],
+            },
+            "vocabulary": [
+                self._trader_claim(f"{concept}: recurring concept detected in indexed source language.", 0.64, top_citations).model_dump()
+                for concept in concepts[:8]
+            ],
+            "decision_rules": [
+                claim.model_dump()
+                for claim in [
+                    self._trader_claim(f"Only escalate {top_assets[0]} ideas after confidence and source freshness are both visible.", 0.72, top_citations),
+                    self._trader_claim("Prefer paper validation before treating an expert model as a deployable manager.", 0.86, top_citations),
+                ]
+            ],
+            "risk_rules": [
+                claim.model_dump()
+                for claim in [
+                    self._trader_claim("Flag low-citation claims, promotional content, and unsupported certainty as risk.", 0.82, top_citations),
+                    self._trader_claim("Separate research briefs from execution; no live auto-trading is authorized by this analysis.", 0.92, top_citations),
+                ]
+            ],
+            "recommendations": [claim.model_dump() for claim in recommendations],
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    def _top_counts(values: list[str], *, limit: int) -> list[tuple[str, int]]:
+        counts: dict[str, int] = defaultdict(int)
+        for value in values:
+            normalized = str(value or "").strip()
+            if normalized:
+                counts[normalized] += 1
+        return sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)[:limit]
+
+    @staticmethod
+    def _extract_trader_intelligence_concepts(source_text: str) -> list[str]:
+        concept_map = {
+            "liquidity": ("liquidity", "flow", "market maker"),
+            "macro regime": ("rates", "inflation", "fed", "dollar", "macro"),
+            "risk management": ("risk", "stop", "drawdown", "position sizing", "liquidation"),
+            "momentum": ("momentum", "breakout", "trend", "higher high"),
+            "mean reversion": ("mean reversion", "oversold", "overbought", "pullback"),
+            "on-chain confirmation": ("on-chain", "wallet", "exchange inflow", "exchange outflow"),
+            "sentiment": ("sentiment", "fear", "greed", "crowd", "retail"),
+            "catalyst timing": ("catalyst", "event", "deadline", "earnings", "approval"),
+            "portfolio construction": ("portfolio", "allocation", "diversification", "hedge"),
+        }
+        concepts = [
+            label
+            for label, keywords in concept_map.items()
+            if any(keyword in source_text for keyword in keywords)
+        ]
+        return concepts or ["trend confirmation", "risk filtering", "source provenance"]
+
+    def _trader_intelligence_contradictions(
+        self,
+        display_name: str,
+        metadata_items: list[dict],
+        source_rows: list[dict],
+    ) -> list[TraderIntelligenceClaim]:
+        by_asset: dict[str, set[str]] = defaultdict(set)
+        for item in metadata_items:
+            asset = str(item.get("asset") or "").upper()
+            direction = str(item.get("direction") or "")
+            if asset and direction:
+                by_asset[asset].add(direction)
+        contradictions = [
+            self._trader_claim(
+                f"{display_name} has mixed indexed stances on {asset}: {', '.join(sorted(directions))}.",
+                0.64,
+                [self._trader_intelligence_citation(row) for row in source_rows[:4]],
+            )
+            for asset, directions in by_asset.items()
+            if "bullish" in directions and "bearish" in directions
+        ]
+        if contradictions:
+            return contradictions
+        return [
+            self._trader_claim(
+                "No direct bullish/bearish contradiction was detected in the current indexed evidence.",
+                0.52,
+                [self._trader_intelligence_citation(row) for row in source_rows[:2]],
+            )
+        ]
+
+    @staticmethod
+    def _trader_intelligence_evolution_summary(display_name: str, source_rows: list[dict]) -> str:
+        if len(source_rows) < 2:
+            return f"{display_name}'s evolution cannot be measured yet because only one source window is indexed."
+        oldest = source_rows[-1]
+        newest = source_rows[0]
+        return (
+            f"Evolution tracker compares earliest indexed source '{oldest.get('title')}' with latest source "
+            f"'{newest.get('title')}'. Add more chronological sources for stronger shift detection."
+        )
+
+    @staticmethod
+    def _trader_claim(
+        claim: str,
+        confidence: float,
+        citations: list[TraderIntelligenceCitation],
+    ) -> TraderIntelligenceClaim:
+        return TraderIntelligenceClaim(
+            claim=claim,
+            confidence=round(clamp(confidence, 0.05, 0.95), 3),
+            citations=citations,
+        )
+
+    @staticmethod
+    def _trader_intelligence_citation(row: dict) -> TraderIntelligenceCitation:
+        return TraderIntelligenceCitation(
+            source_id=int(row["id"]) if row.get("id") is not None else None,
+            title=str(row.get("title") or "Untitled source"),
+            url=row.get("url"),
+            timestamp=str(row.get("observed_at")) if row.get("observed_at") else None,
+        )
+
+    @staticmethod
+    def _dedupe_citations(citations: list[TraderIntelligenceCitation]) -> list[TraderIntelligenceCitation]:
+        seen: set[tuple[int | None, str | None]] = set()
+        deduped: list[TraderIntelligenceCitation] = []
+        for citation in citations:
+            key = (citation.source_id, citation.url)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(citation)
+        return deduped[:8]
+
+    def _to_trader_intelligence_profile_view(
+        self,
+        row: dict,
+        *,
+        repository: BotSocietyRepository,
+    ) -> TraderIntelligenceProfileView:
+        sources = [
+            self._to_trader_intelligence_source_view(source_row)
+            for source_row in repository.list_trader_intelligence_sources(int(row["id"]), limit=50)
+        ]
+        runs = [
+            self._to_trader_intelligence_run_view(run_row)
+            for run_row in repository.list_trader_intelligence_runs(int(row["id"]), limit=1)
+        ]
+
+        def section(raw: str | None, fallback: str) -> TraderIntelligenceSection:
+            payload = self._decode_json_payload(raw)
+            if not isinstance(payload, dict) or "summary" not in payload:
+                payload = {"summary": fallback, "claims": [], "warnings": []}
+            return TraderIntelligenceSection(**payload)
+
+        def claims(raw: str | None) -> list[TraderIntelligenceClaim]:
+            payload = self._decode_json_payload(raw)
+            if not isinstance(payload, list):
+                return []
+            return [TraderIntelligenceClaim(**item) for item in payload if isinstance(item, dict)]
+
+        warnings_payload = self._decode_json_payload(row.get("warnings_json"))
+        return TraderIntelligenceProfileView(
+            id=int(row["id"]),
+            user_slug=str(row["user_slug"]),
+            slug=str(row["slug"]),
+            display_name=str(row["display_name"]),
+            category=str(row["category"]),
+            source_type=str(row["source_type"]),
+            source_url=str(row["source_url"]),
+            status=str(row.get("status") or "queued"),
+            progress_stage=str(row.get("progress_stage") or "queued"),
+            source_count=int(row.get("source_count") or len(sources)),
+            confidence_score=round(float(row.get("confidence_score") or 0.0), 3),
+            worldview=section(row.get("worldview_json"), "Worldview analysis has not completed yet."),
+            frameworks=section(row.get("frameworks_json"), "Framework extraction has not completed yet."),
+            strategy=section(row.get("strategy_json"), "Strategy extraction has not completed yet."),
+            synthesis=section(row.get("synthesis_json"), "Synthesis brief has not completed yet."),
+            contradictions=claims(row.get("contradictions_json")),
+            evolution=section(row.get("evolution_json"), "Evolution tracking has not completed yet."),
+            vocabulary=claims(row.get("vocabulary_json")),
+            decision_rules=claims(row.get("decision_rules_json")),
+            risk_rules=claims(row.get("risk_rules_json")),
+            recommendations=claims(row.get("recommendations_json")),
+            warnings=warnings_payload if isinstance(warnings_payload, list) else [],
+            sources=sources,
+            latest_run=runs[0] if runs else None,
+            last_analyzed_at=row.get("last_analyzed_at"),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def _to_trader_intelligence_source_view(self, row: dict) -> TraderIntelligenceSourceView:
+        metadata = self._decode_json_payload(row.get("metadata_json"))
+        return TraderIntelligenceSourceView(
+            id=int(row["id"]),
+            profile_id=int(row["profile_id"]),
+            external_id=str(row["external_id"]),
+            source_type=str(row["source_type"]),
+            title=str(row["title"]),
+            url=str(row["url"]),
+            author=row.get("author"),
+            observed_at=str(row["observed_at"]),
+            summary=str(row["summary"]),
+            transcript_available=bool(row.get("transcript")),
+            metadata=metadata if isinstance(metadata, dict) else {},
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _to_trader_intelligence_run_view(row: dict) -> TraderIntelligenceRunView:
+        return TraderIntelligenceRunView(
+            id=int(row["id"]),
+            profile_id=int(row["profile_id"]),
+            user_slug=str(row["user_slug"]),
+            status=str(row["status"]),
+            stage=str(row["stage"]),
+            progress=round(float(row.get("progress") or 0.0), 3),
+            source_count=int(row.get("source_count") or 0),
+            error_message=row.get("error_message"),
+            started_at=str(row["started_at"]),
+            completed_at=row.get("completed_at"),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
 
     def follow_social_trader(
         self,

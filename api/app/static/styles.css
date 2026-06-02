@@ -10491,6 +10491,244 @@ body.dashboard-body.command-os.bit-engine-product-ui.dashboard-window-open .dash
   }
 }
 
+/* Trader Intelligence: compact expert-model research surface inside Social Traders. */
+.trader-intelligence-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.trader-intelligence-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 150px 170px minmax(220px, 2fr) 100px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.trader-intelligence-form label,
+.trader-intelligence-ask-form {
+  display: grid;
+  gap: 5px;
+}
+
+.trader-intelligence-form span,
+.trader-intelligence-section-grid article > span,
+.trader-intelligence-bottom-grid article > span,
+.trader-intelligence-compare-grid article > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.trader-intelligence-form input,
+.trader-intelligence-form select,
+.trader-intelligence-ask-form input {
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.trader-intelligence-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.6fr);
+  gap: 12px;
+  min-height: 340px;
+}
+
+.trader-intelligence-list,
+.trader-intelligence-detail,
+.trader-intelligence-output {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.trader-intelligence-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.trader-intelligence-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.trader-intelligence-row.is-selected {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 9%, transparent);
+}
+
+.trader-intelligence-row button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trader-intelligence-row strong,
+.trader-intelligence-detail-head h4 {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.trader-intelligence-row span,
+.trader-intelligence-row small,
+.trader-intelligence-detail-head span,
+.trader-intelligence-scoreline small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.trader-intelligence-detail {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.trader-intelligence-detail-head,
+.trader-intelligence-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.trader-intelligence-scoreline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.trader-intelligence-scoreline span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.trader-intelligence-section-grid,
+.trader-intelligence-bottom-grid,
+.trader-intelligence-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trader-intelligence-section-grid article,
+.trader-intelligence-bottom-grid article,
+.trader-intelligence-compare-grid article {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.trader-intelligence-section-grid p,
+.trader-intelligence-bottom-grid p,
+.trader-intelligence-output p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.trader-intelligence-section-grid ul,
+.trader-intelligence-bottom-grid ul,
+.trader-intelligence-compare-grid ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trader-intelligence-section-grid li,
+.trader-intelligence-bottom-grid li,
+.trader-intelligence-compare-grid li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+
+.trader-intelligence-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.trader-intelligence-citations a {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--brand);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.trader-intelligence-tools {
+  align-items: stretch;
+}
+
+.trader-intelligence-ask-form {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  flex: 1;
+}
+
+.trader-intelligence-output {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  min-height: 58px;
+}
+
+.trader-intelligence-empty {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+  .trader-intelligence-form,
+  .trader-intelligence-grid,
+  .trader-intelligence-section-grid,
+  .trader-intelligence-bottom-grid,
+  .trader-intelligence-compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trader-intelligence-tools {
+    display: grid;
+  }
+}
+
 body.dashboard-body.command-os.bit-engine-product-ui .ai-platform-hero {
   position: relative;
   display: grid;

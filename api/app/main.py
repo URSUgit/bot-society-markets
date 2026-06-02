@@ -85,6 +85,13 @@ from .models import (
     TradingOrderPreview,
     TradingRiskCheckResult,
     TradingOrderView,
+    TraderIntelligenceAskRequest,
+    TraderIntelligenceAskResponse,
+    TraderIntelligenceCompareRequest,
+    TraderIntelligenceCompareResponse,
+    TraderIntelligenceCreateRequest,
+    TraderIntelligenceProfileView,
+    TraderIntelligenceWorkspace,
     UserProfile,
     UserWalletConnectChallenge,
     UserWalletConnection,
@@ -563,6 +570,87 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
         return result
+
+    @app.get("/api/v1/me/trader-intelligence", response_model=TraderIntelligenceWorkspace)
+    @app.get("/api/me/trader-intelligence", response_model=TraderIntelligenceWorkspace)
+    def trader_intelligence_workspace(request: Request) -> TraderIntelligenceWorkspace:
+        user_slug = current_user_slug(request) or active_settings.default_user_slug
+        return get_service(request).get_trader_intelligence_workspace(user_slug)
+
+    @app.post("/api/v1/me/trader-intelligence", response_model=TraderIntelligenceProfileView)
+    @app.post("/api/me/trader-intelligence", response_model=TraderIntelligenceProfileView)
+    def create_trader_intelligence_profile(
+        payload: TraderIntelligenceCreateRequest,
+        request: Request,
+    ) -> TraderIntelligenceProfileView:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).create_trader_intelligence_profile(user_slug, payload))
+        audit_event(
+            request,
+            action="trader_intelligence.create",
+            resource_type="trader_intelligence_profile",
+            resource_id=str(profile.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "name": payload.name,
+                "category": payload.category,
+                "source_type": payload.source_type,
+                "source_url": payload.source_url,
+                "source_count": profile.source_count,
+            },
+        )
+        return profile
+
+    @app.post("/api/v1/me/trader-intelligence/{profile_id}/rerun", response_model=TraderIntelligenceProfileView)
+    @app.post("/api/me/trader-intelligence/{profile_id}/rerun", response_model=TraderIntelligenceProfileView)
+    def rerun_trader_intelligence_profile(profile_id: int, request: Request) -> TraderIntelligenceProfileView:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).rerun_trader_intelligence_profile(user_slug, profile_id))
+        audit_event(
+            request,
+            action="trader_intelligence.rerun",
+            resource_type="trader_intelligence_profile",
+            resource_id=str(profile_id),
+            actor_user_slug=user_slug,
+            after_state={"status": profile.status, "source_count": profile.source_count},
+        )
+        return profile
+
+    @app.post("/api/v1/me/trader-intelligence/{profile_id}/ask", response_model=TraderIntelligenceAskResponse)
+    @app.post("/api/me/trader-intelligence/{profile_id}/ask", response_model=TraderIntelligenceAskResponse)
+    def ask_trader_intelligence(
+        profile_id: int,
+        payload: TraderIntelligenceAskRequest,
+        request: Request,
+    ) -> TraderIntelligenceAskResponse:
+        user_slug = authenticated_user_slug(request)
+        answer = run_validated(lambda: get_service(request).ask_trader_intelligence(user_slug, profile_id, payload))
+        audit_event(
+            request,
+            action="trader_intelligence.ask",
+            resource_type="trader_intelligence_profile",
+            resource_id=str(profile_id),
+            actor_user_slug=user_slug,
+            after_state={"question": payload.question, "confidence": answer.confidence},
+        )
+        return answer
+
+    @app.post("/api/v1/me/trader-intelligence/compare", response_model=TraderIntelligenceCompareResponse)
+    @app.post("/api/me/trader-intelligence/compare", response_model=TraderIntelligenceCompareResponse)
+    def compare_trader_intelligence(
+        payload: TraderIntelligenceCompareRequest,
+        request: Request,
+    ) -> TraderIntelligenceCompareResponse:
+        user_slug = authenticated_user_slug(request)
+        comparison = run_validated(lambda: get_service(request).compare_trader_intelligence(user_slug, payload))
+        audit_event(
+            request,
+            action="trader_intelligence.compare",
+            resource_type="trader_intelligence_profile",
+            actor_user_slug=user_slug,
+            after_state={"profile_ids": comparison.profile_ids},
+        )
+        return comparison
 
     @app.post("/api/v1/me/social-traders/follow", response_model=SocialTradingEnvelope)
     @app.post("/api/me/social-traders/follow", response_model=SocialTradingEnvelope)

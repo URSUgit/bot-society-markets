@@ -629,6 +629,89 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert "opened_position" in execute_audit["after_state"]["decision_actions"]
 
 
+def test_trader_intelligence_engine_create_ask_and_compare_flow() -> None:
+    with build_client() as client:
+        blocked_response = client.post(
+            "/api/me/trader-intelligence",
+            json={
+                "name": "Blocked Expert",
+                "category": "trader",
+                "source_type": "youtube_channel",
+                "source_url": "https://www.youtube.com/@blocked",
+            },
+        )
+        assert blocked_response.status_code == 401
+
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Research User",
+                "email": "research@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        first_response = client.post(
+            "/api/me/trader-intelligence",
+            json={
+                "name": "CycleCraft Crypto",
+                "category": "trader",
+                "source_type": "youtube_channel",
+                "source_url": "https://www.youtube.com/@cyclecraft",
+                "max_sources": 8,
+            },
+        )
+        assert first_response.status_code == 200
+        first_profile = first_response.json()
+        assert first_profile["status"] == "completed"
+        assert first_profile["source_count"] >= 1
+        assert first_profile["worldview"]["claims"][0]["citations"]
+        assert first_profile["frameworks"]["summary"]
+        assert first_profile["synthesis"]["summary"]
+        assert "personalized financial advice" in " ".join(first_profile["warnings"]).lower()
+
+        second_response = client.post(
+            "/api/me/trader-intelligence",
+            json={
+                "name": "Macro Risk Desk",
+                "category": "macro_thinker",
+                "source_type": "manual_url_list",
+                "source_url": "https://example.com/macro-risk-desk",
+                "max_sources": 1,
+            },
+        )
+        assert second_response.status_code == 200
+        second_profile = second_response.json()
+        assert second_profile["status"] == "completed"
+
+        workspace_response = client.get("/api/me/trader-intelligence")
+        assert workspace_response.status_code == 200
+        workspace = workspace_response.json()
+        assert len(workspace["profiles"]) == 2
+        assert any(template["key"] == "worldview" for template in workspace["prompt_templates"])
+
+        ask_response = client.post(
+            f"/api/me/trader-intelligence/{first_profile['id']}/ask",
+            json={"question": "What would this expert say about Bitcoin risk right now?"},
+        )
+        assert ask_response.status_code == 200
+        ask_payload = ask_response.json()
+        assert ask_payload["citations"]
+        assert "not a trade recommendation" in ask_payload["answer"].lower()
+
+        compare_response = client.post(
+            "/api/me/trader-intelligence/compare",
+            json={"profile_ids": [first_profile["id"], second_profile["id"]]},
+        )
+        assert compare_response.status_code == 200
+        compare_payload = compare_response.json()
+        assert len(compare_payload["profile_ids"]) == 2
+        assert compare_payload["agreement_points"]
+        assert compare_payload["disagreement_points"]
+        assert "research prompts" in " ".join(compare_payload["warnings"]).lower()
+
+
 def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> None:
     provider = YouTubeSocialDiscoveryProvider(
         api_key="bad-key",

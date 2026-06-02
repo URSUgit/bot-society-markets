@@ -426,6 +426,74 @@ social_discovery_runs_table = Table(
     Column("completed_at", String(64), nullable=False),
 )
 
+trader_intelligence_profiles_table = Table(
+    "trader_intelligence_profiles",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("slug", String(180), nullable=False),
+    Column("display_name", String(255), nullable=False),
+    Column("category", String(48), nullable=False),
+    Column("source_type", String(48), nullable=False),
+    Column("source_url", Text, nullable=False),
+    Column("status", String(32), nullable=False, default="queued", server_default="queued"),
+    Column("progress_stage", String(48), nullable=False, default="queued", server_default="queued"),
+    Column("source_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("confidence_score", Float, nullable=False, default=0.0, server_default="0"),
+    Column("worldview_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("frameworks_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("strategy_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("synthesis_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("contradictions_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("evolution_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("vocabulary_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("decision_rules_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("risk_rules_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("recommendations_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("warnings_json", Text, nullable=False, default="[]", server_default="[]"),
+    Column("last_analyzed_at", String(64)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("user_slug", "slug", name="uq_trader_intelligence_profiles_user_slug"),
+)
+
+trader_intelligence_sources_table = Table(
+    "trader_intelligence_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("profile_id", Integer, ForeignKey("trader_intelligence_profiles.id", ondelete="CASCADE"), nullable=False),
+    Column("external_id", String(255), nullable=False),
+    Column("source_type", String(48), nullable=False),
+    Column("title", String(255), nullable=False),
+    Column("url", Text, nullable=False),
+    Column("author", String(255)),
+    Column("observed_at", String(64), nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("transcript", Text, nullable=False, default="", server_default=""),
+    Column("metadata_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("profile_id", "external_id", name="uq_trader_intelligence_sources_profile_external"),
+)
+
+trader_intelligence_runs_table = Table(
+    "trader_intelligence_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("profile_id", Integer, ForeignKey("trader_intelligence_profiles.id", ondelete="CASCADE"), nullable=False),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("stage", String(48), nullable=False),
+    Column("progress", Float, nullable=False, default=0.0, server_default="0"),
+    Column("source_count", Integer, nullable=False, default=0, server_default="0"),
+    Column("error_message", Text),
+    Column("result_json", Text, nullable=False, default="{}", server_default="{}"),
+    Column("started_at", String(64), nullable=False),
+    Column("completed_at", String(64)),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
 watchlist_items_table = Table(
     "watchlist_items",
     metadata,
@@ -554,6 +622,9 @@ Index("idx_social_traders_score", social_traders_table.c.composite_score.desc())
 Index("idx_social_discovery_runs_started", social_discovery_runs_table.c.started_at.desc())
 Index("idx_social_trader_events_trader_observed", social_trader_events_table.c.trader_id, social_trader_events_table.c.observed_at.desc())
 Index("idx_social_trader_allocations_user", social_trader_allocations_table.c.user_slug, social_trader_allocations_table.c.updated_at.desc())
+Index("idx_trader_intelligence_profiles_user_updated", trader_intelligence_profiles_table.c.user_slug, trader_intelligence_profiles_table.c.updated_at.desc())
+Index("idx_trader_intelligence_sources_profile_observed", trader_intelligence_sources_table.c.profile_id, trader_intelligence_sources_table.c.observed_at.desc())
+Index("idx_trader_intelligence_runs_profile_created", trader_intelligence_runs_table.c.profile_id, trader_intelligence_runs_table.c.created_at.desc())
 Index("idx_user_wallet_connections_user_updated", user_wallet_connections_table.c.user_slug, user_wallet_connections_table.c.updated_at.desc())
 Index(
     "idx_user_wallet_connect_challenges_user_expires",
@@ -744,6 +815,9 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_paper_positions_user_opened_id ON paper_positions (user_slug, opened_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_social_trader_events_trader_observed_id ON social_trader_events (trader_id, observed_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_social_trader_allocations_user_updated ON social_trader_allocations (user_slug, is_active DESC, updated_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_intelligence_profiles_user_updated_id ON trader_intelligence_profiles (user_slug, updated_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_intelligence_sources_profile_observed_id ON trader_intelligence_sources (profile_id, observed_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_trader_intelligence_runs_profile_created_id ON trader_intelligence_runs (profile_id, created_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_user_wallet_connections_user_updated ON user_wallet_connections (user_slug, updated_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_user_wallet_connect_challenges_user_expires ON user_wallet_connect_challenges (user_slug, expires_at DESC, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_user_created_id ON alert_delivery_events (user_slug, created_at DESC, id DESC)",

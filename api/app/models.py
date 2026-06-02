@@ -29,6 +29,9 @@ SocialRiskLevel = Literal["low", "medium", "high"]
 SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
 SocialSourceState = Literal["live", "indexed", "ready_to_scan", "planned", "connector_build_required"]
 CreatorBotLearningStage = Literal["awaiting_evidence", "youtube_profile_active", "multi_source_profile", "paper_validation"]
+TraderIntelligenceCategory = Literal["trader", "investor", "educator", "founder", "analyst", "macro_thinker", "other"]
+TraderIntelligenceSourceType = Literal["youtube_channel", "youtube_playlist", "youtube_video", "podcast", "blog", "newsletter", "document", "manual_url_list", "other"]
+TraderIntelligenceStatus = Literal["queued", "importing", "transcribing", "analyzing", "completed", "failed"]
 AuthOnboardingStage = Literal["identity", "risk", "suitability", "kyc", "complete"]
 KycStatus = Literal["not_started", "pending", "approved", "rejected"]
 UiTheme = Literal["day", "night"]
@@ -1260,6 +1263,148 @@ class SocialTradingSnapshot(BaseModel):
 
 class SocialTradingEnvelope(BaseModel):
     social_trading: SocialTradingSnapshot
+
+
+class TraderIntelligenceCitation(BaseModel):
+    source_id: int | None = None
+    title: str
+    url: str | None = None
+    timestamp: str | None = None
+
+
+class TraderIntelligenceClaim(BaseModel):
+    claim: str
+    confidence: float = Field(ge=0, le=1)
+    citations: list[TraderIntelligenceCitation] = Field(default_factory=list)
+
+
+class TraderIntelligenceSection(BaseModel):
+    summary: str
+    claims: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TraderIntelligenceSourceView(BaseModel):
+    id: int
+    profile_id: int
+    external_id: str
+    source_type: TraderIntelligenceSourceType | str
+    title: str
+    url: str
+    author: str | None = None
+    observed_at: str
+    summary: str
+    transcript_available: bool = False
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+
+
+class TraderIntelligenceRunView(BaseModel):
+    id: int
+    profile_id: int
+    user_slug: str
+    status: TraderIntelligenceStatus
+    stage: str
+    progress: float = Field(ge=0, le=1)
+    source_count: int = Field(ge=0)
+    error_message: str | None = None
+    started_at: str
+    completed_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class TraderIntelligenceProfileView(BaseModel):
+    id: int
+    user_slug: str
+    slug: str
+    display_name: str
+    category: TraderIntelligenceCategory | str
+    source_type: TraderIntelligenceSourceType | str
+    source_url: str
+    status: TraderIntelligenceStatus
+    progress_stage: str
+    source_count: int = Field(ge=0)
+    confidence_score: float = Field(ge=0, le=1)
+    worldview: TraderIntelligenceSection
+    frameworks: TraderIntelligenceSection
+    strategy: TraderIntelligenceSection
+    synthesis: TraderIntelligenceSection
+    contradictions: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    evolution: TraderIntelligenceSection
+    vocabulary: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    decision_rules: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    risk_rules: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    recommendations: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    sources: list[TraderIntelligenceSourceView] = Field(default_factory=list)
+    latest_run: TraderIntelligenceRunView | None = None
+    last_analyzed_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class TraderIntelligenceWorkspace(BaseModel):
+    generated_at: str
+    summary: str
+    profiles: list[TraderIntelligenceProfileView] = Field(default_factory=list)
+    prompt_templates: list[dict[str, str]] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+
+
+class TraderIntelligenceCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    category: TraderIntelligenceCategory = "trader"
+    source_type: TraderIntelligenceSourceType = "youtube_channel"
+    source_url: str = Field(min_length=2, max_length=1000)
+    max_sources: int = Field(default=12, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def normalize_create_request(self) -> "TraderIntelligenceCreateRequest":
+        self.name = re.sub(r"\s+", " ", self.name).strip()
+        self.source_url = re.sub(r"\s+", " ", self.source_url).strip()
+        return self
+
+
+class TraderIntelligenceAskRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=800)
+
+    @model_validator(mode="after")
+    def normalize_question(self) -> "TraderIntelligenceAskRequest":
+        self.question = re.sub(r"\s+", " ", self.question).strip()
+        return self
+
+
+class TraderIntelligenceAskResponse(BaseModel):
+    profile_id: int
+    question: str
+    answer: str
+    confidence: float = Field(ge=0, le=1)
+    citations: list[TraderIntelligenceCitation] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TraderIntelligenceCompareRequest(BaseModel):
+    profile_ids: list[int] = Field(min_length=2, max_length=5)
+
+    @model_validator(mode="after")
+    def normalize_profile_ids(self) -> "TraderIntelligenceCompareRequest":
+        self.profile_ids = list(dict.fromkeys(int(item) for item in self.profile_ids))
+        if len(self.profile_ids) < 2:
+            raise ValueError("Select at least two expert profiles to compare")
+        return self
+
+
+class TraderIntelligenceCompareResponse(BaseModel):
+    generated_at: str
+    profile_ids: list[int]
+    agreement_points: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    disagreement_points: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    unique_edges: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    opportunity_gaps: list[TraderIntelligenceClaim] = Field(default_factory=list)
+    summary: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SocialDiscoveryRunResult(BaseModel):

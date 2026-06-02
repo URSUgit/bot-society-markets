@@ -221,6 +221,72 @@
             <button class="button primary small-button" id="social-analyze-button" type="submit">Build Creator Bot</button>
           </div>
         </form>
+        <div class="trader-intelligence-panel" id="trader-intelligence-panel">
+          <div class="workspace-head">
+            <div>
+              <p class="eyebrow">Trader Intelligence</p>
+              <h4>Automated expert research briefs</h4>
+            </div>
+            <span class="status-pill" id="trader-intelligence-badge">Research mode</span>
+          </div>
+          <form class="trader-intelligence-form" id="trader-intelligence-form">
+            <label>
+              <span>Expert</span>
+              <input id="trader-intelligence-name" type="text" maxlength="160" placeholder="Creator, trader, fund manager, analyst" required>
+            </label>
+            <label>
+              <span>Category</span>
+              <select id="trader-intelligence-category">
+                <option value="trader">Trader</option>
+                <option value="investor">Investor</option>
+                <option value="educator">Educator</option>
+                <option value="founder">Founder</option>
+                <option value="analyst">Analyst</option>
+                <option value="macro_thinker">Macro thinker</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              <span>Source type</span>
+              <select id="trader-intelligence-source-type">
+                <option value="youtube_channel">YouTube channel</option>
+                <option value="youtube_playlist">YouTube playlist</option>
+                <option value="youtube_video">YouTube video</option>
+                <option value="podcast">Podcast</option>
+                <option value="blog">Blog</option>
+                <option value="newsletter">Newsletter</option>
+                <option value="document">Document</option>
+                <option value="manual_url_list">Manual URLs</option>
+              </select>
+            </label>
+            <label class="trader-intelligence-source">
+              <span>Source URL or query</span>
+              <input id="trader-intelligence-source-url" type="text" maxlength="1000" placeholder="youtube.com/@channel, playlist, podcast feed, blog URL" required>
+            </label>
+            <label>
+              <span>Sources</span>
+              <select id="trader-intelligence-max-sources">
+                <option value="8">8</option>
+                <option value="12" selected>12</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+            <button class="button primary small-button" type="submit">Extract Expert Model</button>
+          </form>
+          <div class="trader-intelligence-grid">
+            <div class="trader-intelligence-list" id="trader-intelligence-list"></div>
+            <div class="trader-intelligence-detail" id="trader-intelligence-detail"></div>
+          </div>
+          <div class="trader-intelligence-tools">
+            <form id="trader-intelligence-ask-form" class="trader-intelligence-ask-form">
+              <input id="trader-intelligence-ask-input" type="search" maxlength="800" placeholder="Ask the selected expert model about a market situation">
+              <button class="button secondary small-button" type="submit">Ask</button>
+            </form>
+            <button class="button tertiary small-button" id="trader-intelligence-compare-button" type="button">Compare Selected</button>
+          </div>
+          <div class="trader-intelligence-output" id="trader-intelligence-output"></div>
+        </div>
         <div class="social-marketplace-toolbar" id="social-marketplace-toolbar" aria-label="Social trader marketplace filters">
           <label>
             <span>Search manager</span>
