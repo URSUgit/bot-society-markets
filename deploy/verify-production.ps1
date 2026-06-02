@@ -1,5 +1,6 @@
 param(
     [string]$RootUrl = "https://bitprivat.com",
+    [string]$AppUrl = "https://app.bitprivat.com",
     [string]$ApiUrl = "https://api.bitprivat.com",
     [string]$StatusUrl = "https://status.bitprivat.com",
     [int]$Attempts = 3,
@@ -109,6 +110,11 @@ $checks = @(
         Name = "Dashboard shell"
         Url = "$RootUrl/dashboard?v=$cacheBust"
         Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*market-console-section*" }
+    },
+    @{
+        Name = "App dashboard"
+        Url = "$AppUrl/?v=$cacheBust"
+        Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*market-console-section*" -and $r.Content -like "*trader-intelligence-section*" }
     },
     @{
         Name = "API pulse"

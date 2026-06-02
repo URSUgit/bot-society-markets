@@ -15,6 +15,7 @@ import { CONNECTOR_DIAGNOSTICS, DASHBOARD_SNAPSHOT, LANDING_SNAPSHOT, SYSTEM_PUL
 const RESERVED_ROOT_REWRITES = {
   "bitprivat.com": "/landing",
   "www.bitprivat.com": "/landing",
+  "app.bitprivat.com": "/dashboard",
   "api.bitprivat.com": "/health",
   "status.bitprivat.com": "/status",
 };
@@ -321,6 +322,9 @@ export default {
       && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/landing" || incomingUrl.pathname === "/portfolio")
     ) {
       return assetResponse(INDEX_HTML, "text/html; charset=utf-8");
+    }
+    if (incomingUrl.hostname === "app.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/dashboard" || incomingUrl.pathname === "/dashboard/")) {
+      return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
     }
     if (incomingUrl.pathname === "/dashboard" || incomingUrl.pathname === "/dashboard/" || incomingUrl.pathname === "/app") {
       return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");

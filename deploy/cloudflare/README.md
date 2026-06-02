@@ -6,6 +6,7 @@ This deployment updates the existing `bot-society-markets` Worker and bridges th
 
 - `bitprivat.com` serves the premium landing page from `/landing`
 - `www.bitprivat.com` mirrors the public website from `/landing`
+- `app.bitprivat.com` serves the dashboard through the edge router instead of depending on a direct Akash CNAME
 - `api.bitprivat.com` proxies API traffic to the app origin
 - `status.bitprivat.com` resolves to the hosted status page
 
@@ -45,6 +46,7 @@ After deploy, confirm:
 ```powershell
 curl.exe https://bitprivat.com/
 curl.exe https://bitprivat.com/dashboard
+curl.exe https://app.bitprivat.com/
 curl.exe https://api.bitprivat.com/api/v1/system/pulse
 curl.exe https://status.bitprivat.com/
 ```

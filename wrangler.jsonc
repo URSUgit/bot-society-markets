@@ -17,6 +17,10 @@
       "zone_name": "bitprivat.com"
     },
     {
+      "pattern": "app.bitprivat.com/*",
+      "zone_name": "bitprivat.com"
+    },
+    {
       "pattern": "api.bitprivat.com/*",
       "zone_name": "bitprivat.com"
     },
