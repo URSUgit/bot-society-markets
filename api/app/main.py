@@ -46,6 +46,8 @@ from .models import (
     DashboardSnapshot,
     EdgeSnapshot,
     FeatureReadinessEnvelope,
+    FinancialSignalExtractionRequest,
+    FinancialSignalExtractionResult,
     FollowBotRequest,
     InfrastructureReadinessEnvelope,
     LandingSnapshot,
@@ -572,6 +574,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
         return result
+
+    @app.post("/api/v1/social-traders/extract-signals", response_model=FinancialSignalExtractionResult)
+    @app.post("/api/social-traders/extract-signals", response_model=FinancialSignalExtractionResult)
+    def extract_social_trader_signals(
+        payload: FinancialSignalExtractionRequest,
+        request: Request,
+    ) -> FinancialSignalExtractionResult:
+        return run_validated(lambda: get_service(request).extract_social_trader_signals(payload))
 
     @app.get("/api/v1/me/trader-intelligence", response_model=TraderIntelligenceWorkspace)
     @app.get("/api/me/trader-intelligence", response_model=TraderIntelligenceWorkspace)

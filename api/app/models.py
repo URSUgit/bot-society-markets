@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Direction = Literal["bullish", "bearish", "neutral"]
 PredictionStatus = Literal["pending", "scored"]
@@ -29,6 +29,10 @@ SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
 SocialRiskLevel = Literal["low", "medium", "high"]
 SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
 SocialValidationState = Literal["validated", "proxy"]
+FinancialSignalAssetType = Literal["crypto", "equity", "index", "commodity", "fx"]
+FinancialSignalDirection = Literal["long", "short", "neutral"]
+FinancialSignalClaimType = Literal["tradeable", "commentary", "educational"]
+FinancialSignalHorizon = Literal["intraday", "swing", "multiweek"]
 SocialSourceState = Literal["live", "indexed", "ready_to_scan", "planned", "connector_build_required"]
 CreatorBotLearningStage = Literal["awaiting_evidence", "youtube_profile_active", "multi_source_profile", "paper_validation"]
 TraderIntelligenceCategory = Literal["trader", "investor", "educator", "founder", "analyst", "macro_thinker", "other"]
@@ -1172,6 +1176,63 @@ class SocialTraderDecision(BaseModel):
     source_title: str
     source_url: str
     observed_at: str
+
+
+class FinancialSignalExtractionRequest(BaseModel):
+    video_id: str = Field(min_length=1, max_length=128)
+    channel_id: str = Field(min_length=1, max_length=128)
+    video_publish_ts: str = Field(min_length=1, max_length=64)
+    language: str = Field(default="en", min_length=2, max_length=12)
+    transcript: str = Field(min_length=1, max_length=50000)
+
+    @field_validator("video_id", "channel_id", "video_publish_ts", "language")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be blank")
+        return cleaned
+
+
+class ExtractedFinancialSignal(BaseModel):
+    asset: str
+    asset_type: FinancialSignalAssetType
+    direction: FinancialSignalDirection
+    claim_type: FinancialSignalClaimType
+    conviction: float = Field(ge=0, le=1)
+    horizon: FinancialSignalHorizon
+    horizon_hours: int = Field(ge=1, le=87600)
+    entry: float | None = None
+    target: float | None = None
+    invalidation: float | None = None
+    is_personal_position: bool
+    evidence_quote: str = Field(min_length=1, max_length=260)
+    evidence_timestamp_sec: int = Field(ge=0)
+    extractor_confidence: float = Field(ge=0, le=1)
+
+    @field_validator("asset")
+    @classmethod
+    def normalize_asset(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if not cleaned:
+            raise ValueError("asset must not be blank")
+        return cleaned
+
+    @field_validator("evidence_quote")
+    @classmethod
+    def require_short_quote(cls, value: str) -> str:
+        cleaned = re.sub(r"\s+", " ", value).strip()
+        if len(cleaned.split()) > 30:
+            raise ValueError("evidence_quote must be 30 words or fewer")
+        return cleaned
+
+
+class FinancialSignalExtractionResult(BaseModel):
+    video_id: str
+    channel_id: str
+    video_publish_ts: str
+    language: str
+    signals: list[ExtractedFinancialSignal] = Field(default_factory=list)
 
 
 class SocialTraderAssetExposure(BaseModel):

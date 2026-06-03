@@ -19,6 +19,7 @@ from .auth import AuthManager
 from .billing import StripeClient, StripeClientError, StripeSignatureError
 from .config import Settings
 from .database import Database
+from .financial_signal_extractor import extract_financial_signals_from_transcript
 from .models import (
     AdvancedBacktestExport,
     AlertDelivery,
@@ -67,6 +68,8 @@ from .models import (
     ConnectorStatusItem,
     FeatureReadinessItem,
     FeatureReadinessSnapshot,
+    FinancialSignalExtractionRequest,
+    FinancialSignalExtractionResult,
     InfrastructureReadinessSnapshot,
     InfrastructureTask,
     InfrastructureTaskState,
@@ -814,6 +817,12 @@ class BotSocietyService:
                 pass
             self._clear_live_caches()
             raise
+
+    def extract_social_trader_signals(
+        self,
+        payload: FinancialSignalExtractionRequest,
+    ) -> FinancialSignalExtractionResult:
+        return extract_financial_signals_from_transcript(payload)
 
     def _persist_social_discovery_result(
         self,

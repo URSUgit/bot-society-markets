@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from api.app.config import Settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
+from api.app.financial_signal_extractor import FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
 from api.app.main import create_app
 from api.app.repository import BotSocietyRepository
 from api.app.social_intelligence import DemoSocialDiscoveryProvider, YouTubeSocialDiscoveryProvider
@@ -714,6 +715,82 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         execute_audit = next(entry for entry in audit_logs if entry["action"] == "social_trader.execute_managed_paper")
         assert execute_audit["after_state"]["decision_count"] >= len(opened_decisions)
         assert "opened_position" in execute_audit["after_state"]["decision_actions"]
+
+
+def test_financial_signal_extraction_endpoint_returns_strict_claims() -> None:
+    transcript = "\n".join(
+        [
+            "[00:42] I'm long Bitcoin here with a target of 112000 and a stop under 99500 for this week.",
+            "[01:20] Nasdaq is probably chop today, I would wait and no trade.",
+            "[02:05] This is educational: Ethereum gas fees mean users pay validators to process transactions.",
+        ]
+    )
+    with build_client() as client:
+        response = client.post(
+            "/api/v1/social-traders/extract-signals",
+            json={
+                "video_id": "vid-001",
+                "channel_id": "chan-001",
+                "video_publish_ts": "2026-06-02T14:02:00Z",
+                "language": "en",
+                "transcript": transcript,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+
+    assert payload["video_id"] == "vid-001"
+    assert payload["channel_id"] == "chan-001"
+    assert payload["video_publish_ts"] == "2026-06-02T14:02:00Z"
+    assert payload["language"] == "en"
+    assert len(payload["signals"]) == 3
+
+    btc_signal = next(signal for signal in payload["signals"] if signal["asset"] == "BTC")
+    assert btc_signal["asset_type"] == "crypto"
+    assert btc_signal["direction"] == "long"
+    assert btc_signal["claim_type"] == "tradeable"
+    assert btc_signal["target"] == 112000
+    assert btc_signal["invalidation"] == 99500
+    assert btc_signal["horizon"] == "swing"
+    assert btc_signal["horizon_hours"] == 168
+    assert btc_signal["is_personal_position"] is True
+    assert btc_signal["evidence_timestamp_sec"] == 42
+    assert len(btc_signal["evidence_quote"].split()) <= 30
+
+    ndx_signal = next(signal for signal in payload["signals"] if signal["asset"] == "NDX")
+    assert ndx_signal["asset_type"] == "index"
+    assert ndx_signal["direction"] == "neutral"
+    assert ndx_signal["claim_type"] == "commentary"
+    assert ndx_signal["entry"] is None
+    assert ndx_signal["target"] is None
+    assert ndx_signal["invalidation"] is None
+
+    eth_signal = next(signal for signal in payload["signals"] if signal["asset"] == "ETH")
+    assert eth_signal["claim_type"] == "educational"
+    assert eth_signal["direction"] == "neutral"
+    assert eth_signal["extractor_confidence"] >= 0.4
+
+
+def test_financial_signal_extraction_returns_empty_for_no_market_claims() -> None:
+    with build_client() as client:
+        response = client.post(
+            "/api/social-traders/extract-signals",
+            json={
+                "video_id": "vid-empty",
+                "channel_id": "chan-empty",
+                "video_publish_ts": "2026-06-02T14:02:00Z",
+                "language": "en",
+                "transcript": "[00:05] Welcome back everyone, remember to like and subscribe.",
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["signals"] == []
+
+
+def test_financial_signal_extractor_prompt_is_json_only_contract() -> None:
+    assert "return json only" in FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT.lower()
+    assert "No explanations" in FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
+    assert '"signals": [ Signal, ... ]' in FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
 
 
 def test_trader_intelligence_engine_create_ask_and_compare_flow() -> None:
