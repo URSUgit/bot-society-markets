@@ -67,6 +67,7 @@ from .models import (
     ConnectorStatusItem,
     InfrastructureReadinessSnapshot,
     InfrastructureTask,
+    InfrastructureTaskState,
     LandingSnapshot,
     LaunchReadinessSnapshot,
     LaunchReadinessTrack,
@@ -79,6 +80,9 @@ from .models import (
     NotificationHealthSnapshot,
     NotificationRetryResult,
     OperationSnapshot,
+    OperationsInfraCost,
+    OperationsInfrastructureSnapshot,
+    OperationsInfraService,
     PaperPortfolioSummary,
     PaperPositionView,
     PaperSimulationResult,
@@ -5490,6 +5494,255 @@ class BotSocietyService:
             steps=steps,
         )
 
+    def get_operations_infrastructure(
+        self,
+        provider_status: ProviderStatus | None = None,
+        system_pulse: SystemPulseSnapshot | None = None,
+    ) -> OperationsInfrastructureSnapshot:
+        provider_status = provider_status or self.get_provider_status()
+        system_pulse = system_pulse or self.get_system_pulse(provider_status=provider_status)
+        repository = BotSocietyRepository(self.database)
+        latest_operation = self._latest_operation(repository)
+        discovery_rows = repository.list_social_discovery_runs(limit=1)
+        latest_discovery = self._to_social_discovery_run(discovery_rows[0]) if discovery_rows else None
+
+        fallback_active = any(
+            (
+                provider_status.market_fallback_active,
+                provider_status.signal_fallback_active,
+                provider_status.macro_fallback_active,
+                provider_status.wallet_fallback_active,
+                provider_status.social_discovery_fallback_active,
+            )
+        )
+        cloudflare_ready = bool(self.settings.canonical_host and self.settings.force_https)
+        akash_active = self.settings.deployment_target == "akash"
+        worker_active = self.settings.deployment_target in {"akash", "render"} and self.settings.worker_interval_seconds > 0
+        database_ready = provider_status.database_backend == "postgresql"
+        social_ready = provider_status.social_discovery_ready
+        market_ready = provider_status.market_provider_ready
+
+        services = [
+            OperationsInfraService(
+                key="cloudflare-edge",
+                label="Cloudflare Edge Router",
+                status="live" if cloudflare_ready else "attention",
+                mode="worker-router",
+                target=", ".join(self._public_hosts()) or "local preview",
+                detail=(
+                    "Public app, API, root, and status routes are fronted by the Cloudflare Worker."
+                    if cloudflare_ready
+                    else "Cloudflare routing is available, but canonical HTTPS is not fully enforced in this runtime."
+                ),
+                metrics={
+                    "fallback_active": fallback_active,
+                    "live_origin_required": True,
+                },
+                next_action=(
+                    "Keep Cloudflare secrets in GitHub and verify the Worker after every route change."
+                    if cloudflare_ready
+                    else "Set BSM_CANONICAL_HOST and BSM_FORCE_HTTPS=true on production."
+                ),
+            ),
+            OperationsInfraService(
+                key="akash-origin",
+                label="Akash Backend Origin",
+                status="live" if akash_active else "standby",
+                mode=self.settings.deployment_target,
+                target="FastAPI web service + background worker" if akash_active else "non-Akash runtime",
+                detail=(
+                    "Akash is serving the live FastAPI origin behind Cloudflare."
+                    if akash_active
+                    else "This runtime is not hosted on Akash; Akash status applies only to production deployments."
+                ),
+                freshness=latest_operation.completed_at if latest_operation and latest_operation.completed_at else (latest_operation.started_at if latest_operation else None),
+                metrics={
+                    "web_cpu_units": 1.0,
+                    "web_memory_mib": 1024,
+                    "worker_cpu_units": 0.5,
+                    "worker_memory_mib": 768,
+                    "worker_interval_seconds": self.settings.worker_interval_seconds,
+                },
+                next_action=(
+                    "Expose lease DSEQ/provider in a private operator-only page once auth roles are hardened."
+                    if akash_active
+                    else "Keep Akash as an optional worker/GPU lane or migrate it out of the primary path."
+                ),
+            ),
+            OperationsInfraService(
+                key="neon-postgres",
+                label="Managed Postgres",
+                status="live" if database_ready else "attention",
+                mode=provider_status.database_backend,
+                target=provider_status.database_target,
+                detail=(
+                    "Durable database storage is active through Postgres."
+                    if database_ready
+                    else "This runtime is using SQLite-like preview storage; not safe for commercial launch."
+                ),
+                metrics={
+                    "backend": provider_status.database_backend,
+                    "durable": database_ready,
+                },
+                next_action=(
+                    "Keep migrations automated and monitor database egress before heavy simulations."
+                    if database_ready
+                    else "Promote to Neon/Postgres before paid beta or long-lived worker automation."
+                ),
+            ),
+            OperationsInfraService(
+                key="background-worker",
+                label="Background Worker",
+                status="live" if worker_active else "planned",
+                mode=f"{self.settings.worker_interval_seconds}s cycle",
+                target="market refresh, signal scoring, alerts, social discovery",
+                detail=(
+                    "A separate worker process can continuously refresh market and social intelligence."
+                    if worker_active
+                    else "Background jobs are development/local only in this runtime."
+                ),
+                freshness=latest_operation.completed_at if latest_operation and latest_operation.completed_at else None,
+                metrics={
+                    "worker_interval_seconds": self.settings.worker_interval_seconds,
+                    "social_discovery_interval_seconds": self.settings.social_discovery_interval_seconds,
+                    "recent_signals": system_pulse.total_recent_signals,
+                    "pending_predictions": system_pulse.pending_predictions,
+                },
+                next_action="Add worker heartbeat/audit events so freshness can be verified without reading Akash logs.",
+            ),
+            OperationsInfraService(
+                key="youtube-social-engine",
+                label="YouTube Social Trader Engine",
+                status="live" if social_ready and provider_status.social_discovery_live_capable else ("ready" if social_ready else "attention"),
+                mode=provider_status.social_discovery_provider_mode,
+                target=provider_status.social_discovery_provider_source,
+                detail=(
+                    "YouTube Data API discovery is configured and can build creator-trader evidence profiles."
+                    if provider_status.social_discovery_live_capable
+                    else "Social trader discovery is in demo/research mode or waiting for provider configuration."
+                ),
+                freshness=latest_discovery.completed_at if latest_discovery else None,
+                metrics={
+                    "youtube_configured": provider_status.social_discovery_live_capable,
+                    "query_terms": len(provider_status.youtube_discovery_queries),
+                    "channel_ids": len(provider_status.youtube_channel_ids),
+                    "last_discovered": latest_discovery.discovered if latest_discovery else 0,
+                    "last_updated": latest_discovery.updated if latest_discovery else 0,
+                },
+                next_action=(
+                    "Curate priority YouTube channel IDs and keep discovery cadence aligned to API quota."
+                    if provider_status.social_discovery_live_capable
+                    else "Set BSM_YOUTUBE_API_KEY and redeploy the worker for live creator discovery."
+                ),
+            ),
+            OperationsInfraService(
+                key="market-data-layer",
+                label="Market Data Layer",
+                status="live" if market_ready and provider_status.market_provider_live_capable else ("ready" if market_ready else "attention"),
+                mode=provider_status.market_provider_mode,
+                target=provider_status.market_provider_source,
+                detail="Market data feeds the dashboard, strategy lab, social validation, and paper execution previews.",
+                metrics={
+                    "tracked_assets": len(provider_status.tracked_coin_ids),
+                    "live_provider_count": system_pulse.live_provider_count,
+                    "average_signal_quality": system_pulse.average_signal_quality,
+                    "fallback_active": provider_status.market_fallback_active,
+                },
+                next_action="Add provider freshness SLAs per asset before treating signals as execution-grade.",
+            ),
+            OperationsInfraService(
+                key="fallback-guard",
+                label="Edge Fallback Guard",
+                status="attention" if fallback_active else "live",
+                mode="labeled-standby",
+                target="Cloudflare public snapshots",
+                detail=(
+                    "At least one provider has recently needed fallback labeling."
+                    if fallback_active
+                    else "Fallback is available as a labeled standby, but current provider status is primary/live."
+                ),
+                metrics={
+                    "market_fallback": provider_status.market_fallback_active,
+                    "signal_fallback": provider_status.signal_fallback_active,
+                    "macro_fallback": provider_status.macro_fallback_active,
+                    "wallet_fallback": provider_status.wallet_fallback_active,
+                    "social_fallback": provider_status.social_discovery_fallback_active,
+                },
+                next_action="Keep fallback labels visible; never hide standby data behind live-trading controls.",
+            ),
+        ]
+
+        ready_like = {"live", "ready"}
+        ready_count = sum(item.status in ready_like for item in services)
+        posture: InfrastructureTaskState = "ready" if ready_count >= len(services) - 1 and database_ready else "attention"
+        runtime_summary = (
+            "Cloudflare is the public edge, Akash is the current compute origin, and Neon/Postgres is the durable data target."
+            if akash_active
+            else (
+                f"Cloudflare is the target public edge, {self.settings.deployment_target} is the current runtime, "
+                "and Neon/Postgres remains the commercial data target."
+            )
+        )
+        return OperationsInfrastructureSnapshot(
+            generated_at=self._now(),
+            posture=posture,
+            summary=(
+                f"{ready_count}/{len(services)} infrastructure surfaces are live or ready. "
+                f"{runtime_summary}"
+            ),
+            environment_name=self.settings.environment_name,
+            deployment_target=self.settings.deployment_target,
+            public_hosts=self._public_hosts(),
+            database_backend=provider_status.database_backend,
+            database_target=provider_status.database_target,
+            services=services,
+            akash_cost=self._akash_cost_guardrail(),
+            live_origin_required=True,
+            risk_notes=[
+                "Do not use edge fallback snapshots for trading-critical decisions.",
+                "Akash is suitable for backend and AI worker compute, but live trading needs extra monitoring, kill switch, and audit visibility.",
+                "Database credentials and deploy wallet secrets must stay in GitHub/hosting secrets, never in public UI.",
+            ],
+            next_actions=[
+                "Add private Akash lease metadata ingestion from GitHub status logs or provider-services query output.",
+                "Add worker heartbeat rows so the dashboard can prove continuous social/market refresh without reading container logs.",
+                "Benchmark Akash against Fly/Render for API latency and origin reliability before paid beta.",
+            ],
+        )
+
+    def _public_hosts(self) -> list[str]:
+        hosts = [
+            self.settings.canonical_host,
+            *self.settings.canonical_redirect_hosts,
+            "app.bitprivat.com" if self.settings.canonical_host != "app.bitprivat.com" else None,
+            "api.bitprivat.com",
+            "status.bitprivat.com",
+        ]
+        return [host for host in dict.fromkeys(host for host in hosts if host)]
+
+    def _akash_cost_guardrail(self) -> OperationsInfraCost:
+        # Mirrors deploy/akash/web-worker-external-postgres.yaml so the UI shows
+        # the current max-bid guardrail without exposing wallet or lease secrets.
+        web_max_bid = 900.0
+        worker_max_bid = 600.0
+        total = web_max_bid + worker_max_bid
+        hourly = (total * 600) / 1_000_000
+        daily = hourly * 24
+        monthly = daily * 30
+        return OperationsInfraCost(
+            source="deploy/akash/web-worker-external-postgres.yaml max bid",
+            web_max_bid_uact_per_block=web_max_bid,
+            worker_max_bid_uact_per_block=worker_max_bid,
+            total_max_bid_uact_per_block=total,
+            estimated_hourly_act=round(hourly, 4),
+            estimated_daily_act=round(daily, 4),
+            estimated_monthly_act=round(monthly, 4),
+            note=(
+                "This is the SDL maximum bid guardrail, not a provider invoice. "
+                "The actual lease price is set by the accepted Akash marketplace bid and can be lower."
+            ),
+        )
+
     def _connector_item(
         self,
         *,
@@ -6234,6 +6487,10 @@ class BotSocietyService:
             connector_control=self.get_connector_control(provider_status=provider_status, paper_venues=paper_venues),
             infrastructure_readiness=self.get_infrastructure_readiness(provider_status=provider_status),
             production_cutover=self.get_production_cutover(provider_status=provider_status),
+            operations_infrastructure=self.get_operations_infrastructure(
+                provider_status=provider_status,
+                system_pulse=system_pulse,
+            ),
             business_model=self.get_business_model_strategy(),
         )
         self.dashboard_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
@@ -6379,6 +6636,10 @@ class BotSocietyService:
             connector_control=self.get_connector_control(provider_status=provider_status, paper_venues=paper_venues),
             infrastructure_readiness=self.get_infrastructure_readiness(provider_status=provider_status),
             production_cutover=self.get_production_cutover(provider_status=provider_status),
+            operations_infrastructure=self.get_operations_infrastructure(
+                provider_status=provider_status,
+                system_pulse=system_pulse,
+            ),
             business_model=self.get_business_model_strategy(),
         )
         self.dashboard_snapshot_cache[user_slug] = (datetime.now(timezone.utc), snapshot)

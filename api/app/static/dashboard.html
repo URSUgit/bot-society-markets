@@ -29,6 +29,7 @@
         <span class="sidebar-nav-label" data-i18n="nav_build">Build</span>
         <a href="/simulation" target="_blank" rel="noopener" data-i18n="nav_strategy_lab">Strategy Lab</a>
         <a href="#connectors-section" data-i18n="nav_connectors">Connectors</a>
+        <a href="#operations-infra-section" data-i18n="nav_infrastructure">Infrastructure</a>
         <span class="sidebar-nav-label" data-i18n="nav_workspace">Workspace</span>
         <a href="#account-section" data-i18n="nav_account">Account</a>
         <a href="#workspace-section" data-i18n="nav_rules_alerts">Rules & Alerts</a>
@@ -678,6 +679,48 @@
           <p class="panel-note" id="infrastructure-summary">Loading infrastructure posture...</p>
           <div class="infrastructure-task-grid" id="infrastructure-task-grid"></div>
         </article>
+      </section>
+
+      <section class="card operations-infra-section" id="operations-infra-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Infrastructure operations</p>
+            <h3>Compute, edge, database, workers, and cost guardrails</h3>
+          </div>
+          <div class="hero-actions compact-actions">
+            <a class="button tertiary small-button" href="#cutover-section">Cutover plan</a>
+            <span class="status-pill" id="operations-infra-badge">Loading</span>
+          </div>
+        </div>
+        <p class="panel-note" id="operations-infra-summary">Loading infrastructure operating model...</p>
+        <div class="operations-infra-overview">
+          <article class="operations-infra-kpi">
+            <span>Deployment</span>
+            <strong id="operations-infra-target">--</strong>
+            <small id="operations-infra-hosts">Public hosts pending</small>
+          </article>
+          <article class="operations-infra-kpi">
+            <span>Database</span>
+            <strong id="operations-infra-database">--</strong>
+            <small id="operations-infra-database-target">Durable target pending</small>
+          </article>
+          <article class="operations-infra-kpi operations-infra-cost-panel">
+            <span>Akash max bid guardrail</span>
+            <strong id="operations-infra-cost">--</strong>
+            <small id="operations-infra-cost-note">Not an invoice; accepted lease can be lower.</small>
+          </article>
+        </div>
+        <div class="operations-infra-service-grid" id="operations-infra-service-grid"></div>
+        <div class="operations-infra-columns">
+          <article>
+            <h4>Risk notes</h4>
+            <ul class="launch-track-list" id="operations-infra-risk-list"></ul>
+          </article>
+          <article>
+            <h4>Next actions</h4>
+            <ul class="launch-track-list" id="operations-infra-next-list"></ul>
+          </article>
+        </div>
       </section>
 
       <section class="card" id="cutover-section">

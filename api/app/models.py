@@ -972,6 +972,46 @@ class ProductionCutoverSnapshot(BaseModel):
     steps: list[ProductionCutoverStep] = Field(default_factory=list)
 
 
+class OperationsInfraService(BaseModel):
+    key: str
+    label: str
+    status: str
+    mode: str
+    detail: str
+    target: str | None = None
+    freshness: str | None = None
+    metrics: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    next_action: str
+
+
+class OperationsInfraCost(BaseModel):
+    denom: str = "uact"
+    source: str
+    web_max_bid_uact_per_block: float = Field(ge=0)
+    worker_max_bid_uact_per_block: float = Field(ge=0)
+    total_max_bid_uact_per_block: float = Field(ge=0)
+    estimated_hourly_act: float = Field(ge=0)
+    estimated_daily_act: float = Field(ge=0)
+    estimated_monthly_act: float = Field(ge=0)
+    note: str
+
+
+class OperationsInfrastructureSnapshot(BaseModel):
+    generated_at: str
+    posture: InfrastructureTaskState
+    summary: str
+    environment_name: str
+    deployment_target: str
+    public_hosts: list[str] = Field(default_factory=list)
+    database_backend: str
+    database_target: str
+    services: list[OperationsInfraService] = Field(default_factory=list)
+    akash_cost: OperationsInfraCost
+    live_origin_required: bool = True
+    risk_notes: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class LaunchReadinessTrack(BaseModel):
     key: str
     label: str
@@ -1484,6 +1524,7 @@ class DashboardSnapshot(BaseModel):
     connector_control: ConnectorControlSnapshot
     infrastructure_readiness: InfrastructureReadinessSnapshot
     production_cutover: ProductionCutoverSnapshot
+    operations_infrastructure: OperationsInfrastructureSnapshot
     business_model: BusinessModelSnapshot
 
 
@@ -1813,6 +1854,10 @@ class InfrastructureReadinessEnvelope(BaseModel):
 
 class ProductionCutoverEnvelope(BaseModel):
     production_cutover: ProductionCutoverSnapshot
+
+
+class OperationsInfrastructureEnvelope(BaseModel):
+    operations_infrastructure: OperationsInfrastructureSnapshot
 
 
 class BusinessModelEnvelope(BaseModel):

@@ -55,6 +55,7 @@ from .models import (
     NotificationHealthSnapshot,
     NotificationRetryResult,
     OperationSnapshot,
+    OperationsInfrastructureEnvelope,
     PaperSimulationResult,
     PaperTradingSnapshot,
     PaperVenuesSnapshot,
@@ -1319,6 +1320,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def infrastructure_readiness(request: Request) -> InfrastructureReadinessEnvelope:
         return InfrastructureReadinessEnvelope(
             infrastructure_readiness=get_service(request).get_infrastructure_readiness()
+        )
+
+    @app.get("/api/v1/system/operations-infrastructure", response_model=OperationsInfrastructureEnvelope)
+    @app.get("/api/system/operations-infrastructure", response_model=OperationsInfrastructureEnvelope)
+    def operations_infrastructure(request: Request) -> OperationsInfrastructureEnvelope:
+        return OperationsInfrastructureEnvelope(
+            operations_infrastructure=get_service(request).get_operations_infrastructure()
         )
 
     @app.get("/api/v1/system/production-cutover", response_model=ProductionCutoverEnvelope)

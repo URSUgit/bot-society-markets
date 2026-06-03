@@ -1628,6 +1628,7 @@ form:has(:disabled) {
 
 .connector-grid,
 .infrastructure-task-grid,
+.operations-infra-service-grid,
 .cutover-step-grid {
   display: grid;
   gap: 16px;
@@ -1640,6 +1641,7 @@ form:has(:disabled) {
 
 .connector-card,
 .infrastructure-task-card,
+.operations-service-card,
 .cutover-step-card {
   position: relative;
   display: grid;
@@ -1656,6 +1658,8 @@ form:has(:disabled) {
 .connector-card.connector-live,
 .connector-card.connector-ready,
 .infrastructure-task-card.infrastructure-ready,
+.operations-service-card.operations-live,
+.operations-service-card.operations-ready,
 .cutover-step-card.cutover-ready {
   background:
     linear-gradient(160deg, rgba(248, 255, 253, 0.84), rgba(240, 252, 248, 0.62)),
@@ -1664,6 +1668,7 @@ form:has(:disabled) {
 
 .connector-card.connector-attention,
 .infrastructure-task-card.infrastructure-attention,
+.operations-service-card.operations-attention,
 .cutover-step-card.cutover-attention {
   background:
     linear-gradient(160deg, rgba(255, 252, 247, 0.84), rgba(255, 245, 235, 0.6)),
@@ -1673,6 +1678,8 @@ form:has(:disabled) {
 .connector-card.connector-planned,
 .connector-card.connector-demo,
 .infrastructure-task-card.infrastructure-planned,
+.operations-service-card.operations-planned,
+.operations-service-card.operations-standby,
 .cutover-step-card.cutover-planned {
   background:
     linear-gradient(160deg, rgba(248, 250, 252, 0.82), rgba(239, 244, 248, 0.62)),
@@ -1696,7 +1703,10 @@ form:has(:disabled) {
 .connector-meta,
 .connector-actions,
 .infrastructure-task-card p,
-.infrastructure-task-card small {
+.infrastructure-task-card small,
+.operations-service-card p,
+.operations-service-card small,
+.operations-service-meta {
   color: var(--text-soft);
 }
 
@@ -1805,6 +1815,94 @@ form:has(:disabled) {
 
 .infrastructure-task-grid {
   grid-template-columns: 1fr;
+}
+
+.operations-infra-section {
+  overflow: hidden;
+}
+
+.operations-infra-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.operations-infra-kpi,
+.operations-infra-columns article {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(16, 38, 54, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.operations-infra-kpi {
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+}
+
+.operations-infra-kpi span,
+.operations-infra-kpi small,
+.operations-metric-strip small {
+  color: var(--text-soft);
+}
+
+.operations-infra-kpi strong {
+  font-size: clamp(1.16rem, 1.7vw, 1.7rem);
+  letter-spacing: -0.04em;
+  color: var(--text-main);
+}
+
+.operations-infra-cost-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 251, 241, 0.86), rgba(241, 250, 247, 0.7)),
+    radial-gradient(circle at 92% 14%, rgba(240, 155, 89, 0.16), transparent 32%);
+}
+
+.operations-infra-service-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.operations-service-card {
+  min-height: 236px;
+}
+
+.operations-service-meta {
+  display: grid;
+  gap: 7px;
+  font-size: 0.9rem;
+}
+
+.operations-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.operations-metric-strip span {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  background: rgba(16, 38, 54, 0.06);
+  border: 1px solid rgba(16, 38, 54, 0.08);
+}
+
+.operations-metric-strip strong {
+  font-size: 0.88rem;
+  color: var(--text-main);
+}
+
+.operations-infra-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.operations-infra-columns h4 {
+  margin: 0 0 10px;
 }
 
 .cutover-step-grid {
@@ -4866,24 +4964,28 @@ body.command-os {
   order: 14;
 }
 
-.command-os #cutover-section {
+.command-os #operations-infra-section {
   order: 15;
 }
 
-.command-os #account-section {
+.command-os #cutover-section {
   order: 16;
 }
 
-.command-os #workspace-section {
+.command-os #account-section {
   order: 17;
 }
 
-.command-os #assets-section {
+.command-os #workspace-section {
   order: 18;
 }
 
-.command-os #detail-section {
+.command-os #assets-section {
   order: 19;
+}
+
+.command-os #detail-section {
+  order: 20;
 }
 
 .command-os .section-head {
@@ -4935,6 +5037,9 @@ body.command-os {
 .command-os .workspace-card,
 .command-os .connector-card,
 .command-os .infrastructure-task-card,
+.command-os .operations-service-card,
+.command-os .operations-infra-kpi,
+.command-os .operations-infra-columns article,
 .command-os .cutover-step-card {
   border-color: var(--dash-line);
   background: rgba(255, 255, 255, 0.58);
@@ -4987,6 +5092,15 @@ body.command-os {
 
   .operator-strip-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .operations-infra-overview,
+  .operations-infra-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .operations-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5238,6 +5352,9 @@ body.bit-engine-lab .eyebrow {
 .command-os .connector-diagnostic-panel,
 .command-os .connector-diagnostic-card,
 .command-os .infrastructure-task-card,
+.command-os .operations-service-card,
+.command-os .operations-infra-kpi,
+.command-os .operations-infra-columns article,
 .command-os .cutover-step-card,
 .command-os .billing-plan-card,
 .command-os .auth-session-card {
@@ -5857,6 +5974,9 @@ body.bit-engine-product-ui .eyebrow {
 .bit-engine-product-ui.command-os .connector-diagnostic-panel,
 .bit-engine-product-ui.command-os .connector-diagnostic-card,
 .bit-engine-product-ui.command-os .infrastructure-task-card,
+.bit-engine-product-ui.command-os .operations-service-card,
+.bit-engine-product-ui.command-os .operations-infra-kpi,
+.bit-engine-product-ui.command-os .operations-infra-columns article,
 .bit-engine-product-ui.command-os .cutover-step-card,
 .bit-engine-product-ui.command-os .billing-plan-card,
 .bit-engine-product-ui.command-os .auth-session-card,
@@ -5923,12 +6043,16 @@ body.bit-engine-product-ui .eyebrow {
   order: 7;
 }
 
-.bit-engine-product-ui.command-os #account-section {
+.bit-engine-product-ui.command-os #operations-infra-section {
   order: 8;
 }
 
-.bit-engine-product-ui.command-os #workspace-section {
+.bit-engine-product-ui.command-os #account-section {
   order: 9;
+}
+
+.bit-engine-product-ui.command-os #workspace-section {
+  order: 10;
 }
 
 .bit-engine-product-ui.command-os #launch-section,
@@ -5973,6 +6097,10 @@ body.bit-engine-product-ui .eyebrow {
 .bit-engine-product-ui.command-os .connector-summary,
 .bit-engine-product-ui.command-os .connector-meta,
 .bit-engine-product-ui.command-os .connector-actions,
+.bit-engine-product-ui.command-os .operations-service-meta,
+.bit-engine-product-ui.command-os .operations-service-card p,
+.bit-engine-product-ui.command-os .operations-service-card small,
+.bit-engine-product-ui.command-os .operations-metric-strip small,
 .bit-engine-product-ui.command-os .launch-track-list,
 .bit-engine-product-ui.command-os .workspace-subtitle,
 .bit-engine-product-ui.command-os .activity-feed,
@@ -9039,6 +9167,9 @@ body.dashboard-body.command-os[data-theme="night"] .dashboard-stack-section,
 body.dashboard-body.command-os[data-theme="night"] .launch-command-section,
 body.dashboard-body.command-os[data-theme="night"] .social-trader-section,
 body.dashboard-body.command-os[data-theme="night"] .connector-card,
+body.dashboard-body.command-os[data-theme="night"] .operations-service-card,
+body.dashboard-body.command-os[data-theme="night"] .operations-infra-kpi,
+body.dashboard-body.command-os[data-theme="night"] .operations-infra-columns article,
 body.dashboard-body.command-os[data-theme="night"] .metric-card,
 body.dashboard-body.command-os[data-theme="night"] .pulse-metric-card,
 body.dashboard-body.command-os[data-theme="night"] .console-panel,
@@ -9427,6 +9558,9 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-stack-section,
 body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section,
 body.dashboard-body.command-os.bit-engine-product-ui .social-trader-section,
 body.dashboard-body.command-os.bit-engine-product-ui .connector-card,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-service-card,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-infra-kpi,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-infra-columns article,
 body.dashboard-body.command-os.bit-engine-product-ui .metric-card,
 body.dashboard-body.command-os.bit-engine-product-ui .pulse-metric-card,
 body.dashboard-body.command-os.bit-engine-product-ui .macro-card,
@@ -9455,7 +9589,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .market-console,
 body.dashboard-body.command-os.bit-engine-product-ui .social-trader-section,
 body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-pro,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-stack-section,
-body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section {
+body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-infra-section {
   margin: 0;
   padding: clamp(18px, 2vw, 28px);
   overflow: hidden;
@@ -9468,7 +9603,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .market-console:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .social-trader-section:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-pro:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-stack-section:hover,
-body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section:hover {
+body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-infra-section:hover {
   border-color: color-mix(in srgb, var(--modern-accent) 28%, var(--modern-line));
   box-shadow: var(--modern-shadow-hover);
   transform: translateY(-1px);
@@ -9788,6 +9924,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .market-console-grid {
 body.dashboard-body.command-os.bit-engine-product-ui .console-panel,
 body.dashboard-body.command-os.bit-engine-product-ui .social-side-panel,
 body.dashboard-body.command-os.bit-engine-product-ui .connector-card,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-service-card,
 body.dashboard-body.command-os.bit-engine-product-ui .metric-card,
 body.dashboard-body.command-os.bit-engine-product-ui .pulse-metric-card,
 body.dashboard-body.command-os.bit-engine-product-ui .macro-card,
@@ -9801,6 +9938,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .paper-venue-card {
 body.dashboard-body.command-os.bit-engine-product-ui .console-panel:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .social-side-panel:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .connector-card:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-service-card:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .metric-card:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .pulse-metric-card:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .macro-card:hover,
@@ -10275,6 +10413,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .billing-
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .pulse-metric-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .connector-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .operations-infra-service-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .asset-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .chart-grid,
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window .macro-grid,

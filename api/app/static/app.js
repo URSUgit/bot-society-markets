@@ -23,6 +23,7 @@ const I18N = {
     nav_build: "Build",
     nav_strategy_lab: "Strategy Lab",
     nav_connectors: "Connectors",
+    nav_infrastructure: "Infrastructure",
     nav_workspace: "Workspace",
     nav_account: "Account",
     nav_rules_alerts: "Rules & Alerts",
@@ -60,6 +61,7 @@ const I18N = {
     window_paper: "Paper positions, venues, and simulated execution controls.",
     window_leaderboard: "Bot scorecards, provenance, and alert posture.",
     window_connectors: "Provider readiness and connector diagnostics.",
+    window_infrastructure: "Compute, edge, database, worker, and cost guardrails.",
     window_account: "Account, auth, billing, and onboarding controls.",
     window_workspace: "Watchlist, rules, alerts, and notification workspace.",
     close: "Close",
@@ -79,6 +81,7 @@ const I18N = {
     nav_build: "Construire",
     nav_strategy_lab: "Laborator strategii",
     nav_connectors: "Conectori",
+    nav_infrastructure: "Infrastructura",
     nav_workspace: "Spatiu lucru",
     nav_account: "Cont",
     nav_rules_alerts: "Reguli si alerte",
@@ -116,6 +119,7 @@ const I18N = {
     window_paper: "Pozitii paper, venue-uri si controale de executie simulata.",
     window_leaderboard: "Scorecard-uri boti, provenienta si postura alertelor.",
     window_connectors: "Pregatire provideri si diagnostice pentru conectori.",
+    window_infrastructure: "Compute, edge, baza de date, worker si limite de cost.",
     window_account: "Cont, autentificare, billing si controale de onboarding.",
     window_workspace: "Watchlist, reguli, alerte si workspace de notificari.",
     close: "Inchide",
@@ -732,8 +736,9 @@ function dashboardWindowNavIcon(hash) {
     "#paper-section": "06",
     "#leaderboard-section": "07",
     "#connectors-section": "08",
-    "#account-section": "09",
-    "#workspace-section": "10",
+    "#operations-infra-section": "09",
+    "#account-section": "10",
+    "#workspace-section": "11",
   };
   return icons[hash] || ">";
 }
@@ -820,6 +825,7 @@ function dashboardWindowSubtitle(hash) {
     "#paper-section": "window_paper",
     "#leaderboard-section": "window_leaderboard",
     "#connectors-section": "window_connectors",
+    "#operations-infra-section": "window_infrastructure",
     "#account-section": "window_account",
     "#workspace-section": "window_workspace",
   };
@@ -1442,6 +1448,114 @@ function renderInfrastructureReadiness(infrastructureReadiness) {
       <small>${task.next_step}</small>
     </article>
   `).join("");
+}
+
+function operationsStatusVariant(status) {
+  switch (status) {
+    case "live":
+    case "ready":
+      return "positive";
+    case "attention":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function operationsStatusLabel(status) {
+  switch (status) {
+    case "live":
+      return "Live";
+    case "ready":
+      return "Ready";
+    case "attention":
+      return "Attention";
+    case "standby":
+      return "Standby";
+    case "planned":
+      return "Planned";
+    default:
+      return humanizeKey(status || "unknown");
+  }
+}
+
+function formatOperationsMetricValue(value) {
+  if (typeof value === "boolean") {
+    return value ? "yes" : "no";
+  }
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? `${value}` : value.toFixed(value < 10 ? 2 : 1).replace(/\.0+$/, "");
+  }
+  return value ?? "n/a";
+}
+
+function renderOperationsInfrastructure(operationsInfrastructure) {
+  const badge = document.getElementById("operations-infra-badge");
+  const summary = document.getElementById("operations-infra-summary");
+  const target = document.getElementById("operations-infra-target");
+  const hosts = document.getElementById("operations-infra-hosts");
+  const database = document.getElementById("operations-infra-database");
+  const databaseTarget = document.getElementById("operations-infra-database-target");
+  const cost = document.getElementById("operations-infra-cost");
+  const costNote = document.getElementById("operations-infra-cost-note");
+  const grid = document.getElementById("operations-infra-service-grid");
+  const riskList = document.getElementById("operations-infra-risk-list");
+  const nextList = document.getElementById("operations-infra-next-list");
+  if (!badge || !summary || !target || !hosts || !database || !databaseTarget || !cost || !costNote || !grid || !riskList || !nextList || !operationsInfrastructure) {
+    return;
+  }
+
+  const services = operationsInfrastructure.services || [];
+  const liveCount = services.filter((service) => ["live", "ready"].includes(service.status)).length;
+  badge.textContent = operationsInfrastructure.posture === "ready" ? "Ops ready" : `${liveCount}/${services.length} ready`;
+  badge.dataset.variant = operationsInfrastructure.posture === "ready" ? "positive" : "warning";
+  summary.textContent = operationsInfrastructure.summary;
+  target.textContent = `${humanizeKey(operationsInfrastructure.deployment_target || "local")} / ${operationsInfrastructure.environment_name || "environment"}`;
+  hosts.textContent = (operationsInfrastructure.public_hosts || []).join(" | ") || "Local preview only";
+  database.textContent = humanizeKey(operationsInfrastructure.database_backend || "unknown");
+  databaseTarget.textContent = operationsInfrastructure.database_target || "Target pending";
+
+  const akashCost = operationsInfrastructure.akash_cost || {};
+  cost.textContent = `${fmtCompactNumber(akashCost.estimated_monthly_act || 0)} ACT / mo cap`;
+  costNote.textContent = akashCost.note || "Maximum bid guardrail, not a provider invoice.";
+
+  grid.innerHTML = services.map((service) => {
+    const metrics = Object.entries(service.metrics || {})
+      .filter(([, value]) => value !== null && value !== undefined && value !== "")
+      .slice(0, 5)
+      .map(([key, value]) => `
+        <span>
+          <small>${escapeHtml(humanizeKey(key))}</small>
+          <strong>${escapeHtml(formatOperationsMetricValue(value))}</strong>
+        </span>
+      `)
+      .join("");
+    return `
+      <article class="operations-service-card operations-${escapeHtml(service.status || "unknown")}">
+        <div class="connector-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(service.mode || "runtime")}</p>
+            <h4>${escapeHtml(service.label)}</h4>
+          </div>
+          <span class="status-pill" data-variant="${operationsStatusVariant(service.status)}">${operationsStatusLabel(service.status)}</span>
+        </div>
+        <p>${escapeHtml(service.detail)}</p>
+        <div class="operations-service-meta">
+          <span><strong>Target:</strong> ${escapeHtml(service.target || "n/a")}</span>
+          <span><strong>Freshness:</strong> ${service.freshness ? escapeHtml(fmtRelativeTime(service.freshness)) : "n/a"}</span>
+        </div>
+        <div class="operations-metric-strip">${metrics || "<span><small>Metrics</small><strong>n/a</strong></span>"}</div>
+        <small>${escapeHtml(service.next_action)}</small>
+      </article>
+    `;
+  }).join("");
+
+  riskList.innerHTML = (operationsInfrastructure.risk_notes || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("") || "<li>No infrastructure risk notes recorded.</li>";
+  nextList.innerHTML = (operationsInfrastructure.next_actions || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("") || "<li>No next actions recorded.</li>";
 }
 
 function renderProductionCutover(productionCutover) {
@@ -5712,6 +5826,7 @@ async function loadDashboard(options = {}) {
     renderLaunchReadiness(snapshot.launch_readiness);
     renderConnectorControl(snapshot.connector_control);
     renderInfrastructureReadiness(snapshot.infrastructure_readiness);
+    renderOperationsInfrastructure(snapshot.operations_infrastructure);
     renderProductionCutover(snapshot.production_cutover);
     renderMetrics(snapshot.summary);
     renderAssets(snapshot.assets);

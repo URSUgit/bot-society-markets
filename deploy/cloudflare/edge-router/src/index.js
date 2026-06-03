@@ -110,6 +110,9 @@ function publicApiSnapshot(pathname) {
   if (pathname === "/api/system/providers" || pathname === "/api/v1/system/providers") {
     return publicSnapshotResponse({ provider_status: DASHBOARD_SNAPSHOT.provider_status });
   }
+  if (pathname === "/api/system/operations-infrastructure" || pathname === "/api/v1/system/operations-infrastructure") {
+    return publicSnapshotResponse({ operations_infrastructure: DASHBOARD_SNAPSHOT.operations_infrastructure });
+  }
   if (pathname === "/api/assets" || pathname === "/api/v1/assets") {
     return jsonResponse(DASHBOARD_SNAPSHOT.assets);
   }

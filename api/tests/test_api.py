@@ -156,6 +156,9 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert any(track["key"] == "fiat_onboarding" for track in payload["launch_readiness"]["tracks"])
         assert payload["connector_control"]["connectors"]
         assert payload["infrastructure_readiness"]["tasks"]
+        assert payload["operations_infrastructure"]["services"]
+        assert payload["operations_infrastructure"]["akash_cost"]["total_max_bid_uact_per_block"] == 1500
+        assert payload["operations_infrastructure"]["live_origin_required"] is True
         assert payload["production_cutover"]["steps"]
         assert payload["business_model"]["products"]
         assert any(product["key"] == "retail_autopilot" for product in payload["business_model"]["products"])
@@ -267,6 +270,25 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         infrastructure_payload = infrastructure_response.json()["infrastructure_readiness"]
         assert infrastructure_payload["production_posture"] == "attention"
         assert any(task["key"] == "managed_database" for task in infrastructure_payload["tasks"])
+
+        operations_infra_response = client.get("/api/system/operations-infrastructure")
+        assert operations_infra_response.status_code == 200
+        operations_infra_payload = operations_infra_response.json()["operations_infrastructure"]
+        service_keys = {item["key"] for item in operations_infra_payload["services"]}
+        assert {
+            "cloudflare-edge",
+            "akash-origin",
+            "neon-postgres",
+            "background-worker",
+            "youtube-social-engine",
+            "market-data-layer",
+        }.issubset(service_keys)
+        assert operations_infra_payload["akash_cost"]["denom"] == "uact"
+        assert operations_infra_payload["akash_cost"]["total_max_bid_uact_per_block"] == 1500
+        serialized_operations = json.dumps(operations_infra_payload).lower()
+        assert "mnemonic" not in serialized_operations
+        assert "password" not in serialized_operations
+        assert "database_url" not in serialized_operations
 
         cutover_response = client.get("/api/system/production-cutover")
         assert cutover_response.status_code == 200
