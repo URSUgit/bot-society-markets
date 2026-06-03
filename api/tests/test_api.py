@@ -159,6 +159,11 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["operations_infrastructure"]["services"]
         assert payload["operations_infrastructure"]["akash_cost"]["total_max_bid_uact_per_block"] == 1500
         assert payload["operations_infrastructure"]["live_origin_required"] is True
+        assert payload["feature_readiness"]["items"]
+        assert payload["feature_readiness"]["blocked_count"] >= 1
+        feature_states = {item["key"]: item["state"] for item in payload["feature_readiness"]["items"]}
+        assert feature_states["live-automated-trading"] == "blocked"
+        assert feature_states["paper-managed-trading"] == "paper_only"
         assert payload["production_cutover"]["steps"]
         assert payload["business_model"]["products"]
         assert any(product["key"] == "retail_autopilot" for product in payload["business_model"]["products"])
@@ -289,6 +294,24 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert "mnemonic" not in serialized_operations
         assert "password" not in serialized_operations
         assert "database_url" not in serialized_operations
+
+        feature_readiness_response = client.get("/api/system/feature-readiness")
+        assert feature_readiness_response.status_code == 200
+        feature_readiness_payload = feature_readiness_response.json()["feature_readiness"]
+        readiness_states = {item["key"]: item["state"] for item in feature_readiness_payload["items"]}
+        assert readiness_states["live-automated-trading"] == "blocked"
+        assert readiness_states["paper-managed-trading"] == "paper_only"
+        assert feature_readiness_payload["blocked_count"] >= 1
+        serialized_readiness = json.dumps(feature_readiness_payload).lower()
+        assert "mnemonic" not in serialized_readiness
+        assert "password" not in serialized_readiness
+        assert "database_url" not in serialized_readiness
+
+        runtime_origin_response = client.get("/api/runtime/public-origin")
+        assert runtime_origin_response.status_code == 200
+        runtime_origin_payload = runtime_origin_response.json()
+        assert runtime_origin_payload["social_read_origin"] == ""
+        assert runtime_origin_payload["mode"] == "origin-direct"
 
         cutover_response = client.get("/api/system/production-cutover")
         assert cutover_response.status_code == 200

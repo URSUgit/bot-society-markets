@@ -113,6 +113,9 @@ function publicApiSnapshot(pathname) {
   if (pathname === "/api/system/operations-infrastructure" || pathname === "/api/v1/system/operations-infrastructure") {
     return publicSnapshotResponse({ operations_infrastructure: DASHBOARD_SNAPSHOT.operations_infrastructure });
   }
+  if (pathname === "/api/system/feature-readiness" || pathname === "/api/v1/system/feature-readiness") {
+    return publicSnapshotResponse({ feature_readiness: DASHBOARD_SNAPSHOT.feature_readiness });
+  }
   if (pathname === "/api/assets" || pathname === "/api/v1/assets") {
     return jsonResponse(DASHBOARD_SNAPSHOT.assets);
   }

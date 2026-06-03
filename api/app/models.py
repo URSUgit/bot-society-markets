@@ -22,6 +22,7 @@ ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
 ConnectorDiagnosticStatus = Literal["pass", "warn", "fail", "blocked"]
 RiskCheckStatus = Literal["pass", "warn", "fail", "blocked"]
 InfrastructureTaskState = Literal["ready", "attention", "planned"]
+FeatureReadinessState = Literal["live", "paper_only", "partial", "blocked", "planned"]
 SocialPlatform = Literal["youtube", "x", "reddit", "telegram", "newsletter", "other"]
 SocialTradeMode = Literal["signals", "managed_paper"]
 SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
@@ -1031,6 +1032,33 @@ class LaunchReadinessSnapshot(BaseModel):
     tracks: list[LaunchReadinessTrack] = Field(default_factory=list)
 
 
+class FeatureReadinessItem(BaseModel):
+    key: str
+    label: str
+    category: str
+    state: FeatureReadinessState
+    user_visible: str
+    truth: str
+    reason: str
+    impact: str
+    next_action: str
+    route: str | None = None
+    severity: int = Field(default=2, ge=1, le=5)
+
+
+class FeatureReadinessSnapshot(BaseModel):
+    generated_at: str
+    headline: str
+    summary: str
+    live_count: int = Field(ge=0)
+    paper_only_count: int = Field(ge=0)
+    partial_count: int = Field(ge=0)
+    blocked_count: int = Field(ge=0)
+    planned_count: int = Field(ge=0)
+    items: list[FeatureReadinessItem] = Field(default_factory=list)
+    priority_fixes: list[str] = Field(default_factory=list)
+
+
 class BusinessModelProduct(BaseModel):
     key: str
     name: str
@@ -1525,6 +1553,7 @@ class DashboardSnapshot(BaseModel):
     infrastructure_readiness: InfrastructureReadinessSnapshot
     production_cutover: ProductionCutoverSnapshot
     operations_infrastructure: OperationsInfrastructureSnapshot
+    feature_readiness: FeatureReadinessSnapshot
     business_model: BusinessModelSnapshot
 
 
@@ -1858,6 +1887,10 @@ class ProductionCutoverEnvelope(BaseModel):
 
 class OperationsInfrastructureEnvelope(BaseModel):
     operations_infrastructure: OperationsInfrastructureSnapshot
+
+
+class FeatureReadinessEnvelope(BaseModel):
+    feature_readiness: FeatureReadinessSnapshot
 
 
 class BusinessModelEnvelope(BaseModel):

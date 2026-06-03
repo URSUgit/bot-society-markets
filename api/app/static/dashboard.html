@@ -20,6 +20,7 @@
       <nav class="sidebar-nav">
         <span class="sidebar-nav-label" data-i18n="nav_operate">Operate</span>
         <a class="active" href="#market-console-section" data-i18n="nav_overview">Overview</a>
+        <a href="#feature-readiness-section" data-i18n="nav_feature_status">Feature Status</a>
         <a href="#trading-workspace-section" data-i18n="nav_trading_workspace">Trading Workspace</a>
         <a href="#social-trader-section" data-i18n="nav_social_traders">Social Traders</a>
         <a href="#trader-intelligence-section">Trader Intelligence</a>
@@ -97,10 +98,19 @@
         </div>
       </section>
 
+      <section class="platform-truth-alert" id="feature-alert-strip" aria-label="Platform readiness warning">
+        <div>
+          <p class="eyebrow">Platform truth</p>
+          <strong id="feature-alert-title">Checking what works...</strong>
+          <span id="feature-alert-summary">Loading live, paper-only, partial, blocked, and planned feature status.</span>
+        </div>
+        <a class="button tertiary small-button" href="#feature-readiness-section">Open status matrix</a>
+      </section>
+
       <section class="dashboard-hero card command-brief">
         <div class="command-brief-main">
-          <p class="eyebrow">Control panel</p>
-          <h2>Professional trading workspace</h2>
+          <p class="eyebrow">BITprivat Market OS</p>
+          <h2>Compact trading intelligence, with every unfinished feature labeled.</h2>
           <p class="hero-submeta" id="hero-submeta">Loading market and execution context...</p>
         </div>
         <div class="command-brief-actions">
@@ -135,6 +145,32 @@
             <strong id="command-brief-status">Syncing</strong>
             <small id="command-brief-detail">Preparing dashboard data</small>
           </article>
+        </div>
+      </section>
+
+      <section class="feature-readiness-section card" id="feature-readiness-section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Feature status</p>
+            <h3>What works, what is paper-only, and what is not ready yet</h3>
+          </div>
+          <span class="status-pill" id="feature-readiness-badge">Loading</span>
+        </div>
+        <p class="panel-note" id="feature-readiness-summary">Loading platform readiness truth...</p>
+        <div class="feature-count-strip" aria-label="Feature status counts">
+          <article data-state="live"><span>Live</span><strong id="feature-count-live">0</strong></article>
+          <article data-state="paper_only"><span>Paper only</span><strong id="feature-count-paper">0</strong></article>
+          <article data-state="partial"><span>Partial</span><strong id="feature-count-partial">0</strong></article>
+          <article data-state="blocked"><span>Blocked</span><strong id="feature-count-blocked">0</strong></article>
+          <article data-state="planned"><span>Planned</span><strong id="feature-count-planned">0</strong></article>
+        </div>
+        <div class="feature-readiness-layout">
+          <div class="feature-readiness-grid" id="feature-readiness-grid"></div>
+          <aside class="feature-priority-panel">
+            <p class="eyebrow">Fix first</p>
+            <h4>Highest-impact blockers</h4>
+            <ul class="launch-track-list" id="feature-priority-list"></ul>
+          </aside>
         </div>
       </section>
 

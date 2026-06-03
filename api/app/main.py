@@ -45,6 +45,7 @@ from .models import (
     CycleResult,
     DashboardSnapshot,
     EdgeSnapshot,
+    FeatureReadinessEnvelope,
     FollowBotRequest,
     InfrastructureReadinessEnvelope,
     LandingSnapshot,
@@ -1328,6 +1329,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return OperationsInfrastructureEnvelope(
             operations_infrastructure=get_service(request).get_operations_infrastructure()
         )
+
+    @app.get("/api/v1/system/feature-readiness", response_model=FeatureReadinessEnvelope)
+    @app.get("/api/system/feature-readiness", response_model=FeatureReadinessEnvelope)
+    def feature_readiness(request: Request) -> FeatureReadinessEnvelope:
+        return FeatureReadinessEnvelope(feature_readiness=get_service(request).get_feature_readiness())
+
+    @app.get("/api/runtime/public-origin")
+    def runtime_public_origin() -> dict[str, str]:
+        return {
+            "social_read_origin": "",
+            "mode": "origin-direct",
+        }
 
     @app.get("/api/v1/system/production-cutover", response_model=ProductionCutoverEnvelope)
     @app.get("/api/system/production-cutover", response_model=ProductionCutoverEnvelope)

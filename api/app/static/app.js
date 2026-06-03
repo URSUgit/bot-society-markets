@@ -15,6 +15,7 @@ const I18N = {
     app_subtitle: "Markets, bots, and strategy testing in one clear workflow.",
     nav_operate: "Operate",
     nav_overview: "Overview",
+    nav_feature_status: "Feature Status",
     nav_trading_workspace: "Trading Workspace",
     nav_social_traders: "Social Traders",
     nav_markets: "Markets",
@@ -54,6 +55,7 @@ const I18N = {
     focused_workspace: "Focused workspace",
     window_default_subtitle: "Section opened in a compact app window.",
     window_market_console: "Live market provider, bot decision queue, and risk posture.",
+    window_feature_readiness: "Blunt status matrix for live, paper-only, partial, blocked, and planned features.",
     window_trading_workspace: "Trading workspace without leaving the dashboard.",
     window_social_trader: "Creator-trader discovery, follow mode, and managed paper allocation.",
     window_trader_intelligence: "Expert-model research library, citations, comparison, and ask interface.",
@@ -73,6 +75,7 @@ const I18N = {
     app_subtitle: "Piete, boti si testare de strategii intr-un flux clar.",
     nav_operate: "Operare",
     nav_overview: "Privire generala",
+    nav_feature_status: "Status functionalitati",
     nav_trading_workspace: "Spatiu de trading",
     nav_social_traders: "Traderi sociali",
     nav_markets: "Piete",
@@ -112,6 +115,7 @@ const I18N = {
     focused_workspace: "Workspace focalizat",
     window_default_subtitle: "Sectiunea s-a deschis intr-o fereastra compacta.",
     window_market_console: "Provider live de piata, coada de decizii bot si postura de risc.",
+    window_feature_readiness: "Matrice clara pentru functionalitati live, paper-only, partiale, blocate si planificate.",
     window_trading_workspace: "Spatiu de trading fara sa parasesti dashboardul.",
     window_social_trader: "Descoperire creatori-traderi, mod follow si alocare paper administrata.",
     window_trader_intelligence: "Biblioteca de modele expert, citari, comparatii si interfata de intrebari.",
@@ -729,16 +733,17 @@ function isDashboardWorkspaceHash(hash) {
 function dashboardWindowNavIcon(hash) {
   const icons = {
     "#market-console-section": "01",
-    "#trading-workspace-section": "02",
-    "#social-trader-section": "03",
-    "#trader-intelligence-section": "04",
-    "#intelligence-section": "05",
-    "#paper-section": "06",
-    "#leaderboard-section": "07",
-    "#connectors-section": "08",
-    "#operations-infra-section": "09",
-    "#account-section": "10",
-    "#workspace-section": "11",
+    "#feature-readiness-section": "02",
+    "#trading-workspace-section": "03",
+    "#social-trader-section": "04",
+    "#trader-intelligence-section": "05",
+    "#intelligence-section": "06",
+    "#paper-section": "07",
+    "#leaderboard-section": "08",
+    "#connectors-section": "09",
+    "#operations-infra-section": "10",
+    "#account-section": "11",
+    "#workspace-section": "12",
   };
   return icons[hash] || ">";
 }
@@ -818,6 +823,7 @@ function initDashboardSectionObserver() {
 function dashboardWindowSubtitle(hash) {
   const subtitles = {
     "#market-console-section": "window_market_console",
+    "#feature-readiness-section": "window_feature_readiness",
     "#trading-workspace-section": "window_trading_workspace",
     "#social-trader-section": "window_social_trader",
     "#trader-intelligence-section": "window_trader_intelligence",
@@ -1175,6 +1181,209 @@ function renderLaunchReadiness(launchReadiness) {
       </article>
     `;
   }).join("");
+}
+
+function featureStateLabel(state) {
+  switch (state) {
+    case "live":
+      return "Live";
+    case "paper_only":
+      return "Paper only";
+    case "partial":
+      return "Partial";
+    case "blocked":
+      return "Blocked";
+    case "planned":
+      return "Planned";
+    default:
+      return humanizeKey(state || "unknown");
+  }
+}
+
+function featureStateVariant(state) {
+  switch (state) {
+    case "live":
+      return "positive";
+    case "blocked":
+    case "partial":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function featureStateSortWeight(state) {
+  switch (state) {
+    case "blocked":
+      return 0;
+    case "partial":
+      return 1;
+    case "paper_only":
+      return 2;
+    case "planned":
+      return 3;
+    case "live":
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function decorateFeatureNavigation(items = []) {
+  document.querySelectorAll(".sidebar-nav a .nav-state-badge").forEach((badge) => badge.remove());
+  document.querySelectorAll(".sidebar-nav a[data-feature-state]").forEach((link) => {
+    delete link.dataset.featureState;
+    delete link.dataset.featureSeverity;
+  });
+  const byRoute = new Map();
+  items.forEach((item) => {
+    if (!item.route) {
+      return;
+    }
+    const existing = byRoute.get(item.route);
+    if (!existing || featureStateSortWeight(item.state) < featureStateSortWeight(existing.state) || item.severity > existing.severity) {
+      byRoute.set(item.route, item);
+    }
+  });
+  byRoute.forEach((item, route) => {
+    const link = document.querySelector(`.sidebar-nav a[href="${CSS.escape(route)}"]`);
+    if (!link) {
+      return;
+    }
+    link.dataset.featureState = item.state;
+    link.dataset.featureSeverity = String(item.severity || 1);
+    const stateBadge = document.createElement("span");
+    stateBadge.className = "nav-state-badge";
+    stateBadge.dataset.state = item.state;
+    stateBadge.textContent = featureStateLabel(item.state);
+    link.appendChild(stateBadge);
+  });
+}
+
+function decorateFeatureSections(items = []) {
+  document.querySelectorAll("[data-section-feature-state]").forEach((section) => {
+    delete section.dataset.sectionFeatureState;
+    section.querySelector(".section-readiness-flag")?.remove();
+  });
+  items.forEach((item) => {
+    if (!item.route || !item.route.startsWith("#")) {
+      return;
+    }
+    const section = document.querySelector(item.route);
+    if (!section) {
+      return;
+    }
+    const existingState = section.dataset.sectionFeatureState;
+    if (existingState && featureStateSortWeight(existingState) <= featureStateSortWeight(item.state)) {
+      return;
+    }
+    section.dataset.sectionFeatureState = item.state;
+    section.querySelector(".section-readiness-flag")?.remove();
+    if (item.state === "live") {
+      return;
+    }
+    const flag = document.createElement("div");
+    flag.className = "section-readiness-flag";
+    flag.dataset.state = item.state;
+    flag.innerHTML = `<strong>${escapeHtml(featureStateLabel(item.state))}</strong><span>${escapeHtml(item.truth)}</span>`;
+    section.prepend(flag);
+  });
+}
+
+function renderFeatureReadiness(featureReadiness) {
+  const badge = document.getElementById("feature-readiness-badge");
+  const summary = document.getElementById("feature-readiness-summary");
+  const grid = document.getElementById("feature-readiness-grid");
+  const priorityList = document.getElementById("feature-priority-list");
+  const alertTitle = document.getElementById("feature-alert-title");
+  const alertSummary = document.getElementById("feature-alert-summary");
+  const alertStrip = document.getElementById("feature-alert-strip");
+  const countLive = document.getElementById("feature-count-live");
+  const countPaper = document.getElementById("feature-count-paper");
+  const countPartial = document.getElementById("feature-count-partial");
+  const countBlocked = document.getElementById("feature-count-blocked");
+  const countPlanned = document.getElementById("feature-count-planned");
+  const briefStatus = document.getElementById("command-brief-status");
+  const briefDetail = document.getElementById("command-brief-detail");
+  if (!featureReadiness || !badge || !summary || !grid || !priorityList) {
+    return;
+  }
+
+  const items = featureReadiness.items || [];
+  const blocked = featureReadiness.blocked_count || 0;
+  const partial = featureReadiness.partial_count || 0;
+  const paperOnly = featureReadiness.paper_only_count || 0;
+  badge.textContent = blocked ? `${blocked} blocked` : (partial ? `${partial} partial` : "Operational");
+  badge.dataset.variant = blocked || partial ? "warning" : "positive";
+  summary.textContent = featureReadiness.summary;
+  if (countLive) countLive.textContent = featureReadiness.live_count || 0;
+  if (countPaper) countPaper.textContent = paperOnly;
+  if (countPartial) countPartial.textContent = partial;
+  if (countBlocked) countBlocked.textContent = blocked;
+  if (countPlanned) countPlanned.textContent = featureReadiness.planned_count || 0;
+
+  if (alertTitle) {
+    alertTitle.textContent = blocked
+      ? `${blocked} feature${blocked === 1 ? "" : "s"} blocked before commercial/live use`
+      : "No critical blocker in the current public cockpit";
+  }
+  if (alertSummary) {
+    alertSummary.textContent = blocked
+      ? `${partial} partial and ${paperOnly} paper-only surface${paperOnly === 1 ? "" : "s"} are labeled. Live-money automation remains locked until legal/risk gates pass.`
+      : featureReadiness.headline;
+  }
+  if (alertStrip) {
+    alertStrip.dataset.state = blocked ? "blocked" : (partial ? "partial" : "live");
+  }
+  if (briefStatus) {
+    briefStatus.textContent = blocked ? "Truth-first mode" : "Operational";
+  }
+  if (briefDetail) {
+    briefDetail.textContent = blocked
+      ? `${blocked} blocked · ${partial} partial · live trading locked`
+      : featureReadiness.summary;
+  }
+
+  const sortedItems = [...items].sort((a, b) => {
+    const stateDelta = featureStateSortWeight(a.state) - featureStateSortWeight(b.state);
+    if (stateDelta !== 0) {
+      return stateDelta;
+    }
+    return (b.severity || 0) - (a.severity || 0);
+  });
+  grid.innerHTML = sortedItems.map((item) => {
+    const link = item.route
+      ? `<a class="text-link" href="${escapeHtml(item.route)}">${item.route.startsWith("#") ? "Open surface" : "Open page"}</a>`
+      : "";
+    return `
+      <article class="feature-readiness-card feature-${escapeHtml(item.state)}">
+        <div class="connector-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(item.category)}</p>
+            <h4>${escapeHtml(item.label)}</h4>
+          </div>
+          <span class="status-pill" data-variant="${featureStateVariant(item.state)}">${featureStateLabel(item.state)}</span>
+        </div>
+        <p class="feature-visible">${escapeHtml(item.user_visible)}</p>
+        <dl class="feature-truth-list">
+          <div><dt>Truth</dt><dd>${escapeHtml(item.truth)}</dd></div>
+          <div><dt>Why</dt><dd>${escapeHtml(item.reason)}</dd></div>
+          <div><dt>Impact</dt><dd>${escapeHtml(item.impact)}</dd></div>
+        </dl>
+        <div class="feature-next-action">
+          <strong>Next:</strong>
+          <span>${escapeHtml(item.next_action)}</span>
+          ${link}
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  priorityList.innerHTML = (featureReadiness.priority_fixes || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("") || "<li>No high-priority blocked feature recorded.</li>";
+  decorateFeatureNavigation(items);
+  decorateFeatureSections(items);
 }
 
 function connectorStateLabel(state) {
@@ -5822,6 +6031,7 @@ async function loadDashboard(options = {}) {
     nextDashboardRefreshAt = autoRefreshEnabled ? Date.now() + AUTO_REFRESH_MS : null;
     renderOperatorStrip(snapshot);
     renderHeroMeta(snapshot);
+    renderFeatureReadiness(snapshot.feature_readiness);
     renderRibbon(snapshot);
     renderLaunchReadiness(snapshot.launch_readiness);
     renderConnectorControl(snapshot.connector_control);

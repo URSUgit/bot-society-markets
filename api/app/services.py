@@ -65,6 +65,8 @@ from .models import (
     FollowedBot,
     ConnectorControlSnapshot,
     ConnectorStatusItem,
+    FeatureReadinessItem,
+    FeatureReadinessSnapshot,
     InfrastructureReadinessSnapshot,
     InfrastructureTask,
     InfrastructureTaskState,
@@ -6077,6 +6079,239 @@ class BotSocietyService:
             tracks=tracks,
         )
 
+    def get_feature_readiness(
+        self,
+        provider_status: ProviderStatus | None = None,
+        paper_venues: PaperVenuesSnapshot | None = None,
+    ) -> FeatureReadinessSnapshot:
+        provider_status = provider_status or self.get_provider_status()
+        paper_venues = paper_venues or self.get_paper_venues()
+
+        market_live = (
+            provider_status.market_provider_ready
+            and provider_status.market_provider_live_capable
+            and not provider_status.market_fallback_active
+        )
+        social_youtube_live = (
+            provider_status.social_discovery_ready
+            and provider_status.social_discovery_live_capable
+            and not provider_status.social_discovery_fallback_active
+        )
+        paper_ready = any(venue.status == "ready" for venue in paper_venues.venues)
+        stripe_configured = bool(
+            self.settings.stripe_publishable_key
+            and self.settings.stripe_secret_key
+            and self.settings.stripe_webhook_secret
+            and self.settings.stripe_basic_price_id
+        )
+        crypto_onramp_configured = bool(self.settings.coinbase_onramp_api_key and self.settings.coinbase_onramp_app_id)
+        ibkr_endpoint_configured = self.settings.ibkr_connection_mode != "disabled" and (
+            bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
+            if self.settings.ibkr_connection_mode == "tws_gateway"
+            else bool(self.settings.ibkr_client_portal_base_url)
+        )
+        ibkr_configured = bool(ibkr_endpoint_configured and self.settings.ibkr_account_id)
+        legal_ready = bool(
+            self.settings.legal_entity_name
+            and self.settings.legal_primary_jurisdiction
+            and self.settings.privacy_contact_email
+            and self.settings.aml_program_owner
+        )
+
+        items = [
+            FeatureReadinessItem(
+                key="market-data",
+                label="Real market data",
+                category="Data",
+                state="live" if market_live else "partial",
+                user_visible="Live prices and provider labels are visible across dashboard and Strategy Lab.",
+                truth=(
+                    f"{provider_status.market_provider_source} is the active source."
+                    if market_live
+                    else "Market data has a fallback path and must not be treated as execution-grade everywhere yet."
+                ),
+                reason=provider_status.market_provider_warning or "Provider is configured; per-asset freshness SLA still needs hardening.",
+                impact="Charts, signals, and backtests can render, but execution workflows still require fresh per-asset checks.",
+                next_action="Add freshness badges per symbol and block order preview if the provider is stale.",
+                route="#intelligence-section",
+                severity=2 if market_live else 3,
+            ),
+            FeatureReadinessItem(
+                key="strategy-lab",
+                label="Strategy Lab",
+                category="Research",
+                state="partial",
+                user_visible="Backtests and strategy configuration are available.",
+                truth="Useful MVP, but not yet a high-speed 10-year institutional simulator for every venue/source.",
+                reason="Historical data coverage, async jobs, saved comparisons, and walk-forward metrics need deeper implementation.",
+                impact="Good for research exploration; not enough yet for claiming a strategy beats all markets.",
+                next_action="Move long backtests to async jobs with provider provenance and saved comparison reports.",
+                route="/simulation",
+                severity=3,
+            ),
+            FeatureReadinessItem(
+                key="youtube-social-traders",
+                label="YouTube social traders",
+                category="Social AI",
+                state="live" if social_youtube_live else "partial",
+                user_visible="Creator profiles, evidence, signals, and paper allocation controls are visible.",
+                truth=(
+                    "YouTube Data API discovery is configured and worker-backed."
+                    if social_youtube_live
+                    else "Social trader discovery is running in demo/research mode or waiting for live YouTube configuration."
+                ),
+                reason=provider_status.social_discovery_warning or "ROI is still proxy/evidence-based until price-validated per signal.",
+                impact="Creator bots can be studied and paper-followed; historical ROI must be labeled as research proxy.",
+                next_action="Resolve each extracted creator thesis against real price windows and show evidence-grade ROI only.",
+                route="#social-trader-section",
+                severity=2 if social_youtube_live else 3,
+            ),
+            FeatureReadinessItem(
+                key="x-reddit-telegram-scrapers",
+                label="X / Reddit / Telegram scrapers",
+                category="Social AI",
+                state="planned",
+                user_visible="Source registry shows future multi-source coverage.",
+                truth="YouTube is first; X, Reddit, and Telegram connectors are not production ingestion rails yet.",
+                reason="Official API access, terms compliance, rate limits, and evidence storage rules are not complete.",
+                impact="Creator bot profiles are not yet true full-spectrum social twins.",
+                next_action="Implement official X recent-search adapter, Reddit API adapter, and Telegram channel ingestion with ToS controls.",
+                route="#social-trader-section",
+                severity=4,
+            ),
+            FeatureReadinessItem(
+                key="paper-managed-trading",
+                label="Managed paper trading",
+                category="Execution",
+                state="paper_only" if paper_ready else "partial",
+                user_visible="Paper allocation and simulated manager decisions are available.",
+                truth="Orders are simulated in an internal ledger; this is not live-money execution.",
+                reason="Paper/testnet separation is intentional until risk engine, KYC, suitability, and legal gates graduate.",
+                impact="Safe for UX and strategy validation; users must not confuse it with broker/venue execution.",
+                next_action="Add immutable decision receipts, slippage simulation, and venue-specific testnet adapters.",
+                route="#paper-section",
+                severity=2,
+            ),
+            FeatureReadinessItem(
+                key="live-automated-trading",
+                label="Live automated trading",
+                category="Execution",
+                state="blocked",
+                user_visible="Order ticket previews exist, but live submit must remain locked.",
+                truth="Live automated trading is not commercially ready.",
+                reason="Needs risk engine hardening, audit log, kill switch, venue permissions, KYC/suitability, and counsel approval.",
+                impact="Buttons that imply live execution must be labeled locked or paper-only.",
+                next_action="Build live-trading gate: suitability, max allocation, daily loss cap, venue consent, kill switch, and audit trail.",
+                route="#trading-workspace-section",
+                severity=5,
+            ),
+            FeatureReadinessItem(
+                key="wallet-connect",
+                label="Crypto wallet connect",
+                category="Account",
+                state="partial",
+                user_visible="Wallet address onboarding and signature challenge are available for signed-in users.",
+                truth="Non-custodial wallet ownership checks exist; full WalletConnect app UX and live balance/action rails are not complete.",
+                reason="WalletConnect SDK flow, chain balance refresh, and venue-specific transaction approval still need production polish.",
+                impact="Safe for identity/context; not a complete crypto funding or execution wallet yet.",
+                next_action="Add WalletConnect v2 pairing, balance refresh, network warnings, and read-only proof before any signing flow.",
+                route="#account-section",
+                severity=3,
+            ),
+            FeatureReadinessItem(
+                key="fiat-payments",
+                label="Fiat card onboarding",
+                category="Commercial",
+                state="partial" if stripe_configured else "blocked",
+                user_visible="Billing plans and checkout surfaces are shown.",
+                truth="Stripe is paused/not fully production-configured." if not stripe_configured else "Stripe config exists, but commercial launch gates remain.",
+                reason="Stripe keys, price IDs, webhook signing, VAT/tax, and entitlement mapping must all be correct.",
+                impact="Do not sell paid plans until checkout, portal, webhook, and legal copy are verified.",
+                next_action="Finish Stripe price IDs, webhook tests, entitlements, VAT handling, and checkout smoke tests.",
+                route="#account-section",
+                severity=5 if not stripe_configured else 3,
+            ),
+            FeatureReadinessItem(
+                key="crypto-onramp",
+                label="Crypto payment / onramp",
+                category="Commercial",
+                state="partial" if crypto_onramp_configured else "blocked",
+                user_visible="Crypto onboarding is listed as a planned commercial rail.",
+                truth="Coinbase/MoonPay style hosted onramp is not fully activated.",
+                reason="Provider keys, webhook ledgering, disclosures, and regional controls are required.",
+                impact="No real crypto funding flow should be presented as ready.",
+                next_action="Activate hosted provider flow and keep custody/KYC inside the provider until counsel approves scope.",
+                route="#connectors-section",
+                severity=4,
+            ),
+            FeatureReadinessItem(
+                key="ibkr-connector",
+                label="Interactive Brokers connector",
+                category="Brokerage",
+                state="partial" if ibkr_configured else "planned",
+                user_visible="IBKR appears as a brokerage/paper venue candidate.",
+                truth="IBKR adapter is not a live trading rail yet.",
+                reason="TWS/IB Gateway setup, paper smoke tests, read-only account validation, and explicit live order gate are required.",
+                impact="Do not route real stocks/options/CFD orders through BITprivat yet.",
+                next_action="Build IBKR read-only smoke test first, then paper orders, then gated live order preview.",
+                route="#paper-section",
+                severity=4,
+            ),
+            FeatureReadinessItem(
+                key="legal-commercial",
+                label="Legal/commercial readiness",
+                category="Compliance",
+                state="partial" if legal_ready else "blocked",
+                user_visible="Risk/legal pages and onboarding gates exist.",
+                truth="Counsel-reviewed commercial launch pack is not complete.",
+                reason="Copy trading, automated investment advice, payments, KYC/AML, and jurisdiction controls need review.",
+                impact="Live automation and paid commercial positioning must stay restricted.",
+                next_action="Produce counsel checklist, jurisdiction matrix, disclosures, suitability gates, and incident playbook.",
+                route="#launch-section",
+                severity=5,
+            ),
+            FeatureReadinessItem(
+                key="desktop-app",
+                label="Windows/Mac desktop app",
+                category="Distribution",
+                state="planned",
+                user_visible="Desktop packaging is on the roadmap.",
+                truth="Installable signed Windows/Mac app is not shipped yet.",
+                reason="Tauri/Electron shell, signing, installer, auto-update, and notarization are still missing.",
+                impact="Users should use the hosted web app for now.",
+                next_action="Create Tauri shell after web UX stabilizes, then sign/notarize and test installer flows.",
+                route="#launch-section",
+                severity=3,
+            ),
+        ]
+
+        counts = {
+            "live": sum(item.state == "live" for item in items),
+            "paper_only": sum(item.state == "paper_only" for item in items),
+            "partial": sum(item.state == "partial" for item in items),
+            "blocked": sum(item.state == "blocked" for item in items),
+            "planned": sum(item.state == "planned" for item in items),
+        }
+        blocked_or_partial = [item for item in items if item.state in {"blocked", "partial"}]
+        blocked_or_partial.sort(key=lambda item: (-item.severity, item.label))
+        priority_fixes = [item.next_action for item in blocked_or_partial[:5]]
+
+        return FeatureReadinessSnapshot(
+            generated_at=self._now(),
+            headline="Platform truth: what works, what is paper-only, and what is not ready yet.",
+            summary=(
+                f"{counts['live']} live, {counts['paper_only']} paper-only, {counts['partial']} partial, "
+                f"{counts['blocked']} blocked, {counts['planned']} planned. Blocked features are now explicitly labeled in the UI."
+            ),
+            live_count=counts["live"],
+            paper_only_count=counts["paper_only"],
+            partial_count=counts["partial"],
+            blocked_count=counts["blocked"],
+            planned_count=counts["planned"],
+            items=items,
+            priority_fixes=priority_fixes,
+        )
+
     def get_business_model_strategy(self) -> BusinessModelSnapshot:
         return BusinessModelSnapshot(
             generated_at=self._now(),
@@ -6491,6 +6726,10 @@ class BotSocietyService:
                 provider_status=provider_status,
                 system_pulse=system_pulse,
             ),
+            feature_readiness=self.get_feature_readiness(
+                provider_status=provider_status,
+                paper_venues=paper_venues,
+            ),
             business_model=self.get_business_model_strategy(),
         )
         self.dashboard_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
@@ -6639,6 +6878,10 @@ class BotSocietyService:
             operations_infrastructure=self.get_operations_infrastructure(
                 provider_status=provider_status,
                 system_pulse=system_pulse,
+            ),
+            feature_readiness=self.get_feature_readiness(
+                provider_status=provider_status,
+                paper_venues=paper_venues,
             ),
             business_model=self.get_business_model_strategy(),
         )
