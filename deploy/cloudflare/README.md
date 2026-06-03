@@ -30,7 +30,7 @@ Or use the helper script:
 ```
 
 GitHub Actions can also deploy the router automatically from
-[cloudflare-worker.yml](C:\Users\ionut\OneDrive\Documents\New project\.github\workflows\cloudflare-worker.yml).
+[cloudflare-worker.yml](C:\Users\ionut\Documents\New project\.github\workflows\cloudflare-worker.yml).
 Add these repository secrets to enable it:
 
 - `CLOUDFLARE_ACCOUNT_ID`
@@ -38,6 +38,25 @@ Add these repository secrets to enable it:
 
 The workflow intentionally skips deployment instead of failing CI when those
 secrets are not present.
+
+### Enable GitHub automatic Cloudflare deploy
+
+Create a Cloudflare API token from the dashboard, then run:
+
+```powershell
+.\deploy\cloudflare\setup-github-secrets.ps1 -TriggerWorkflow
+```
+
+Use a custom API token scoped to the `bitprivat.com` zone and the account that
+owns the `bot-society-markets` Worker. Required capabilities:
+
+- Account: `Cloudflare Workers Scripts:Edit`
+- Zone: `Workers Routes:Edit`
+- Zone: `Zone:Read`
+
+The helper sets `CLOUDFLARE_ACCOUNT_ID`, prompts for `CLOUDFLARE_API_TOKEN`
+without echoing it, stores both through `gh secret set`, and can trigger the
+Cloudflare Worker workflow to prove GitHub deployment works.
 
 ## Verify
 
