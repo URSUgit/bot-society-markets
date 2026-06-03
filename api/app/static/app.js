@@ -391,6 +391,7 @@ let socialMarketplaceState = {
   asset: "all",
   risk: "all",
   mode: "all",
+  validation: "all",
   sort: "score",
 };
 let socialMarketplaceFilterTimer = null;
@@ -2301,12 +2302,100 @@ function socialAvatarMarkup(trader) {
   `;
 }
 
+const SOCIAL_VALIDATED_CALL_THRESHOLD = 20;
+
+function socialResolvedCallCount(trader) {
+  return Math.max(0, Math.round(Number(trader?.resolved_call_count ?? trader?.resolved_calls ?? 0) || 0));
+}
+
+function socialValidationState(trader) {
+  const resolved = socialResolvedCallCount(trader);
+  return String(trader?.validation_state || "").toLowerCase() === "validated" && resolved >= SOCIAL_VALIDATED_CALL_THRESHOLD
+    ? "validated"
+    : "proxy";
+}
+
+function socialIsValidated(trader) {
+  return socialValidationState(trader) === "validated";
+}
+
+function socialValidationLabel(trader) {
+  return socialIsValidated(trader) ? "Validated" : "Proxy";
+}
+
+function socialValidationTone(trader) {
+  return socialIsValidated(trader) ? "positive" : "warning";
+}
+
+function socialProxyRoi(trader) {
+  return Number(trader?.proxy_roi ?? trader?.roi_if_followed ?? 0) || 0;
+}
+
+function socialValidationSummary(trader) {
+  const resolved = socialResolvedCallCount(trader);
+  if (!socialIsValidated(trader)) {
+    return `Unvalidated - ${resolved} resolved call${resolved === 1 ? "" : "s"}`;
+  }
+  const hitRate = trader.hit_rate ?? trader.win_rate;
+  const ci = trader.hit_rate_ci ?? trader.confidence_interval ?? 0;
+  return `${fmtPercent(hitRate)} +/- ${fmtPercent(ci)} over ${resolved} calls`;
+}
+
+function socialScoreSparklineMarkup(trader) {
+  const values = (trader.score_history || [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  const series = values.length ? values.slice(-8) : [Number(trader.composite_score || 0)];
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = Math.max(1, max - min);
+  const denominator = Math.max(1, series.length - 1);
+  const points = series.map((value, index) => {
+    const x = (index / denominator) * 56;
+    const y = 22 - ((value - min) / range) * 18;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `
+    <svg class="social-score-sparkline" viewBox="0 0 56 24" aria-hidden="true" focusable="false">
+      <polyline points="${points}" />
+    </svg>
+  `;
+}
+
+function socialPaperMarkerMarkup(label = "PAPER") {
+  return `<span class="social-paper-marker">${escapeHtml(label)}</span>`;
+}
+
+function socialConvictionMeterMarkup(value) {
+  const pct = Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 100)));
+  return `<span class="social-conviction-meter" aria-label="Conviction ${pct} percent"><i style="width:${pct}%"></i></span>`;
+}
+
+function socialPerformanceStatMarkup(trader) {
+  const resolved = socialResolvedCallCount(trader);
+  if (socialIsValidated(trader)) {
+    const avgReturn = Number(trader.avg_return ?? trader.average_roi ?? 0) || 0;
+    return `
+      <span><small>Hit rate</small><strong>${fmtPercent(trader.hit_rate ?? trader.win_rate)}</strong></span>
+      <span><small>Confidence</small><strong>+/- ${fmtPercent(trader.hit_rate_ci || 0)}</strong></span>
+      <span><small>Avg return</small><strong class="${avgReturn >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(avgReturn)}</strong></span>
+      <span><small>Sample</small><strong>${resolved} calls</strong></span>
+    `;
+  }
+  return `
+    <span><small>Validation</small><strong>Unvalidated</strong></span>
+    <span><small>Resolved</small><strong>${resolved} calls</strong></span>
+    <span><small>Proxy signal</small><strong class="social-proxy-value">${fmtSignedPercent(socialProxyRoi(trader))}</strong></span>
+    <span><small>Sample gate</small><strong>${Math.max(0, SOCIAL_VALIDATED_CALL_THRESHOLD - resolved)} to go</strong></span>
+  `;
+}
+
 function socialRoiWindowsMarkup(trader) {
   return (trader.roi_windows || []).map((window) => `
     <div>
       <span>${escapeHtml(window.label)}</span>
-      <strong class="${Number(window.return_pct || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(window.return_pct || 0)}</strong>
-      <small>${fmtUsd(window.pnl_usd || 0)} · ${window.signal_count || 0} signal(s)</small>
+      <strong class="social-proxy-value">${fmtSignedPercent(window.return_pct || 0)}</strong>
+      <small>Proxy window · ${fmtUsd(window.pnl_usd || 0)} · ${window.signal_count || 0} signal(s)</small>
     </div>
   `).join("");
 }
@@ -2317,9 +2406,15 @@ function socialDecisionFeedMarkup(trader) {
       <div>
         <strong>${escapeHtml(decision.asset)} · ${escapeHtml(humanizeKey(decision.action || "watch"))}</strong>
         <p>${escapeHtml(decision.rationale)}</p>
-        <small>${escapeHtml(decision.source_title || "YouTube evidence")} · ${fmtRelativeTime(decision.observed_at)}</small>
+        <small>
+          ${decision.source_url ? `<a href="${escapeHtml(decision.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(decision.source_title || "YouTube evidence")}</a>` : escapeHtml(decision.source_title || "YouTube evidence")}
+          · ${fmtRelativeTime(decision.observed_at)}
+        </small>
       </div>
-      <span data-tone="${decision.direction === "bearish" ? "danger" : decision.direction === "bullish" ? "positive" : "warning"}">${escapeHtml(decision.direction)} · ${fmtPercent(decision.confidence || 0)}</span>
+      <span class="social-conviction-pill" data-tone="neutral">
+        ${escapeHtml(decision.direction)} · ${fmtPercent(decision.confidence || 0)}
+        ${socialConvictionMeterMarkup(decision.confidence || 0)}
+      </span>
     </li>
   `).join("") || "<li><p>No live decision feed yet. Run YouTube discovery to create fresh decisions.</p></li>";
 }
@@ -2355,10 +2450,14 @@ function socialExecutionLedgerMarkup(socialTrading) {
       <div>
         <strong>${escapeHtml(decision.asset)} · ${escapeHtml(humanizeKey(decision.action || "watch"))}</strong>
         <p>${escapeHtml(decision.rationale)}</p>
-        <small>${escapeHtml(decision.source_title || "YouTube evidence")} · ${fmtRelativeTime(decision.observed_at)}</small>
+        <small>
+          ${decision.source_url ? `<a href="${escapeHtml(decision.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(decision.source_title || "YouTube evidence")}</a>` : escapeHtml(decision.source_title || "YouTube evidence")}
+          · ${fmtRelativeTime(decision.observed_at)}
+        </small>
       </div>
-      <span class="badge" data-tone="${decision.direction === "bearish" ? "danger" : decision.direction === "bullish" ? "positive" : "warning"}">
+      <span class="badge social-conviction-pill" data-tone="neutral">
         ${escapeHtml(decision.direction)} · ${fmtPercent(decision.confidence || 0)}
+        ${socialConvictionMeterMarkup(decision.confidence || 0)}
       </span>
     </li>
   `).join("") || "<li><p>Run YouTube discovery or the managed-paper bot to populate the decision ledger.</p></li>";
@@ -2509,6 +2608,8 @@ function socialTraderSearchText(trader, allocation) {
     trader.conviction_label,
     trader.copy_trade_readiness,
     trader.risk_level,
+    socialValidationState(trader),
+    trader.deploy_status,
     allocation?.mode,
     ...(trader.primary_assets || []),
     ...(trader.style_tags || []),
@@ -2547,6 +2648,9 @@ function socialTraderMatchesMarketplace(trader, allocationByTrader) {
   if (socialMarketplaceState.mode === "not_deployed" && (allocation || trader.is_deployed)) {
     return false;
   }
+  if (socialMarketplaceState.validation !== "all" && socialValidationState(trader) !== socialMarketplaceState.validation) {
+    return false;
+  }
   return true;
 }
 
@@ -2557,10 +2661,15 @@ function socialRiskRank(level) {
 function socialSortValue(trader, allocationByTrader) {
   const allocation = allocationByTrader.get(trader.id);
   if (socialMarketplaceState.sort === "roi") {
-    return Number(trader.roi_if_followed || 0);
+    return socialProxyRoi(trader);
   }
   if (socialMarketplaceState.sort === "win_rate") {
     return Number(trader.win_rate || 0);
+  }
+  if (socialMarketplaceState.sort === "validated") {
+    return socialIsValidated(trader)
+      ? (Number(trader.hit_rate || 0) * 2) + Number(trader.avg_return || 0) + (Number(trader.composite_score || 0) / 100)
+      : -1;
   }
   if (socialMarketplaceState.sort === "recent") {
     return trader.last_signal_at ? new Date(trader.last_signal_at).getTime() : 0;
@@ -2589,6 +2698,7 @@ function syncSocialMarketplaceControls(traders) {
   const search = document.getElementById("social-marketplace-search");
   const risk = document.getElementById("social-risk-filter");
   const mode = document.getElementById("social-mode-filter");
+  const validation = document.getElementById("social-validation-filter");
   const sort = document.getElementById("social-sort-select");
   const asset = document.getElementById("social-asset-filter");
   if (search && search.value !== socialMarketplaceState.query) {
@@ -2599,6 +2709,9 @@ function syncSocialMarketplaceControls(traders) {
   }
   if (mode) {
     mode.value = socialMarketplaceState.mode;
+  }
+  if (validation) {
+    validation.value = socialMarketplaceState.validation;
   }
   if (sort) {
     sort.value = socialMarketplaceState.sort;
@@ -2646,6 +2759,10 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
   const roiWindows = socialRoiWindowsMarkup(trader) || "<div><span>ROI</span><strong>Pending</strong><small>No signal window yet</small></div>";
   const exposure = socialAssetExposureMarkup(trader) || "<span><strong>Pending</strong> Waiting for indexed evidence</span>";
   const decisions = socialDecisionFeedMarkup(trader);
+  const validationState = socialValidationState(trader);
+  const validationSummary = socialValidationSummary(trader);
+  const deployMode = allocation?.mode || trader.deployment_mode || trader.deploy_status || guidance.recommended_mode || "signals";
+  const delegatedUsd = trader.delegated_usd || allocation?.allocation_limit_usd || 0;
   const evidence = (trader.evidence || []).slice(0, 6).map((item) => `
     <li>
       <div>
@@ -2653,7 +2770,7 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
         <p>${escapeHtml(item.summary || "No summary available.")}</p>
         <small>${escapeHtml(item.asset)} · ${escapeHtml(item.direction)} · ${fmtPercent(item.confidence)} confidence · ${fmtRelativeTime(item.observed_at)}</small>
       </div>
-      <span class="${Number(item.derived_return || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(item.derived_return || 0)}</span>
+      <span class="social-proxy-value">Proxy ${fmtSignedPercent(item.derived_return || 0)}</span>
     </li>
   `).join("") || "<li><p>No public evidence indexed yet. Analyze the channel or scan new videos.</p></li>";
   const riskNotes = (trader.risk_notes || []).map((note) => `<li>${escapeHtml(note)}</li>`).join("")
@@ -2673,15 +2790,26 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
     </div>
     <div class="social-detail-status">
       <span data-tone="${socialRiskTone(trader.risk_level)}">Risk ${escapeHtml(humanizeKey(trader.risk_level || "medium"))}</span>
+      <span data-tone="${socialValidationTone(trader)}">${escapeHtml(socialValidationLabel(trader))}</span>
       <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
-      <span>${trader.is_deployed ? `Deployed · ${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}` : "Not deployed"}</span>
+      <span>${trader.is_deployed ? `PAPER deployed · ${fmtUsd(delegatedUsd)}` : "Not deployed"}</span>
     </div>
     ${socialCreatorBotMarkup(trader)}
     <div class="social-detail-scoreboard">
       <article><span>Score</span><strong>${fmtScore(trader.composite_score)}</strong><small>Composite creator score</small></article>
-      <article><span>Win rate</span><strong>${fmtPercent(trader.win_rate)}</strong><small>${trader.signal_count || 0} extracted signal(s)</small></article>
-      <article><span>Proxy if-followed</span><strong>${fmtSignedPercent(trader.roi_if_followed)}</strong><small>${fmtSignedPercent(trader.max_drawdown)} modeled drawdown</small></article>
-      <article><span>Delegation</span><strong>${fmtUsd(trader.delegated_usd || allocation?.allocation_limit_usd || 0)}</strong><small>${escapeHtml(humanizeKey(allocation?.mode || trader.deployment_mode || guidance.recommended_mode || "signals"))}</small></article>
+      <article>
+        <span>Validation</span>
+        <strong>${escapeHtml(socialValidationLabel(trader))}</strong>
+        <small>${escapeHtml(validationSummary)}</small>
+      </article>
+      <article>
+        <span>${socialIsValidated(trader) ? "Avg return" : "Proxy signal"}</span>
+        <strong class="${socialIsValidated(trader) ? (Number(trader.avg_return || 0) >= 0 ? "profit-text" : "loss-text") : "social-proxy-value"}">
+          ${socialIsValidated(trader) ? fmtSignedPercent(trader.avg_return || 0) : fmtSignedPercent(socialProxyRoi(trader))}
+        </strong>
+        <small>${socialIsValidated(trader) ? "Market-resolved sample" : "Content-derived, not validated PnL"}</small>
+      </article>
+      <article><span>Delegation</span><strong>${fmtUsd(delegatedUsd)}</strong><small>${socialPaperMarkerMarkup()} ${escapeHtml(humanizeKey(deployMode))}</small></article>
     </div>
     <div class="social-detail-two-col">
       <article>
@@ -2715,10 +2843,10 @@ function socialTraderDetailMarkup(trader, allocation, canEdit) {
       </label>
       <div class="social-detail-actions">
         <button class="button secondary small-button" type="button" data-action="social-follow-signal" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-          ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"}
+          ${allocation?.mode === "signals" ? "Signals active" : "Signal follow"} ${socialPaperMarkerMarkup("PAPER")}
         </button>
         <button class="button primary small-button" type="button" data-action="social-follow-managed" data-social-trader-id="${trader.id}" ${disabledAttr(!canEdit)}>
-          ${allocation?.mode === "managed_paper" ? "Paper bot active" : "Deploy paper bot"}
+          ${allocation?.mode === "managed_paper" ? "Paper bot active" : "Deploy paper bot"} ${socialPaperMarkerMarkup()}
         </button>
       </div>
     </div>
@@ -2785,7 +2913,15 @@ function renderSocialTrading(socialTrading) {
   const executionLedgerList = document.getElementById("social-execution-ledger-list");
   const discoveryRunList = document.getElementById("social-discovery-run-list");
   const safetyList = document.getElementById("social-safety-list");
-  if (!summary || !badge || !kpis || !grid || !allocationList || !safetyList || !socialTrading) {
+  if (!summary || !badge || !kpis || !grid || !allocationList || !safetyList) {
+    return;
+  }
+  if (!socialTrading) {
+    summary.textContent = "Loading social trader discovery, evidence, and paper allocation limits...";
+    badge.textContent = "Syncing";
+    badge.dataset.variant = "warning";
+    kpis.innerHTML = Array.from({ length: 5 }).map(() => '<article class="social-skeleton-card" aria-hidden="true"><span></span><strong></strong><small></small></article>').join("");
+    grid.innerHTML = Array.from({ length: 6 }).map(() => '<article class="social-trader-card social-skeleton-card" aria-hidden="true"><span></span><strong></strong><small></small></article>').join("");
     return;
   }
 
@@ -2807,8 +2943,10 @@ function renderSocialTrading(socialTrading) {
       : "Sign in to run managed-paper social execution.";
   }
   const topScore = traders[0]?.composite_score || 0;
-  const averageRoi = traders.length
-    ? traders.reduce((total, trader) => total + Number(trader.roi_if_followed || 0), 0) / traders.length
+  const validatedCount = traders.filter((trader) => socialIsValidated(trader)).length;
+  const proxyCount = traders.length - validatedCount;
+  const averageProxySignal = traders.length
+    ? traders.reduce((total, trader) => total + socialProxyRoi(trader), 0) / traders.length
     : 0;
   const latestRun = socialTrading.latest_discovery_run || socialTrading.discovery_runs?.[0];
   const monitoring = socialTrading.monitoring || {};
@@ -2830,6 +2968,11 @@ function renderSocialTrading(socialTrading) {
 
   kpis.innerHTML = `
     <article>
+      <span>Validated creators</span>
+      <strong>${validatedCount}/${traders.length}</strong>
+      <small>${proxyCount} proxy profile(s) still collecting evidence</small>
+    </article>
+    <article>
       <span>Indexed profiles</span>
       <strong>${traders.length}</strong>
       <small>${socialTrading.provider_mode || "social discovery"}</small>
@@ -2845,8 +2988,8 @@ function renderSocialTrading(socialTrading) {
       <small>${fmtUsd(socialTrading.unallocated_usd || 0)} unallocated</small>
     </article>
     <article>
-      <span>Avg evidence proxy</span>
-      <strong>${fmtSignedPercent(averageRoi)}</strong>
+      <span>Avg proxy signal</span>
+      <strong class="social-proxy-value">${fmtSignedPercent(averageProxySignal)}</strong>
       <small>Not market-validated PnL</small>
     </article>
     <article>
@@ -2866,11 +3009,14 @@ function renderSocialTrading(socialTrading) {
     const guidance = trader.allocation_guidance || {};
     const assets = (trader.primary_assets || []).slice(0, 3);
     const delegated = trader.delegated_usd || allocation?.allocation_limit_usd || 0;
+    const validationState = socialValidationState(trader);
+    const deployMode = allocation?.mode || trader.deployment_mode || trader.deploy_status || guidance.recommended_mode || "signals";
     return `
-      <button class="social-trader-card social-trader-button" type="button" data-action="social-open-detail" data-social-trader-id="${trader.id}" aria-label="Explore ${escapeHtml(trader.display_name)} social trader profile">
+      <button class="social-trader-card social-trader-button" type="button" data-action="social-open-detail" data-social-trader-id="${trader.id}" data-validation-state="${validationState}" aria-label="Explore ${escapeHtml(trader.display_name)} social trader profile">
         <span class="social-card-topline">
           <span data-tone="${socialRiskTone(trader.risk_level)}">${escapeHtml(humanizeKey(trader.risk_level || "medium"))} risk</span>
-          <span>${escapeHtml(humanizeKey(trader.copy_trade_readiness || "signals_only"))}</span>
+          <span data-tone="${socialValidationTone(trader)}" title="Validated requires at least ${SOCIAL_VALIDATED_CALL_THRESHOLD} resolved market calls">${escapeHtml(socialValidationLabel(trader))}</span>
+          ${socialPaperMarkerMarkup()}
           <span>${trader.is_deployed ? "Deployed" : "Not deployed"}</span>
         </span>
         <span class="social-trader-head social-trader-head-compact">
@@ -2881,10 +3027,19 @@ function renderSocialTrading(socialTrading) {
             <small>${escapeHtml(trader.conviction_label || trader.analysis_basis || "Creator signal watchlist")}</small>
           </span>
         </span>
-        <span class="social-compact-stat-row">
-          <span><small>Score</small><strong>${fmtScore(trader.composite_score)}</strong></span>
-          <span><small>Win</small><strong>${fmtPercent(trader.win_rate)}</strong></span>
-          <span><small>Proxy ROI</small><strong class="${Number(trader.roi_if_followed || 0) >= 0 ? "profit-text" : "loss-text"}">${fmtSignedPercent(trader.roi_if_followed)}</strong></span>
+        <span class="social-scoreline">
+          <span class="social-score-main">
+            <small>Composite score</small>
+            <strong>${fmtScore(trader.composite_score)}</strong>
+          </span>
+          ${socialScoreSparklineMarkup(trader)}
+        </span>
+        <span class="social-validation-callout" data-state="${validationState}">
+          <strong>${escapeHtml(socialValidationSummary(trader))}</strong>
+          <small>${socialIsValidated(trader) ? "Market-resolved performance sample" : "Content-derived proxy, not verified PnL"}</small>
+        </span>
+        <span class="social-compact-stat-row social-performance-row">
+          ${socialPerformanceStatMarkup(trader)}
         </span>
         <span class="social-tag-row social-compact-tags">
           ${assets.map((asset) => `<span>${escapeHtml(asset)}</span>`).join("")}
@@ -2893,7 +3048,7 @@ function renderSocialTrading(socialTrading) {
           <span>
             <strong>${trader.signal_count || 0}</strong> signals · <strong>${(trader.evidence || []).length}</strong> evidence
           </span>
-          <span>${fmtUsd(delegated)} · ${escapeHtml(humanizeKey(allocation?.mode || trader.deployment_mode || guidance.recommended_mode || "signals"))}</span>
+          <span>${fmtUsd(delegated)} · ${escapeHtml(humanizeKey(deployMode))}</span>
         </span>
         <span class="social-explore-cue">Explore profile <span aria-hidden="true">&rarr;</span></span>
       </button>
@@ -6732,6 +6887,7 @@ function bindForms() {
     ["social-asset-filter", "asset"],
     ["social-risk-filter", "risk"],
     ["social-mode-filter", "mode"],
+    ["social-validation-filter", "validation"],
     ["social-sort-select", "sort"],
   ].forEach(([id, key]) => {
     const control = document.getElementById(id);
@@ -6750,6 +6906,7 @@ function bindForms() {
         asset: "all",
         risk: "all",
         mode: "all",
+        validation: "all",
         sort: "score",
       };
       renderSocialTradingFromFilters();

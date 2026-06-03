@@ -260,6 +260,11 @@
             <button class="button primary small-button" id="social-analyze-button" type="submit">Build Creator Bot</button>
           </div>
         </form>
+        <div class="social-validation-legend" id="social-validation-legend" aria-label="Validated versus proxy performance legend">
+          <span data-state="validated">Validated: 20+ resolved calls</span>
+          <span data-state="proxy">Proxy: content-derived, unvalidated</span>
+          <span data-state="paper">PAPER only: no live execution</span>
+        </div>
         <div class="social-marketplace-toolbar" id="social-marketplace-toolbar" aria-label="Social trader marketplace filters">
           <label>
             <span>Search manager</span>
@@ -291,11 +296,20 @@
             </select>
           </label>
           <label>
+            <span>Validation</span>
+            <select id="social-validation-filter" aria-label="Filter social traders by validation state">
+              <option value="all">All states</option>
+              <option value="validated">Validated</option>
+              <option value="proxy">Proxy only</option>
+            </select>
+          </label>
+          <label>
             <span>Sort</span>
             <select id="social-sort-select" aria-label="Sort social trader marketplace">
               <option value="score">Best score</option>
-              <option value="roi">Evidence proxy ROI</option>
-              <option value="win_rate">Win rate</option>
+              <option value="validated">Validated performance</option>
+              <option value="roi">Proxy research score</option>
+              <option value="win_rate">Legacy win signal</option>
               <option value="recent">Freshest signal</option>
               <option value="delegated">Delegated capital</option>
             </select>

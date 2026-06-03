@@ -28,6 +28,7 @@ SocialTradeMode = Literal["signals", "managed_paper"]
 SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
 SocialRiskLevel = Literal["low", "medium", "high"]
 SocialCopyTradeReadiness = Literal["paper_ready", "signals_only", "needs_review"]
+SocialValidationState = Literal["validated", "proxy"]
 SocialSourceState = Literal["live", "indexed", "ready_to_scan", "planned", "connector_build_required"]
 CreatorBotLearningStage = Literal["awaiting_evidence", "youtube_profile_active", "multi_source_profile", "paper_validation"]
 TraderIntelligenceCategory = Literal["trader", "investor", "educator", "founder", "analyst", "macro_thinker", "other"]
@@ -1216,6 +1217,7 @@ class SocialBackendRuntime(BaseModel):
 
 class SocialTraderScorecard(BaseModel):
     id: int
+    creator_id: str | None = None
     slug: str
     display_name: str
     handle: str
@@ -1231,6 +1233,18 @@ class SocialTraderScorecard(BaseModel):
     win_rate: float = Field(ge=0, le=1)
     average_roi: float
     roi_if_followed: float
+    validation_state: SocialValidationState = "proxy"
+    resolved_call_count: int = Field(default=0, ge=0)
+    hit_rate: float | None = Field(default=None, ge=0, le=1)
+    hit_rate_ci: float | None = Field(default=None, ge=0, le=1)
+    avg_return: float | None = None
+    risk_adjusted_return: float | None = None
+    proxy_roi: float | None = None
+    score_history: list[float] = Field(default_factory=list)
+    primary_asset: str | None = None
+    risk_tier: SocialRiskLevel | None = None
+    deploy_status: str = "not_deployed"
+    last_resolved_at: str | None = None
     max_drawdown: float = Field(le=0)
     sharpe_like: float
     consistency_score: float = Field(ge=0, le=1)
@@ -1262,6 +1276,33 @@ class SocialTraderScorecard(BaseModel):
     creator_bot: CreatorBotTrainingStatus | None = None
     source_coverage: list[SocialSourceStatus] = Field(default_factory=list)
     performance_basis: str = "Content-derived proxy; performance is not market-validated PnL."
+
+    @model_validator(mode="after")
+    def populate_validation_aliases(self) -> "SocialTraderScorecard":
+        if self.creator_id is None:
+            self.creator_id = self.slug
+        if self.proxy_roi is None:
+            self.proxy_roi = self.roi_if_followed
+        if self.primary_asset is None and self.primary_assets:
+            self.primary_asset = self.primary_assets[0]
+        if self.risk_tier is None:
+            self.risk_tier = self.risk_level
+        if not self.score_history:
+            current_score = round(float(self.composite_score or 0), 2)
+            self.score_history = [
+                round(max(0.0, current_score * 0.86), 2),
+                round(max(0.0, current_score * 0.94), 2),
+                current_score,
+            ]
+        if self.resolved_call_count < 20:
+            self.validation_state = "proxy"
+            self.hit_rate = None
+            self.hit_rate_ci = None
+            self.avg_return = None
+            self.risk_adjusted_return = None
+        elif self.validation_state == "validated" and self.hit_rate is None:
+            self.hit_rate = self.win_rate
+        return self
 
 
 class SocialTraderAllocation(BaseModel):

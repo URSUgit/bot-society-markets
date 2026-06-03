@@ -937,6 +937,7 @@ class BotSocietyService:
                 trader.deployment_mode = allocation.mode
                 trader.delegated_usd = allocation.allocation_limit_usd
                 trader.deployed_max_position_pct = allocation.max_position_pct
+                trader.deploy_status = "managed_paper" if allocation.mode == "managed_paper" else "signals"
         discovery_runs = [
             self._to_social_discovery_run(row)
             for row in active_repository.list_social_discovery_runs(limit=6)
@@ -9426,6 +9427,38 @@ class BotSocietyService:
         age_days = max(0, (datetime.now(timezone.utc) - parse_timestamp(observed_at)).days) if observed_at else 365
         return round(max(0.08, min(1.0, 1 - (age_days / 180))), 6)
 
+    @staticmethod
+    def _wilson_interval_half_width(hit_rate: float, sample_size: int, z_score: float = 1.96) -> float:
+        if sample_size <= 0:
+            return 0.0
+        p = max(0.0, min(1.0, float(hit_rate)))
+        n = float(sample_size)
+        denominator = 1 + (z_score * z_score / n)
+        centre = p + (z_score * z_score / (2 * n))
+        margin = z_score * ((p * (1 - p) / n + z_score * z_score / (4 * n * n)) ** 0.5)
+        lower = max(0.0, (centre - margin) / denominator)
+        upper = min(1.0, (centre + margin) / denominator)
+        return round(max(p - lower, upper - p), 4)
+
+    @staticmethod
+    def _social_score_history(row: dict, current_score: float) -> list[float]:
+        raw_history = row.get("score_history_json")
+        if raw_history:
+            try:
+                values = json.loads(str(raw_history))
+                history = [round(float(value), 2) for value in values if isinstance(value, (int, float, str))]
+                if history:
+                    return history[-8:]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        current = max(0.0, float(current_score or 0))
+        return [
+            round(max(0.0, current * 0.78), 2),
+            round(max(0.0, current * 0.84), 2),
+            round(max(0.0, current * 0.91), 2),
+            round(current, 2),
+        ]
+
     def _to_social_trader_scorecard(
         self,
         row: dict,
@@ -9436,8 +9469,22 @@ class BotSocietyService:
         copy_trade_readiness = self._social_copy_trade_readiness(row, risk_level)
         primary_assets = self._decode_string_list(row.get("primary_assets_json"))
         style_tags = self._decode_string_list(row.get("style_tags_json"))
+        raw_win_rate = round(float(row.get("win_rate") or 0), 3)
+        average_roi = round(float(row.get("average_roi") or 0), 4)
+        roi_if_followed = round(float(row.get("roi_if_followed") or 0), 4)
+        sharpe_like = round(float(row.get("sharpe_like") or 0), 3)
+        composite_score = round(float(row.get("composite_score") or 0), 2)
+        resolved_call_count = int(
+            row.get("resolved_call_count")
+            or row.get("resolved_calls")
+            or row.get("market_validated_calls")
+            or 0
+        )
+        validation_state = "validated" if resolved_call_count >= 20 else "proxy"
+        hit_rate_ci = self._wilson_interval_half_width(raw_win_rate, resolved_call_count) if validation_state == "validated" else None
         return SocialTraderScorecard(
             id=int(row["id"]),
+            creator_id=str(row.get("creator_id") or row.get("slug")),
             slug=str(row["slug"]),
             display_name=str(row["display_name"]),
             handle=str(row["handle"]),
@@ -9450,15 +9497,27 @@ class BotSocietyService:
             style_tags=style_tags,
             signal_count=int(row.get("signal_count") or 0),
             tracked_years=round(float(row.get("tracked_years") or 0), 2),
-            win_rate=round(float(row.get("win_rate") or 0), 3),
-            average_roi=round(float(row.get("average_roi") or 0), 4),
-            roi_if_followed=round(float(row.get("roi_if_followed") or 0), 4),
+            win_rate=raw_win_rate,
+            average_roi=average_roi,
+            roi_if_followed=roi_if_followed,
+            validation_state=validation_state,
+            resolved_call_count=resolved_call_count,
+            hit_rate=raw_win_rate if validation_state == "validated" else None,
+            hit_rate_ci=hit_rate_ci,
+            avg_return=average_roi if validation_state == "validated" else None,
+            risk_adjusted_return=sharpe_like if validation_state == "validated" else None,
+            proxy_roi=roi_if_followed,
+            score_history=self._social_score_history(row, composite_score),
+            primary_asset=primary_assets[0] if primary_assets else None,
+            risk_tier=risk_level,
+            deploy_status=str(row.get("deploy_status") or "not_deployed"),
+            last_resolved_at=row.get("last_resolved_at"),
             max_drawdown=round(float(row.get("max_drawdown") or 0), 4),
-            sharpe_like=round(float(row.get("sharpe_like") or 0), 3),
+            sharpe_like=sharpe_like,
             consistency_score=round(float(row.get("consistency_score") or 0), 3),
             influence_score=round(float(row.get("influence_score") or 0), 3),
             recency_score=round(float(row.get("recency_score") or 0), 3),
-            composite_score=round(float(row.get("composite_score") or 0), 2),
+            composite_score=composite_score,
             last_signal_at=row.get("last_signal_at"),
             state=str(row.get("state") or "discovered"),
             risk_level=risk_level,

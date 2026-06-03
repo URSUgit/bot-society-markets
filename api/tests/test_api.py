@@ -148,6 +148,18 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["social_trading"]["top_traders"][0]["risk_notes"]
         assert payload["social_trading"]["top_traders"][0]["evidence"][0]["impact_label"]
         assert 0 <= payload["social_trading"]["top_traders"][0]["evidence"][0]["evidence_weight"] <= 1
+        first_social_trader = payload["social_trading"]["top_traders"][0]
+        assert first_social_trader["creator_id"]
+        assert first_social_trader["validation_state"] in {"proxy", "validated"}
+        assert first_social_trader["resolved_call_count"] >= 0
+        assert "proxy_roi" in first_social_trader
+        assert first_social_trader["score_history"]
+        if first_social_trader["resolved_call_count"] < 20:
+            assert first_social_trader["validation_state"] == "proxy"
+            assert first_social_trader["hit_rate"] is None
+            assert first_social_trader["hit_rate_ci"] is None
+            assert first_social_trader["avg_return"] is None
+            assert first_social_trader["risk_adjusted_return"] is None
         assert payload["social_trading"]["portfolio_risk_notes"]
         assert payload["social_trading"]["youtube_required"] is True
         assert payload["social_trading"]["youtube_configured"] is False
@@ -188,6 +200,14 @@ def test_dashboard_fast_public_snapshot_has_feature_readiness() -> None:
             assert payload["feature_readiness"]["items"]
             feature_states = {item["key"]: item["state"] for item in payload["feature_readiness"]["items"]}
             assert feature_states["live-automated-trading"] == "blocked"
+            fast_public_trader = payload["social_trading"]["top_traders"][0]
+            assert fast_public_trader["creator_id"]
+            assert fast_public_trader["validation_state"] == "proxy"
+            assert fast_public_trader["resolved_call_count"] == 0
+            assert fast_public_trader["hit_rate"] is None
+            assert fast_public_trader["hit_rate_ci"] is None
+            assert fast_public_trader["proxy_roi"] is not None
+            assert fast_public_trader["score_history"]
 
 
 def test_bot_detail_and_cycle_flow() -> None:
@@ -570,6 +590,14 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert first_trader["creator_bot"]["source_coverage_pct"] > 0
         assert {source["platform"] for source in first_trader["source_coverage"]} >= {"youtube", "x"}
         assert "market-price validation" in first_trader["performance_basis"].lower()
+        assert first_trader["creator_id"]
+        assert first_trader["validation_state"] in {"proxy", "validated"}
+        assert first_trader["resolved_call_count"] >= 0
+        assert first_trader["proxy_roi"] is not None
+        if first_trader["resolved_call_count"] < 20:
+            assert first_trader["validation_state"] == "proxy"
+            assert first_trader["hit_rate"] is None
+            assert first_trader["avg_return"] is None
         assert initial_snapshot["latest_discovery_run"]["updated"] >= 4
         assert initial_snapshot["latest_discovery_run"]["evidence_count"] >= 20
         assert initial_snapshot["discovery_runs"]
@@ -641,6 +669,7 @@ def test_social_trader_discovery_follow_and_diversify_flow() -> None:
         assert deployed_trader["is_deployed"] is True
         assert deployed_trader["delegated_usd"] == 750
         assert deployed_trader["deployment_mode"] == "managed_paper"
+        assert deployed_trader["deploy_status"] == "managed_paper"
         assert follow_snapshot["allocated_usd"] >= 750
 
         diversify_response = client.post(
