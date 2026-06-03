@@ -6834,6 +6834,14 @@ class BotSocietyService:
         notification_health = self._lightweight_notification_health()
         alert_inbox = self._lightweight_alert_inbox()
         paper_venues = self.get_paper_venues()
+        system_pulse = self.get_system_pulse(
+            repository,
+            provider_status=provider_status,
+            notification_health=notification_health,
+            recent_signals=recent_signals,
+            latest_assets=latest_assets,
+            pending_predictions=pending_predictions,
+        )
         snapshot = DashboardSnapshot(
             summary=self._fast_public_summary(
                 leaderboard=leaderboard,
@@ -6852,14 +6860,7 @@ class BotSocietyService:
                 for row in predictions[:8]
             ],
             recent_signals=[self._to_signal_model(row) for row in recent_signals[:8]],
-            system_pulse=self.get_system_pulse(
-                repository,
-                provider_status=provider_status,
-                notification_health=notification_health,
-                recent_signals=recent_signals,
-                latest_assets=latest_assets,
-                pending_predictions=pending_predictions,
-            ),
+            system_pulse=system_pulse,
             macro_snapshot=macro_snapshot,
             wallet_intelligence=wallet_snapshot,
             edge_snapshot=edge_snapshot,

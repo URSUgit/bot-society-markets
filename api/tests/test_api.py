@@ -177,6 +177,19 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert isinstance(payload["recent_predictions"][0]["source_mix"], list)
 
 
+def test_dashboard_fast_public_snapshot_has_feature_readiness() -> None:
+    with patch("api.app.services.BotSocietyService._use_fast_public_snapshots", return_value=True):
+        with build_client() as client:
+            response = client.get("/api/dashboard")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["system_pulse"]["generated_at"]
+            assert payload["operations_infrastructure"]["services"]
+            assert payload["feature_readiness"]["items"]
+            feature_states = {item["key"]: item["state"] for item in payload["feature_readiness"]["items"]}
+            assert feature_states["live-automated-trading"] == "blocked"
+
+
 def test_bot_detail_and_cycle_flow() -> None:
     with build_client() as client:
         detail_response = client.get("/api/bots/macro-narrative")
