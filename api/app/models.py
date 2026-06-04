@@ -1815,7 +1815,7 @@ class AuthOnboardingSnapshot(BaseModel):
     kyc_status: KycStatus = "not_started"
     kyc_completed_at: str | None = None
     preferred_language: UiLanguage = "en"
-    preferred_theme: UiTheme = "day"
+    preferred_theme: UiTheme = "night"
     preferred_workspace_mode: WorkspaceMode = "pro"
     timezone: str = "UTC"
     updated_at: str | None = None

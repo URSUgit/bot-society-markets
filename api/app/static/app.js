@@ -1,5 +1,5 @@
 const DEFAULT_PREFERENCES = {
-  theme: "day",
+  theme: "night",
   language: "en",
   workspaceStyle: "institutional",
 };
@@ -5724,7 +5724,7 @@ function renderOnboardingPanel(authSession, profile) {
     languageInput.value = onboarding.preferred_language || "en";
   }
   if (themeInput) {
-    themeInput.value = onboarding.preferred_theme || "day";
+    themeInput.value = onboarding.preferred_theme || "night";
   }
   if (workspaceModeInput) {
     workspaceModeInput.value = onboarding.preferred_workspace_mode || "pro";
@@ -7088,7 +7088,7 @@ function bindForms() {
       const suitabilityScore = suitabilityRaw === "" || suitabilityRaw === undefined ? null : Number(suitabilityRaw);
       const kycStatus = document.getElementById("onboarding-kyc-status")?.value || "not_started";
       const preferredLanguage = document.getElementById("onboarding-language")?.value || "en";
-      const preferredTheme = document.getElementById("onboarding-theme")?.value || "day";
+      const preferredTheme = document.getElementById("onboarding-theme")?.value || "night";
       const preferredWorkspaceMode = document.getElementById("onboarding-workspace-mode")?.value || "pro";
       const timezone = document.getElementById("onboarding-timezone")?.value?.trim() || "UTC";
       const completed = Boolean(document.getElementById("onboarding-complete")?.checked);

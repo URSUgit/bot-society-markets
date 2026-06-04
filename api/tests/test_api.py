@@ -451,6 +451,7 @@ def test_professional_console_pages_are_served() -> None:
         assert "app-brand-chart" in dashboard_response.text
         assert 'data-nav-kind="app"' in dashboard_response.text
         assert "nav-route-badge" in dashboard_response.text
+        assert "/static/hyperliquid-tokens.css?v=hl-1" in dashboard_response.text
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-marketplace-toolbar"' in dashboard_response.text
@@ -484,6 +485,10 @@ def test_professional_console_pages_are_served() -> None:
         assert "/api/v1/trading/preview" in app_js_response.text
         assert "/api/v1/trading/orders" in app_js_response.text
         assert "dashboard-window-social-open" in app_js_response.text
+        hyperliquid_css_response = client.get("/static/hyperliquid-tokens.css")
+        assert hyperliquid_css_response.status_code == 200
+        assert "--hl-bg: #0b0e11" in hyperliquid_css_response.text
+        assert ".hl-orderbook" in hyperliquid_css_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

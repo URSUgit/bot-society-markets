@@ -1,6 +1,7 @@
 import {
   APP_JS,
   DASHBOARD_HTML,
+  HYPERLIQUID_TOKENS_CSS,
   INDEX_HTML,
   LIGHTWEIGHT_CHARTS_JS,
   PRIVACY_HTML,
@@ -352,6 +353,9 @@ export default {
     }
     if (incomingUrl.pathname === "/static/styles.css") {
       return assetResponse(STYLES_CSS, "text/css; charset=utf-8");
+    }
+    if (incomingUrl.pathname === "/static/hyperliquid-tokens.css") {
+      return assetResponse(HYPERLIQUID_TOKENS_CSS, "text/css; charset=utf-8");
     }
     if (incomingUrl.pathname === "/static/app.js") {
       return assetResponse(APP_JS, "application/javascript; charset=utf-8");

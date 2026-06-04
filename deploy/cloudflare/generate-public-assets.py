@@ -19,6 +19,7 @@ ASSETS = [
     ("PRIVACY_HTML", STATIC_DIR / "privacy.html"),
     ("RISK_HTML", STATIC_DIR / "risk.html"),
     ("STYLES_CSS", STATIC_DIR / "styles.css"),
+    ("HYPERLIQUID_TOKENS_CSS", STATIC_DIR / "hyperliquid-tokens.css"),
     ("APP_JS", STATIC_DIR / "app.js"),
     ("LIGHTWEIGHT_CHARTS_JS", STATIC_DIR / "vendor" / "lightweight-charts.standalone.production.js"),
 ]

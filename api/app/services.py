@@ -582,7 +582,7 @@ class BotSocietyService:
         kyc_status = payload.kyc_status or auth_profile.get("kyc_status") or "not_started"
         kyc_completed_at = auth_profile.get("kyc_completed_at")
         preferred_language = payload.preferred_language or auth_profile.get("preferred_language") or "en"
-        preferred_theme = payload.preferred_theme or auth_profile.get("preferred_theme") or "day"
+        preferred_theme = payload.preferred_theme or auth_profile.get("preferred_theme") or "night"
         preferred_workspace_mode = payload.preferred_workspace_mode or auth_profile.get("preferred_workspace_mode") or "pro"
         timezone_value = payload.timezone or auth_profile.get("timezone") or "UTC"
 
@@ -10715,7 +10715,7 @@ class BotSocietyService:
             "kyc_status": "not_started",
             "kyc_completed_at": None,
             "preferred_language": "en",
-            "preferred_theme": "day",
+            "preferred_theme": "night",
             "preferred_workspace_mode": "pro",
             "timezone": "UTC",
             "last_login_at": None,
@@ -10760,9 +10760,9 @@ class BotSocietyService:
         preferred_language = str(auth_profile.get("preferred_language") or "en")
         if preferred_language not in {"en", "ro"}:
             preferred_language = "en"
-        preferred_theme = str(auth_profile.get("preferred_theme") or "day")
+        preferred_theme = str(auth_profile.get("preferred_theme") or "night")
         if preferred_theme not in {"day", "night"}:
-            preferred_theme = "day"
+            preferred_theme = "night"
         preferred_workspace_mode = str(auth_profile.get("preferred_workspace_mode") or "pro")
         if preferred_workspace_mode not in {"simple", "pro"}:
             preferred_workspace_mode = "pro"

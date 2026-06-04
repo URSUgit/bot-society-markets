@@ -1,0 +1,1694 @@
+/*
+  BITprivat Hyperliquid-style trading interface layer.
+
+  Design tokens
+  - Canvas:      --hl-bg, --hl-bg-2
+  - Panels:      --hl-panel, --hl-panel-2, --hl-panel-3
+  - Borders:     --hl-border, --hl-border-strong
+  - Text:        --hl-text, --hl-text-2, --hl-text-3
+  - Direction:   --hl-accent for long/positive/primary only, --hl-red for short/loss/destructive only
+  - Type scale:  11px labels, 12px compact body, 13px body, 24px max page title
+  - Spacing:     4px grid via --hl-1 through --hl-8
+  - Radii:       8px panels, 6px controls, 4px chips
+*/
+
+body.dashboard-body.command-os.bit-engine-product-ui {
+  --hl-bg: #0b0e11;
+  --hl-bg-2: #0d1117;
+  --hl-panel: #12161c;
+  --hl-panel-2: #151a21;
+  --hl-panel-3: #171d25;
+  --hl-border: rgba(255, 255, 255, 0.06);
+  --hl-border-strong: rgba(255, 255, 255, 0.11);
+  --hl-text: #e6eaf0;
+  --hl-text-2: #a9b2bf;
+  --hl-text-3: #7b8796;
+  --hl-muted: #6b7785;
+  --hl-accent: #1fe0b6;
+  --hl-accent-soft: rgba(31, 224, 182, 0.11);
+  --hl-accent-line: rgba(31, 224, 182, 0.44);
+  --hl-red: #ff5c5c;
+  --hl-red-soft: rgba(255, 92, 92, 0.12);
+  --hl-red-line: rgba(255, 92, 92, 0.36);
+  --hl-warning: #f6c56f;
+  --hl-warning-soft: rgba(246, 197, 111, 0.1);
+  --hl-font-ui: Inter, Geist, "Segoe UI", sans-serif;
+  --hl-font-mono: "IBM Plex Mono", "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  --hl-text-label: 11px;
+  --hl-text-compact: 12px;
+  --hl-text-body: 13px;
+  --hl-title: 24px;
+  --hl-1: 4px;
+  --hl-2: 8px;
+  --hl-3: 12px;
+  --hl-4: 16px;
+  --hl-5: 20px;
+  --hl-6: 24px;
+  --hl-7: 28px;
+  --hl-8: 32px;
+  --hl-radius-panel: 8px;
+  --hl-radius-control: 6px;
+  --hl-radius-chip: 4px;
+  --hl-fast: 140ms ease-out;
+  --color-profit: var(--hl-accent);
+  --color-loss: var(--hl-red);
+  --color-bid: #2fd8bd;
+  --color-ask: #ff7a66;
+  --color-warning: var(--hl-warning);
+  --color-margin-call: var(--hl-red);
+  --modern-accent: var(--hl-accent);
+  --modern-ink: var(--hl-text);
+  --modern-ink-strong: var(--hl-text);
+  --modern-muted: var(--hl-text-2);
+  --modern-line: var(--hl-border);
+  --modern-line-strong: var(--hl-border-strong);
+  color: var(--hl-text);
+  background:
+    linear-gradient(180deg, var(--hl-bg) 0%, var(--hl-bg-2) 44%, #090c10 100%),
+    var(--hl-bg);
+  font: 400 var(--hl-text-body) / 1.42 var(--hl-font-ui);
+  font-variant-numeric: tabular-nums;
+  text-rendering: geometricPrecision;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="day"] {
+  --hl-bg: #f7f9fb;
+  --hl-bg-2: #eef2f6;
+  --hl-panel: #ffffff;
+  --hl-panel-2: #f5f7fa;
+  --hl-panel-3: #eef2f6;
+  --hl-border: rgba(15, 23, 42, 0.09);
+  --hl-border-strong: rgba(15, 23, 42, 0.16);
+  --hl-text: #101722;
+  --hl-text-2: #4a5566;
+  --hl-text-3: #697386;
+  --hl-muted: #697386;
+  background: linear-gradient(180deg, var(--hl-bg) 0%, var(--hl-bg-2) 100%);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui *,
+body.dashboard-body.command-os.bit-engine-product-ui *::before,
+body.dashboard-body.command-os.bit-engine-product-ui *::after {
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+  transition-duration: var(--hl-fast);
+  transition-timing-function: ease-out;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui *,
+body.dashboard-body.command-os.bit-engine-product-ui *::before,
+body.dashboard-body.command-os.bit-engine-product-ui *::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui :focus-visible {
+  outline: 2px solid rgba(31, 224, 182, 0.72);
+  outline-offset: 2px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui a {
+  color: inherit;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-shell {
+  width: 100%;
+  min-height: 100vh;
+  background: transparent;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hl-3);
+  width: min(100% - 24px, 1560px);
+  margin: 0 auto;
+  padding: var(--hl-3) 0 var(--hl-6);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > * {
+  margin-block: 0 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .operator-strip {
+  order: 1 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .platform-truth-alert {
+  order: 2 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .dashboard-hero.app-page-header {
+  order: 3 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #trading-workspace-section {
+  order: 4 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #feature-readiness-section {
+  order: 5 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #market-console-section {
+  order: 6 !important;
+}
+
+/* Reusable component mappings: Panel, StatCard, StatusChip, TabBar, OrderTicket, OrderBook, PositionsTable. */
+body.dashboard-body.command-os.bit-engine-product-ui .hl-panel,
+body.dashboard-body.command-os.bit-engine-product-ui .card,
+body.dashboard-body.command-os.bit-engine-product-ui .trading-panel,
+body.dashboard-body.command-os.bit-engine-product-ui .console-panel,
+body.dashboard-body.command-os.bit-engine-product-ui .side-card,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-stack-section,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-readiness-section,
+body.dashboard-body.command-os.bit-engine-product-ui .market-console,
+body.dashboard-body.command-os.bit-engine-product-ui .social-trader-section,
+body.dashboard-body.command-os.bit-engine-product-ui .trader-intelligence-section,
+body.dashboard-body.command-os.bit-engine-product-ui .launch-command-section,
+body.dashboard-body.command-os.bit-engine-product-ui .operations-infra-section,
+body.dashboard-body.command-os.bit-engine-product-ui .workspace-section,
+body.dashboard-body.command-os.bit-engine-product-ui .account-section,
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-pro {
+  color: var(--hl-text);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+  overflow: hidden;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .card,
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-pro,
+body.dashboard-body.command-os.bit-engine-product-ui .market-console,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-readiness-section {
+  padding: var(--hl-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .hl-stat-card,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric,
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis article,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip article,
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip > div,
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates > div,
+body.dashboard-body.command-os.bit-engine-product-ui .state-card,
+body.dashboard-body.command-os.bit-engine-product-ui .market-discover-card {
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .eyebrow,
+body.dashboard-body.command-os.bit-engine-product-ui label > span,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-field > span,
+body.dashboard-body.command-os.bit-engine-product-ui .panel-topline .eyebrow,
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-group-label,
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-head,
+body.dashboard-body.command-os.bit-engine-product-ui .pro-table-head,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip span,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric span,
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis span,
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip span,
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates span {
+  color: var(--hl-text-3);
+  font: 700 var(--hl-text-label) / 1.1 var(--hl-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui h2,
+body.dashboard-body.command-os.bit-engine-product-ui h3,
+body.dashboard-body.command-os.bit-engine-product-ui h4,
+body.dashboard-body.command-os.bit-engine-product-ui strong {
+  color: var(--hl-text);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui h2,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header h2 {
+  max-width: none;
+  font-size: var(--hl-title) !important;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui h3,
+body.dashboard-body.command-os.bit-engine-product-ui .section-head h3,
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-head h3 {
+  font-size: 18px !important;
+  line-height: 1.16;
+  letter-spacing: -0.026em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui h4 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui p,
+body.dashboard-body.command-os.bit-engine-product-ui small,
+body.dashboard-body.command-os.bit-engine-product-ui .panel-note,
+body.dashboard-body.command-os.bit-engine-product-ui .hero-submeta,
+body.dashboard-body.command-os.bit-engine-product-ui .page-header-subtitle {
+  color: var(--hl-text-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .finance-number,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric strong,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip strong,
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis strong,
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip strong,
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates strong,
+body.dashboard-body.command-os.bit-engine-product-ui .market-price,
+body.dashboard-body.command-os.bit-engine-product-ui .metric-value,
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-price strong,
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row,
+body.dashboard-body.command-os.bit-engine-product-ui .spread-row,
+body.dashboard-body.command-os.bit-engine-product-ui .pro-data-table,
+body.dashboard-body.command-os.bit-engine-product-ui td,
+body.dashboard-body.command-os.bit-engine-product-ui [data-number] {
+  font-family: var(--hl-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .profit-text,
+body.dashboard-body.command-os.bit-engine-product-ui .positive,
+body.dashboard-body.command-os.bit-engine-product-ui .profit,
+body.dashboard-body.command-os.bit-engine-product-ui [data-state="live"],
+body.dashboard-body.command-os.bit-engine-product-ui [data-variant="success"] {
+  color: var(--hl-accent) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .loss-text,
+body.dashboard-body.command-os.bit-engine-product-ui .negative,
+body.dashboard-body.command-os.bit-engine-product-ui .loss,
+body.dashboard-body.command-os.bit-engine-product-ui [data-state="blocked"],
+body.dashboard-body.command-os.bit-engine-product-ui [data-variant="danger"] {
+  color: var(--hl-red) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .warning-text,
+body.dashboard-body.command-os.bit-engine-product-ui [data-state="partial"],
+body.dashboard-body.command-os.bit-engine-product-ui [data-state="paper_only"] {
+  color: var(--hl-warning) !important;
+}
+
+/* 48px command bar and compact peer navigation. */
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  display: grid;
+  gap: 0 !important;
+  width: 100%;
+  padding: 0;
+  color: var(--hl-text);
+  border-right: 0;
+  border-bottom: 1px solid var(--hl-border);
+  background: rgba(11, 14, 17, 0.98);
+  backdrop-filter: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-topbar {
+  display: grid;
+  grid-template-columns: 190px minmax(280px, 1fr) auto;
+  align-items: center;
+  gap: var(--hl-3);
+  width: min(100% - 24px, 1560px);
+  height: 48px;
+  margin: 0 auto;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hl-2);
+  min-width: 0;
+  color: var(--hl-text);
+  text-decoration: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-brand strong {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-brand-chart {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 3px);
+  align-items: end;
+  gap: 3px;
+  width: 24px;
+  height: 24px;
+  padding: 5px 6px;
+  border: 1px solid var(--hl-border-strong);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-brand-chart i {
+  display: block;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-brand-chart i:nth-child(1) {
+  height: 7px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-brand-chart i:nth-child(2) {
+  height: 11px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-brand-chart i:nth-child(3) {
+  height: 15px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search::before,
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search::after {
+  opacity: 0.78;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search::before {
+  left: 12px;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search::after {
+  left: 22px;
+  width: 6px;
+  height: 1.5px;
+  background: var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 46px 0 34px;
+  color: var(--hl-text);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel);
+  font: 500 var(--hl-text-compact) / 1 var(--hl-font-ui);
+  outline: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search input::placeholder {
+  color: var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search input:focus {
+  border-color: var(--hl-accent-line);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-search kbd {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  color: var(--hl-text-3);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-chip);
+  background: var(--hl-bg);
+  font: 700 10px / 1 var(--hl-font-mono);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-command-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--hl-2);
+  white-space: nowrap;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-alert-count,
+body.dashboard-body.command-os.bit-engine-product-ui .app-wallet-pill,
+body.dashboard-body.command-os.bit-engine-product-ui .app-avatar,
+body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button {
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel);
+  color: var(--hl-text-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-alert-count,
+body.dashboard-body.command-os.bit-engine-product-ui .app-wallet-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--hl-2);
+  font: 700 var(--hl-text-compact) / 1 var(--hl-font-mono);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-alert-count i,
+body.dashboard-body.command-os.bit-engine-product-ui .app-wallet-pill i,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state-dot,
+body.dashboard-body.command-os.bit-engine-product-ui .live-command-pill span,
+body.dashboard-body.command-os.bit-engine-product-ui .live-dot,
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-alert-count i {
+  background: var(--hl-red);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-wallet-pill i,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state-dot,
+body.dashboard-body.command-os.bit-engine-product-ui .live-command-pill span,
+body.dashboard-body.command-os.bit-engine-product-ui .live-dot {
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  cursor: pointer;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button em {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  color: #fff;
+  border: 1px solid var(--hl-bg);
+  border-radius: 999px;
+  background: var(--hl-red);
+  font: 800 9px / 1 var(--hl-font-mono);
+  font-style: normal;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-bell-glyph,
+body.dashboard-body.command-os.bit-engine-product-ui .app-bell-glyph::before,
+body.dashboard-body.command-os.bit-engine-product-ui .app-bell-glyph::after {
+  border-color: var(--hl-text-3);
+  background: var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  border-radius: 50%;
+  color: var(--hl-text);
+  font: 800 var(--hl-text-compact) / 1 var(--hl-font-ui);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: min(100% - 24px, 1560px);
+  height: 36px;
+  margin: 0 auto !important;
+  padding: 0;
+  overflow-x: auto;
+  border-top: 1px solid var(--hl-border);
+  scrollbar-width: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 var(--hl-3);
+  color: var(--hl-text-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 650 var(--hl-text-compact) / 1 var(--hl-font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a::before {
+  display: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a::after {
+  content: "";
+  position: absolute;
+  right: var(--hl-3);
+  bottom: 0;
+  left: var(--hl-3);
+  height: 2px;
+  border-radius: 0;
+  background: transparent;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:focus-visible {
+  color: var(--hl-text-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active {
+  color: var(--hl-text);
+  border-color: transparent !important;
+  background: transparent !important;
+  font-weight: 800;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active::after {
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar .nav-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar .nav-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .nav-route-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 4px;
+  color: var(--hl-text-3);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-chip);
+  background: var(--hl-panel);
+  font: 800 9px / 1 var(--hl-font-mono);
+  letter-spacing: 0.04em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-route-resolver {
+  display: none !important;
+}
+
+/* Compact command context. */
+body.dashboard-body.command-os.bit-engine-product-ui .operator-strip {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.72fr) auto minmax(480px, 1.4fr);
+  align-items: stretch;
+  gap: var(--hl-2);
+  padding: var(--hl-2);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-preferences {
+  display: flex;
+  align-items: center;
+  gap: var(--hl-2);
+  padding: var(--hl-2);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state strong,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric strong {
+  font-size: var(--hl-text-body);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state small,
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric small {
+  color: var(--hl-text-3);
+  font-size: 11px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-preferences label {
+  display: grid;
+  gap: 3px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-strip-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-metric {
+  display: grid;
+  gap: 2px;
+  min-height: 54px;
+  padding: var(--hl-2);
+  text-decoration: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .preference-select,
+body.dashboard-body.command-os.bit-engine-product-ui .page-range-select,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-select,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-input,
+body.dashboard-body.command-os.bit-engine-product-ui input,
+body.dashboard-body.command-os.bit-engine-product-ui select {
+  color: var(--hl-text);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-bg);
+  font: 500 var(--hl-text-compact) / 1 var(--hl-font-ui);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .preference-select,
+body.dashboard-body.command-os.bit-engine-product-ui .page-range-select {
+  min-height: 28px;
+  padding: 0 var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .platform-truth-alert {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--hl-2);
+  padding: var(--hl-2) var(--hl-3);
+  border: 1px solid rgba(246, 197, 111, 0.22);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .platform-truth-alert strong {
+  display: inline-block;
+  margin-right: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--hl-3);
+  min-height: 0 !important;
+  padding: var(--hl-3);
+  border-color: var(--hl-border);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header::before,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header::after,
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero h2::after {
+  display: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-main,
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions,
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
+  position: relative;
+  z-index: 1;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .live-command-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--hl-2);
+  color: var(--hl-text-2);
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .live-command-pill strong {
+  font: 800 11px / 1 var(--hl-font-mono);
+  letter-spacing: 0.04em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .page-header-subtitle,
+body.dashboard-body.command-os.bit-engine-product-ui .hero-submeta {
+  margin: var(--hl-1) 0 0;
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis article {
+  display: grid;
+  gap: 2px;
+  padding: var(--hl-2);
+}
+
+/* Controls. */
+body.dashboard-body.command-os.bit-engine-product-ui .button,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button,
+body.dashboard-body.command-os.bit-engine-product-ui button {
+  border-radius: var(--hl-radius-control);
+  transition-property: color, background-color, border-color, opacity, transform;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button {
+  min-height: 30px;
+  padding: 0 var(--hl-3);
+  border: 1px solid var(--hl-border);
+  background: var(--hl-panel-2);
+  color: var(--hl-text-2);
+  font: 750 var(--hl-text-compact) / 1 var(--hl-font-ui);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button:hover {
+  border-color: var(--hl-border-strong);
+  color: var(--hl-text);
+  background: var(--hl-panel-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button.primary,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.primary,
+body.dashboard-body.command-os.bit-engine-product-ui .app-new-position-button {
+  border-color: rgba(31, 224, 182, 0.52);
+  background: var(--hl-accent);
+  color: #04110e;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button.secondary,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.secondary,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.ghost {
+  border-color: var(--hl-border);
+  background: var(--hl-panel-2);
+  color: var(--hl-text-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button.tertiary,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.chip {
+  min-height: 26px;
+  padding: 0 var(--hl-2);
+  border-radius: var(--hl-radius-chip);
+  background: transparent;
+  color: var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.chip.active,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.ghost.active {
+  color: var(--hl-text);
+  border-color: var(--hl-border-strong);
+  background: var(--hl-panel-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .button.danger,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-button.danger,
+body.dashboard-body.command-os.bit-engine-product-ui #ticket-close-all-button {
+  border-color: var(--hl-red-line);
+  background: rgba(255, 92, 92, 0.08);
+  color: var(--hl-red);
+}
+
+/* Honest feature status chips stay small and neutral. */
+body.dashboard-body.command-os.bit-engine-product-ui .hl-status-chip,
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge,
+body.dashboard-body.command-os.bit-engine-product-ui .social-validation-legend span,
+body.dashboard-body.command-os.bit-engine-product-ui .social-paper-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 7px;
+  color: var(--hl-text-2) !important;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-chip);
+  background: var(--hl-panel-2);
+  font: 750 11px / 1 var(--hl-font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill::before,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge::before,
+body.dashboard-body.command-os.bit-engine-product-ui .social-validation-legend span::before,
+body.dashboard-body.command-os.bit-engine-product-ui .social-paper-marker::before {
+  content: "";
+  display: inline-block;
+  flex: 0 0 6px;
+  background: var(--hl-text-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill-connected::before,
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill[data-variant="positive"]::before,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge[data-state="live"]::before {
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill-delayed::before,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge[data-state="partial"]::before,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge[data-state="paper_only"]::before,
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill[data-variant="warning"]::before {
+  background: var(--hl-warning);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill-disconnected::before,
+body.dashboard-body.command-os.bit-engine-product-ui .nav-state-badge[data-state="blocked"]::before,
+body.dashboard-body.command-os.bit-engine-product-ui .status-pill[data-variant="danger"]::before {
+  background: var(--hl-red);
+}
+
+/* Trading workspace: compact perp-DEX rhythm. */
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-pro {
+  display: grid;
+  gap: var(--hl-2);
+  padding: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--hl-3);
+  padding: var(--hl-2);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-head h3 {
+  margin: 3px 0 3px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-head .panel-note {
+  margin: 0;
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-shell-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(480px, 1.72fr) minmax(286px, 0.92fr);
+  gap: var(--hl-2);
+  align-items: stretch;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trading-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--hl-2);
+  min-width: 0;
+  padding: var(--hl-2);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-panel {
+  grid-template-rows: auto auto auto auto auto 1fr;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .chart-trading-panel {
+  grid-template-rows: auto auto minmax(320px, 1fr) auto;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .order-ticket-panel {
+  grid-column: auto !important;
+  grid-template-columns: none !important;
+  grid-template-rows: auto auto auto;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .panel-topline,
+body.dashboard-body.command-os.bit-engine-product-ui .chart-command-bar,
+body.dashboard-body.command-os.bit-engine-product-ui .chart-toolbar,
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hl-2);
+  padding: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .chart-command-bar {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1fr) minmax(220px, 1.15fr);
+  align-items: center;
+  padding-bottom: var(--hl-2);
+  border-bottom: 1px solid var(--hl-border);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .live-price-cluster,
+body.dashboard-body.command-os.bit-engine-product-ui .unrealized-cluster {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .live-price-cluster span,
+body.dashboard-body.command-os.bit-engine-product-ui .unrealized-cluster span {
+  color: var(--hl-text-3);
+  font: 700 11px / 1.1 var(--hl-font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .live-price-cluster strong {
+  font-size: 22px;
+  line-height: 1;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .unrealized-cluster strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-filter-row,
+body.dashboard-body.command-os.bit-engine-product-ui .chart-toolbar {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--hl-2);
+  min-height: 40px;
+  padding: var(--hl-2);
+  color: var(--hl-text-2);
+  border: 1px solid transparent;
+  border-radius: var(--hl-radius-control);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-row:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-row.active {
+  border-color: var(--hl-border-strong);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-row strong,
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-price strong {
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--hl-text-3);
+  font-size: 11px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .watchlist-price {
+  text-align: right;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .pro-chart-surface {
+  position: relative;
+  min-height: 330px;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px) 0 0 / 100% 25%,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px) 0 0 / 12.5% 100%,
+    var(--hl-bg);
+  overflow: hidden;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .chart-gridlines {
+  display: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .candles i {
+  background: var(--c);
+  opacity: 0.9;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .chart-line-overlay path {
+  stroke: rgba(31, 224, 182, 0.72);
+  stroke-width: 2;
+  fill: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .liquidation-band {
+  position: absolute;
+  right: 0;
+  bottom: 24%;
+  left: 0;
+  display: flex;
+  justify-content: flex-end;
+  height: 28px;
+  padding: 0 var(--hl-3);
+  border-top: 1px dashed rgba(255, 92, 92, 0.45);
+  border-bottom: 1px dashed rgba(255, 92, 92, 0.16);
+  background: rgba(255, 92, 92, 0.055);
+  color: var(--hl-red);
+  font: 700 11px / 28px var(--hl-font-mono);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip > div,
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates > div {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip strong,
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates strong {
+  font-size: var(--hl-text-body);
+}
+
+/* OrderTicket. */
+body.dashboard-body.command-os.bit-engine-product-ui .hl-order-ticket,
+body.dashboard-body.command-os.bit-engine-product-ui .order-ticket {
+  display: grid;
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--hl-1);
+  padding: var(--hl-1);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-bg);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-switch button {
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--hl-radius-chip);
+  background: transparent;
+  color: var(--hl-text-3);
+  font: 800 var(--hl-text-compact) / 1 var(--hl-font-ui);
+  cursor: pointer;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-switch .side-buy.active {
+  color: var(--hl-accent);
+  border-color: rgba(31, 224, 182, 0.24);
+  background: rgba(31, 224, 182, 0.07);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-switch .side-sell.active {
+  color: var(--hl-red);
+  border-color: rgba(255, 92, 92, 0.24);
+  background: rgba(255, 92, 92, 0.07);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ds-field {
+  display: grid;
+  gap: var(--hl-1);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ds-input,
+body.dashboard-body.command-os.bit-engine-product-ui .ds-select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .balance-slider {
+  accent-color: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--hl-2);
+  color: var(--hl-text-2);
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-checks input {
+  accent-color: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .ticket-estimates {
+  display: grid;
+  gap: var(--hl-1);
+  padding: var(--hl-1);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-bg);
+}
+
+/* OrderBook. */
+body.dashboard-body.command-os.bit-engine-product-ui .hl-orderbook,
+body.dashboard-body.command-os.bit-engine-product-ui .order-book-panel {
+  display: grid;
+  gap: var(--hl-1);
+  padding-top: var(--hl-2);
+  border-top: 1px solid var(--hl-border);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-head,
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row {
+  display: grid;
+  grid-template-columns: 1fr 0.78fr 0.78fr;
+  align-items: center;
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-head {
+  padding: 0 var(--hl-2) var(--hl-1);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-head span,
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row span,
+body.dashboard-body.command-os.bit-engine-product-ui .spread-row strong {
+  text-align: right;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-head span:first-child,
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row span:first-child {
+  text-align: left;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row {
+  position: relative;
+  min-height: 24px;
+  padding: 0 var(--hl-2);
+  color: var(--hl-text-2);
+  border: 1px solid transparent;
+  border-radius: var(--hl-radius-chip);
+  background: transparent;
+  font-size: var(--hl-text-compact);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  width: var(--depth, 34%);
+  opacity: 1;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row span {
+  position: relative;
+  z-index: 1;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row:hover {
+  border-color: var(--hl-border);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.ask span:first-child {
+  color: var(--hl-red);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.bid span:first-child {
+  color: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.ask::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 92, 92, 0.12));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.bid::before {
+  background: linear-gradient(90deg, transparent, rgba(31, 224, 182, 0.11));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.ask:nth-of-type(1) {
+  --depth: 88%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.ask:nth-of-type(2) {
+  --depth: 66%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.ask:nth-of-type(3) {
+  --depth: 52%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.bid:nth-of-type(4) {
+  --depth: 74%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.bid:nth-of-type(5) {
+  --depth: 48%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .orderbook-row.bid:nth-of-type(6) {
+  --depth: 36%;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .spread-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 var(--hl-2);
+  color: var(--hl-text-3);
+  border-block: 1px solid var(--hl-border);
+  background: var(--hl-bg);
+  font-size: 11px;
+}
+
+/* PositionsTable. */
+body.dashboard-body.command-os.bit-engine-product-ui .trading-bottom-panel {
+  display: grid;
+  gap: var(--hl-2);
+  padding: var(--hl-2);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+  overflow-x: auto;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar {
+  justify-content: flex-start;
+  border-bottom: 1px solid var(--hl-border);
+  padding-bottom: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar button {
+  position: relative;
+  height: 32px;
+  padding: 0 var(--hl-3);
+  color: var(--hl-text-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 750 var(--hl-text-compact) / 1 var(--hl-font-ui);
+  cursor: pointer;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar button::after {
+  content: "";
+  position: absolute;
+  right: var(--hl-3);
+  bottom: -1px;
+  left: var(--hl-3);
+  height: 2px;
+  background: transparent;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar button.active {
+  color: var(--hl-text);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .trade-tab-bar button.active::after {
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .hl-positions-table,
+body.dashboard-body.command-os.bit-engine-product-ui .pro-data-table {
+  min-width: 900px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .pro-table-head,
+body.dashboard-body.command-os.bit-engine-product-ui .position-row {
+  display: grid;
+  grid-template-columns: minmax(142px, 1.25fr) 72px repeat(5, minmax(92px, 0.8fr)) 116px;
+  align-items: center;
+  gap: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .pro-table-head {
+  min-height: 28px;
+  padding: 0 var(--hl-2);
+  border-bottom: 1px solid var(--hl-border);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .position-row {
+  min-height: 34px;
+  margin: 0;
+  padding: var(--hl-1) var(--hl-2);
+  color: var(--hl-text-2);
+  border: 1px solid transparent;
+  border-radius: var(--hl-radius-control);
+  background: transparent;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .position-row:hover {
+  border-color: var(--hl-border);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .pro-table-head span,
+body.dashboard-body.command-os.bit-engine-product-ui .position-row > span {
+  text-align: right;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .pro-table-head span:first-child,
+body.dashboard-body.command-os.bit-engine-product-ui .position-row > span:first-child {
+  text-align: left;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .position-row strong {
+  display: block;
+  font-size: var(--hl-text-compact);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .position-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--hl-text-3);
+  font-size: 10px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-long,
+body.dashboard-body.command-os.bit-engine-product-ui .side-short {
+  display: inline-flex;
+  justify-content: center;
+  justify-self: end;
+  width: max-content;
+  min-width: 52px;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: var(--hl-radius-chip);
+  background: transparent;
+  font: 800 11px / 20px var(--hl-font-ui);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-long {
+  color: var(--hl-accent);
+  border: 1px solid rgba(31, 224, 182, 0.32);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .side-short {
+  color: var(--hl-red);
+  border: 1px solid rgba(255, 92, 92, 0.32);
+}
+
+/* Keep lower sections honest but quieter. */
+body.dashboard-body.command-os.bit-engine-product-ui .feature-readiness-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip,
+body.dashboard-body.command-os.bit-engine-product-ui .market-console-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .content-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .detail-grid,
+body.dashboard-body.command-os.bit-engine-product-ui .social-trader-layout,
+body.dashboard-body.command-os.bit-engine-product-ui .trader-intelligence-grid {
+  gap: var(--hl-2) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip article {
+  display: grid;
+  gap: 2px;
+  padding: var(--hl-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .feature-readiness-card,
+body.dashboard-body.command-os.bit-engine-product-ui .social-trader-card,
+body.dashboard-body.command-os.bit-engine-product-ui .trader-intelligence-card,
+body.dashboard-body.command-os.bit-engine-product-ui .status-card,
+body.dashboard-body.command-os.bit-engine-product-ui .launch-track-card,
+body.dashboard-body.command-os.bit-engine-product-ui .account-card,
+body.dashboard-body.command-os.bit-engine-product-ui .portfolio-card,
+body.dashboard-body.command-os.bit-engine-product-ui .book-row,
+body.dashboard-body.command-os.bit-engine-product-ui .allocation-row {
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .feature-readiness-card:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .social-trader-card:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .trader-intelligence-card:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .book-row:hover,
+body.dashboard-body.command-os.bit-engine-product-ui .allocation-row:hover {
+  border-color: var(--hl-border-strong);
+  background: var(--hl-panel-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-overlay {
+  background: rgba(5, 8, 12, 0.82);
+  backdrop-filter: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
+  border-color: var(--hl-border-strong);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+}
+
+@media (max-width: 1180px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .trading-shell-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-grid {
+    grid-template-columns: minmax(210px, 0.86fr) minmax(420px, 1.36fr);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .order-ticket-panel {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(280px, 0.8fr) minmax(280px, 1fr);
+    align-items: start;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .order-ticket-panel > .panel-topline {
+    grid-column: 1 / -1;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .order-book-panel {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .app-command-topbar {
+    grid-template-columns: 170px minmax(220px, 1fr);
+    height: auto;
+    min-height: 48px;
+    padding-block: var(--hl-2);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .app-command-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .operator-strip,
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header {
+    grid-template-columns: 1fr;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .operator-strip-metrics,
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis,
+  body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .trading-shell-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .trading-workspace-grid,
+  body.dashboard-body.command-os.bit-engine-product-ui .order-ticket-panel {
+    grid-template-columns: 1fr;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .pro-chart-surface {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 760px) {
+  body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main {
+    width: min(100% - 16px, 1560px);
+    padding-top: var(--hl-2);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .app-command-topbar {
+    grid-template-columns: 1fr;
+    width: min(100% - 16px, 1560px);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .app-command-actions {
+    flex-wrap: wrap;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar {
+    width: min(100% - 16px, 1560px);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a {
+    padding: 0 var(--hl-2);
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .operator-strip-metrics,
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis,
+  body.dashboard-body.command-os.bit-engine-product-ui .portfolio-summary-strip,
+  body.dashboard-body.command-os.bit-engine-product-ui .feature-count-strip,
+  body.dashboard-body.command-os.bit-engine-product-ui .ticket-two-col,
+  body.dashboard-body.command-os.bit-engine-product-ui .ticket-checks,
+  body.dashboard-body.command-os.bit-engine-product-ui .chart-command-bar {
+    grid-template-columns: 1fr;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions,
+  body.dashboard-body.command-os.bit-engine-product-ui .trading-head-actions,
+  body.dashboard-body.command-os.bit-engine-product-ui .panel-topline {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body.dashboard-body.command-os.bit-engine-product-ui .pro-data-table {
+    min-width: 820px;
+  }
+}
+
+/* Final specificity guard: older theme rules use stronger selectors, so this locks the trading skin last. */
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] {
+  --hl-bg: #0b0e11;
+  --hl-bg-2: #0d1117;
+  --hl-panel: #12161c;
+  --hl-panel-2: #151a21;
+  --hl-panel-3: #171d25;
+  --hl-text: #e6eaf0;
+  --hl-text-2: #a9b2bf;
+  --hl-text-3: #7b8796;
+  background:
+    linear-gradient(180deg, #0b0e11 0%, #0d1117 52%, #090c10 100%),
+    #0b0e11 !important;
+  background-image: linear-gradient(180deg, #0b0e11 0%, #0d1117 52%, #090c10 100%) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-command-chrome,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-command-search input,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-alert-count,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-wallet-pill,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-avatar,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-icon-button,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .dashboard-hero.app-page-header,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .trading-workspace-pro,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .trading-panel,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .market-console,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .feature-readiness-section,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .console-panel,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .side-card {
+  background: var(--hl-panel) !important;
+  background-image: none !important;
+  color: var(--hl-text) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-strip,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .platform-truth-alert,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .trading-bottom-panel {
+  background: var(--hl-panel) !important;
+  background-image: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-state,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-preferences,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-metric,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .command-brief-kpis article,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .feature-count-strip article,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .portfolio-summary-strip > div,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ticket-estimates > div,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .feature-readiness-card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .social-trader-card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .trader-intelligence-card,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .state-card {
+  background: var(--hl-panel-2) !important;
+  background-image: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .status-pill,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .status-pill-connected,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .status-pill-delayed,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .status-pill-disconnected,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .nav-state-badge,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .social-validation-legend span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .social-paper-marker {
+  color: var(--hl-text-2) !important;
+  border-color: var(--hl-border) !important;
+  background: var(--hl-panel-2) !important;
+  background-image: none !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-tabbar a,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-tabbar a.active,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-tabbar a:hover,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-tabbar a:focus-visible {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-tabbar a.active {
+  color: var(--hl-text) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .pro-chart-surface {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px) 0 0 / 100% 25%,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px) 0 0 / 12.5% 100%,
+    var(--hl-bg) !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .eyebrow,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] label > span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ds-field > span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .panel-topline .eyebrow,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .watchlist-group-label,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .orderbook-head,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .pro-table-head,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .feature-count-strip span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-metric span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .command-brief-kpis span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .portfolio-summary-strip span,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .ticket-estimates span {
+  color: var(--hl-text-3) !important;
+}

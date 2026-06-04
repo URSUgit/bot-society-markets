@@ -277,7 +277,7 @@ user_auth_profiles_table = Table(
     Column("kyc_status", String(32), nullable=False, default="not_started", server_default="not_started"),
     Column("kyc_completed_at", String(64)),
     Column("preferred_language", String(16), nullable=False, default="en", server_default="en"),
-    Column("preferred_theme", String(16), nullable=False, default="day", server_default="day"),
+    Column("preferred_theme", String(16), nullable=False, default="night", server_default="night"),
     Column("preferred_workspace_mode", String(16), nullable=False, default="pro", server_default="pro"),
     Column("timezone", String(64), nullable=False, default="UTC", server_default="UTC"),
     Column("last_login_at", String(64)),
