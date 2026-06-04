@@ -13404,8 +13404,8 @@ body.dashboard-body.command-os.bit-engine-product-ui {
   --modern-panel-strong: #141b26;
   --modern-ink: #e5eef7;
   --modern-ink-strong: #ffffff;
-  --modern-muted: #94a3b8;
-  --modern-dim: #64748b;
+  --modern-muted: #a8b4c4;
+  --modern-dim: #8492a6;
   --modern-line: #1e2733;
   --modern-line-strong: #2a3646;
   --modern-accent: #22d3ee;
@@ -13460,14 +13460,14 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-command-chrome {
   height: auto !important;
   min-height: auto;
   max-height: none !important;
-  padding: 12px clamp(14px, 2vw, 28px) 0;
+  padding: 10px clamp(14px, 2vw, 28px) 0;
   color: var(--modern-ink);
   border-right: 0;
   border-bottom: 1px solid rgba(30, 39, 51, 0.92);
   background:
     linear-gradient(180deg, rgba(10, 14, 20, 0.98), rgba(11, 16, 24, 0.95)),
     rgba(10, 14, 20, 0.96);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(18px);
   overflow: visible !important;
 }
@@ -13476,7 +13476,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-command-topbar {
   display: grid;
   grid-template-columns: minmax(160px, 220px) minmax(240px, 1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: min(1500px, 100%);
   margin: 0 auto;
 }
@@ -13561,7 +13561,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-command-search::after 
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-command-search input {
   width: 100%;
-  height: 42px;
+  height: 38px;
   padding: 0 58px 0 44px;
   color: var(--modern-ink);
   border: 1px solid var(--modern-line);
@@ -13608,7 +13608,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-wallet-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 34px;
+  min-height: 32px;
   padding: 0 11px;
   color: var(--modern-ink);
   border: 1px solid var(--modern-line);
@@ -13639,8 +13639,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button {
   position: relative;
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   color: var(--modern-ink);
   border: 1px solid var(--modern-line);
   border-radius: 50%;
@@ -13703,8 +13703,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button em {
 body.dashboard-body.command-os.bit-engine-product-ui .app-avatar {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   color: #06131a;
   border-radius: 50%;
   background: linear-gradient(135deg, #22d3ee, #7c5cff);
@@ -13715,9 +13715,9 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-avatar {
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: min(1500px, 100%);
-  margin: 10px auto 0;
+  margin: 7px auto 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -13730,61 +13730,54 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 13px;
-  color: #8b9bad;
-  border: 0;
-  border-radius: 0;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 10px;
+  color: #b2bdca;
+  border: 1px solid transparent;
+  border-radius: 10px 10px 0 0;
   background: transparent;
   box-shadow: none;
-  font: 850 0.84rem/1 var(--font-ui);
+  font: 800 0.82rem/1 var(--font-ui);
   letter-spacing: -0.01em;
   text-decoration: none;
   white-space: nowrap;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a::before {
-  content: "";
-  display: inline-block;
-  width: 15px;
-  height: 15px;
-  border: 1px solid currentColor;
-  border-radius: 5px;
-  opacity: 0.7;
+  display: none;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="home"]::before {
-  border-radius: 4px 4px 7px 7px;
-  transform: skew(-4deg);
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar .nav-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: #98a5b7;
+  flex: 0 0 auto;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="markets"]::before {
-  border-radius: 50%;
-  box-shadow: inset 5px 0 0 rgba(34, 211, 238, 0.22);
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar .nav-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="trade"]::before {
+body.dashboard-body.command-os.bit-engine-product-ui .nav-route-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  color: #c4b5fd;
+  border: 1px solid rgba(124, 92, 255, 0.28);
   border-radius: 999px;
-}
-
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="signals"]::before {
-  transform: rotate(45deg);
-}
-
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="lab"]::before {
-  border-radius: 3px;
-  box-shadow: inset 0 -5px 0 rgba(124, 92, 255, 0.34);
-}
-
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="portfolio"]::before {
-  border-radius: 8px;
-  box-shadow: inset 0 5px 0 rgba(52, 211, 153, 0.24);
-}
-
-body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-icon="settings"]::before {
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 3px #0a0e14;
+  background: rgba(124, 92, 255, 0.09);
+  font: 900 0.58rem/1 var(--font-ui);
+  letter-spacing: 0.06em;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a::after {
@@ -13802,17 +13795,25 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:hover,
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:focus-visible,
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active {
   color: var(--modern-ink-strong);
-  background: transparent;
+  border-color: rgba(168, 180, 196, 0.16);
+  background: rgba(255, 255, 255, 0.035);
   transform: none;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:hover .nav-icon,
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a:focus-visible .nav-icon,
+body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active .nav-icon {
   color: var(--modern-accent);
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a.active::after {
   background: var(--modern-accent);
-  box-shadow: 0 0 18px rgba(34, 211, 238, 0.55);
+  box-shadow: none;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-tabbar a[data-feature-state] {
@@ -13837,7 +13838,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main {
   max-width: 1500px;
   min-height: auto;
   margin: 0 auto;
-  padding: 22px 0 48px;
+  padding: 16px 0 48px;
   background: transparent;
 }
 
@@ -13886,13 +13887,13 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: 16px;
   align-items: start;
-  padding: clamp(20px, 3vw, 34px);
+  padding: clamp(16px, 2.2vw, 24px);
   overflow: hidden;
-  border-color: rgba(34, 211, 238, 0.18);
+  border-color: var(--modern-line);
   background:
-    radial-gradient(circle at 92% 8%, rgba(34, 211, 238, 0.18), transparent 32%),
+    radial-gradient(circle at 94% 10%, rgba(34, 211, 238, 0.1), transparent 30%),
     linear-gradient(135deg, rgba(20, 27, 38, 0.96), rgba(11, 16, 24, 0.96));
 }
 
@@ -13920,8 +13921,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .live-command-pill {
   align-items: center;
   gap: 8px;
   width: fit-content;
-  margin: 0 0 14px;
-  padding: 7px 10px;
+  margin: 0 0 10px;
+  padding: 6px 9px;
   color: #c7f9e8;
   border: 1px solid rgba(52, 211, 153, 0.24);
   border-radius: 999px;
@@ -13946,20 +13947,23 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-he
   max-width: 740px;
   margin: 0;
   color: var(--modern-ink-strong);
-  font: 950 clamp(2.35rem, 6vw, 5.4rem) / 0.88 var(--font-ui);
-  letter-spacing: -0.075em;
+  font: 950 clamp(2rem, 4vw, 3.45rem) / 0.9 var(--font-ui);
+  letter-spacing: -0.065em;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .page-header-subtitle {
-  margin: 13px 0 0;
-  color: #a9b7c8;
-  font: 750 1rem/1.4 var(--font-ui);
+  margin: 8px 0 0;
+  color: #d2dce8;
+  font: 850 0.98rem/1.35 var(--font-ui);
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header .hero-submeta {
-  margin: 6px 0 0;
-  color: #6f7f92;
-  font-size: 0.82rem;
+  max-width: 980px;
+  margin: 8px 0 0;
+  color: #b8c5d2;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header .command-brief-actions {
@@ -13995,11 +13999,17 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-new-position-button {
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .button.secondary,
+body.dashboard-body.command-os.bit-engine-product-ui .button.tertiary,
 body.dashboard-body.command-os.bit-engine-product-ui .page-range-select {
   color: var(--modern-ink);
   border: 1px solid var(--modern-line-strong);
   background: rgba(17, 22, 31, 0.88);
   box-shadow: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .small-button.button.tertiary {
+  color: #d9e2ee;
+  background: rgba(20, 27, 38, 0.92);
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .page-range-select {
@@ -14037,13 +14047,13 @@ body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 0;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis article {
-  min-height: 84px;
-  padding: 13px;
+  min-height: 66px;
+  padding: 10px 12px;
   border: 1px solid var(--modern-line);
   border-radius: 14px;
   background: rgba(10, 14, 20, 0.52);
@@ -14065,7 +14075,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .side-card h4 {
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .command-brief-kpis strong {
-  font: 950 1.35rem/1 var(--font-finance);
+  font: 950 1.15rem/1 var(--font-finance);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.045em;
 }
@@ -14076,6 +14086,26 @@ body.dashboard-body.command-os.bit-engine-product-ui .operator-strip {
   gap: 12px;
   align-items: center;
   padding: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-preferences label {
+  color: var(--modern-muted);
+  border-color: var(--modern-line);
+  background: rgba(10, 14, 20, 0.42);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-preferences .preference-select {
+  color: var(--modern-ink);
+  border: 1px solid var(--modern-line-strong);
+  background: #0b1018;
+  box-shadow: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .operator-state {
+  color: var(--modern-ink);
+  border-color: var(--modern-line);
+  background: rgba(10, 14, 20, 0.52);
+  box-shadow: none;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .operator-strip-metrics {

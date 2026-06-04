@@ -449,7 +449,8 @@ def test_professional_console_pages_are_served() -> None:
         assert 'class="sidebar-nav app-tabbar"' in dashboard_response.text
         assert "Command Center" in dashboard_response.text
         assert "app-brand-chart" in dashboard_response.text
-        assert ">Home</a>" in dashboard_response.text
+        assert 'data-nav-kind="app"' in dashboard_response.text
+        assert "nav-route-badge" in dashboard_response.text
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-marketplace-toolbar"' in dashboard_response.text

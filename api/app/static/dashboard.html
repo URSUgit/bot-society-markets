@@ -30,13 +30,49 @@
         </div>
       </div>
       <nav class="sidebar-nav app-tabbar" aria-label="Primary navigation">
-        <a class="active" data-icon="home" href="#market-console-section">Home</a>
-        <a data-icon="markets" href="#intelligence-section">Markets</a>
-        <a data-icon="trade" href="#trading-workspace-section">Trade</a>
-        <a data-icon="signals" href="#social-trader-section">Signals</a>
-        <a data-icon="lab" href="/simulation">Lab</a>
-        <a data-icon="portfolio" href="#paper-section">Portfolio</a>
-        <a data-icon="settings" href="#account-section">Settings</a>
+        <a class="active" data-icon="command" data-nav-kind="section" href="#market-console-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M5 19V9m6 10V5m6 14v-7"></path></svg>
+          </span>
+          Command Center
+        </a>
+        <a data-icon="markets" data-nav-kind="section" href="#intelligence-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M4 17l5-5 4 3 7-8"></path><path d="M4 20h16"></path></svg>
+          </span>
+          Markets
+        </a>
+        <a data-icon="trade" data-nav-kind="section" href="#trading-workspace-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M7 5v14"></path><path d="M17 5v14"></path><path d="M5 9h4v6H5z"></path><path d="M15 7h4v8h-4z"></path></svg>
+          </span>
+          Trade
+        </a>
+        <a data-icon="signals" data-nav-kind="section" href="#social-trader-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M4 13c2-4 4-4 6 0s4 4 6 0 4-4 6 0"></path><path d="M4 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"></path></svg>
+          </span>
+          Signals
+        </a>
+        <a data-icon="lab" data-nav-kind="app" href="/simulation" aria-label="Lab opens the strategy lab application">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M9 3h6"></path><path d="M10 3v6l-5 8a3 3 0 0 0 3 5h8a3 3 0 0 0 3-5l-5-8V3"></path><path d="M8 15h8"></path></svg>
+          </span>
+          Lab
+          <span class="nav-route-badge">APP</span>
+        </a>
+        <a data-icon="portfolio" data-nav-kind="section" href="#paper-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M4 8h16v11H4z"></path><path d="M7 8V6h10v2"></path><path d="M15 14h5"></path></svg>
+          </span>
+          Portfolio
+        </a>
+        <a data-icon="settings" data-nav-kind="section" href="#account-section">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path></svg>
+          </span>
+          Settings
+        </a>
       </nav>
       <nav class="sidebar-nav dashboard-route-resolver" aria-hidden="true" tabindex="-1">
         <a href="#feature-readiness-section" data-route-resolver="true" data-i18n="nav_feature_status">Feature Status</a>
