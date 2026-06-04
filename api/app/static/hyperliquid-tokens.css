@@ -130,6 +130,10 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > * {
   margin-block: 0 !important;
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .route-page-hidden {
+  display: none !important;
+}
+
 body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .operator-strip {
   order: 1 !important;
 }
@@ -430,8 +434,46 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-command-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--hl-2);
+  gap: 6px;
   white-space: nowrap;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-toolbar-select {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-control);
+  background: var(--hl-panel);
+  color: var(--hl-text-2);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 8px;
+  color: var(--hl-text-3);
+  font: 800 10px / 1 var(--hl-font-mono);
+  pointer-events: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-toolbar-select select {
+  height: 100%;
+  min-width: 48px;
+  padding: 0 8px 0 4px;
+  color: var(--hl-text-2);
+  border: 0;
+  background: transparent;
+  font: 750 11px / 1 var(--hl-font-ui);
+  outline: 0;
+  cursor: pointer;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-number-format-control select {
+  width: 90px;
+  font-family: var(--hl-font-mono);
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-alert-count,
@@ -483,6 +525,17 @@ body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button {
   place-items: center;
   width: 30px;
   cursor: pointer;
+  text-decoration: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button svg {
+  width: 15px;
+  height: 15px;
+  stroke: var(--hl-text-3);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .app-icon-button em {
@@ -1607,6 +1660,7 @@ body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] {
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-command-chrome,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-command-search input,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-alert-count,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-toolbar-select,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-wallet-pill,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-avatar,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .app-icon-button,

@@ -11,7 +11,7 @@
   <div class="dashboard-shell">
     <aside class="sidebar app-command-chrome" aria-label="BITprivat command navigation">
       <div class="app-command-topbar">
-        <a class="app-command-brand" href="#market-console-section" aria-label="BITprivat home">
+        <a class="app-command-brand" href="/dashboard" aria-label="BITprivat Command Center">
           <span class="app-brand-chart" aria-hidden="true"><i></i><i></i><i></i></span>
           <strong>BITprivat</strong>
         </a>
@@ -21,6 +21,24 @@
           <kbd>&#8984;K</kbd>
         </label>
         <div class="app-command-actions" aria-label="Account status and notifications">
+          <label class="app-toolbar-select app-language-control" aria-label="Language">
+            <span class="app-toolbar-icon" aria-hidden="true">Aa</span>
+            <select data-preference-language aria-label="Language">
+              <option value="en">EN</option>
+              <option value="ro">RO</option>
+            </select>
+          </label>
+          <label class="app-toolbar-select app-number-format-control" aria-label="Number format">
+            <span class="app-toolbar-icon" aria-hidden="true">1.0</span>
+            <select data-preference-number-format aria-label="Number format">
+              <option value="auto">Auto</option>
+              <option value="en-US">1,234.56</option>
+              <option value="ro-RO">1.234,56</option>
+            </select>
+          </label>
+          <a class="app-icon-button app-settings-link" href="/settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path></svg>
+          </a>
           <span class="app-alert-count"><i aria-hidden="true"></i>3</span>
           <button class="app-icon-button" type="button" aria-label="Notifications">
             <span class="app-bell-glyph" aria-hidden="true"></span>
@@ -31,25 +49,25 @@
         </div>
       </div>
       <nav class="sidebar-nav app-tabbar" aria-label="Primary navigation">
-        <a class="active" data-icon="command" data-nav-kind="section" href="#market-console-section">
+        <a class="active" data-icon="command" data-nav-kind="page" data-route="/dashboard" href="/dashboard">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M5 19V9m6 10V5m6 14v-7"></path></svg>
           </span>
           Command Center
         </a>
-        <a data-icon="markets" data-nav-kind="section" href="#intelligence-section">
+        <a data-icon="markets" data-nav-kind="page" data-route="/markets" href="/markets">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M4 17l5-5 4 3 7-8"></path><path d="M4 20h16"></path></svg>
           </span>
           Markets
         </a>
-        <a data-icon="trade" data-nav-kind="section" href="#trading-workspace-section">
+        <a data-icon="trade" data-nav-kind="page" data-route="/trade" href="/trade">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M7 5v14"></path><path d="M17 5v14"></path><path d="M5 9h4v6H5z"></path><path d="M15 7h4v8h-4z"></path></svg>
           </span>
           Trade
         </a>
-        <a data-icon="signals" data-nav-kind="section" href="#social-trader-section">
+        <a data-icon="signals" data-nav-kind="page" data-route="/signals" href="/signals">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M4 13c2-4 4-4 6 0s4 4 6 0 4-4 6 0"></path><path d="M4 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"></path></svg>
           </span>
@@ -62,13 +80,13 @@
           Lab
           <span class="nav-route-badge">APP</span>
         </a>
-        <a data-icon="portfolio" data-nav-kind="section" href="#paper-section">
+        <a data-icon="portfolio" data-nav-kind="page" data-route="/portfolio" href="/portfolio">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M4 8h16v11H4z"></path><path d="M7 8V6h10v2"></path><path d="M15 14h5"></path></svg>
           </span>
           Portfolio
         </a>
-        <a data-icon="settings" data-nav-kind="section" href="#account-section">
+        <a data-icon="settings" data-nav-kind="page" data-route="/settings" href="/settings">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path></svg>
           </span>
@@ -76,6 +94,12 @@
         </a>
       </nav>
       <nav class="sidebar-nav dashboard-route-resolver" aria-hidden="true" tabindex="-1">
+        <a href="#market-console-section" data-route-resolver="true">Command Center</a>
+        <a href="#intelligence-section" data-route-resolver="true">Markets</a>
+        <a href="#trading-workspace-section" data-route-resolver="true">Trade</a>
+        <a href="#social-trader-section" data-route-resolver="true">Signals</a>
+        <a href="#paper-section" data-route-resolver="true">Portfolio</a>
+        <a href="#account-section" data-route-resolver="true">Settings</a>
         <a href="#feature-readiness-section" data-route-resolver="true" data-i18n="nav_feature_status">Feature Status</a>
         <a href="#trader-intelligence-section" data-route-resolver="true">Trader Intelligence</a>
         <a href="#leaderboard-section" data-route-resolver="true" data-i18n="nav_bots">Bots</a>

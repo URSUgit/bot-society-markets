@@ -1,11 +1,13 @@
 const DEFAULT_PREFERENCES = {
   theme: "night",
   language: "en",
+  numberFormat: "auto",
   workspaceStyle: "institutional",
 };
 const STORAGE_KEYS = {
   theme: "bitprivat.theme",
   language: "bitprivat.language",
+  numberFormat: "bitprivat.numberFormat",
   workspaceStyle: "bitprivat.workspaceStyle",
 };
 const I18N = {
@@ -133,6 +135,9 @@ const I18N = {
 let appPreferences = { ...DEFAULT_PREFERENCES };
 
 function currentLocale() {
+  if (["en-US", "ro-RO"].includes(appPreferences.numberFormat)) {
+    return appPreferences.numberFormat;
+  }
   return appPreferences.language === "ro" ? "ro-RO" : "en-US";
 }
 
@@ -578,10 +583,14 @@ function loadPreferences() {
   try {
     const storedTheme = window.localStorage.getItem(STORAGE_KEYS.theme);
     const storedLanguage = window.localStorage.getItem(STORAGE_KEYS.language);
+    const storedNumberFormat = window.localStorage.getItem(STORAGE_KEYS.numberFormat);
     const storedWorkspaceStyle = window.localStorage.getItem(STORAGE_KEYS.workspaceStyle);
     appPreferences = {
       theme: ["day", "night"].includes(storedTheme) ? storedTheme : DEFAULT_PREFERENCES.theme,
       language: ["en", "ro"].includes(storedLanguage) ? storedLanguage : DEFAULT_PREFERENCES.language,
+      numberFormat: ["auto", "en-US", "ro-RO"].includes(storedNumberFormat)
+        ? storedNumberFormat
+        : DEFAULT_PREFERENCES.numberFormat,
       workspaceStyle: ["trader", "institutional"].includes(storedWorkspaceStyle)
         ? storedWorkspaceStyle
         : DEFAULT_PREFERENCES.workspaceStyle,
@@ -596,6 +605,7 @@ function savePreferences() {
   try {
     window.localStorage.setItem(STORAGE_KEYS.theme, appPreferences.theme);
     window.localStorage.setItem(STORAGE_KEYS.language, appPreferences.language);
+    window.localStorage.setItem(STORAGE_KEYS.numberFormat, appPreferences.numberFormat);
     window.localStorage.setItem(STORAGE_KEYS.workspaceStyle, appPreferences.workspaceStyle);
   } catch (error) {
     console.warn("Could not persist preferences.", error);
@@ -608,6 +618,9 @@ function syncPreferenceControls() {
   });
   document.querySelectorAll("[data-preference-language]").forEach((select) => {
     select.value = appPreferences.language;
+  });
+  document.querySelectorAll("[data-preference-number-format]").forEach((select) => {
+    select.value = appPreferences.numberFormat || "auto";
   });
   document.querySelectorAll("[data-workspace-style]").forEach((button) => {
     const style = button.getAttribute("data-workspace-style");
@@ -625,6 +638,7 @@ function applyPreferences({ announce = false } = {}) {
 
   body.dataset.theme = appPreferences.theme;
   body.dataset.language = appPreferences.language;
+  body.dataset.numberFormat = appPreferences.numberFormat || "auto";
   body.dataset.workspaceStyle = appPreferences.workspaceStyle;
   document.documentElement.lang = appPreferences.language === "ro" ? "ro" : "en";
   document.title = t("document_title");
@@ -640,7 +654,7 @@ function applyPreferences({ announce = false } = {}) {
   });
 
   syncPreferenceControls();
-  setActiveDashboardSection(window.location.hash || "#market-console-section");
+  applyAppRoute();
   if (!document.getElementById("dashboard-window")?.classList.contains("hidden")) {
     const openSection = dashboardWindowState.section?.id ? `#${dashboardWindowState.section.id}` : null;
     const title = document.getElementById("dashboard-window-title");
@@ -674,6 +688,14 @@ function bindPreferenceControls() {
       resizeVisibleCharts();
     });
   });
+  document.querySelectorAll("[data-preference-number-format]").forEach((select) => {
+    select.addEventListener("change", () => {
+      appPreferences.numberFormat = ["en-US", "ro-RO"].includes(select.value) ? select.value : "auto";
+      savePreferences();
+      applyPreferences({ announce: true });
+      resizeVisibleCharts();
+    });
+  });
   document.querySelectorAll("[data-workspace-style]").forEach((button) => {
     button.addEventListener("click", () => {
       const requestedStyle = button.getAttribute("data-workspace-style");
@@ -697,6 +719,130 @@ function applyBillingQueryStatus() {
     setStatus("Billing returned from Stripe successfully. Refreshing workspace entitlements.");
   } else if (billingState === "cancelled") {
     setStatus("Stripe checkout was cancelled. Your workspace remains unchanged.");
+  }
+}
+
+const APP_ROUTE_DEFAULT = "/dashboard";
+const APP_ROUTE_ALIASES = {
+  "/": APP_ROUTE_DEFAULT,
+  "/app": APP_ROUTE_DEFAULT,
+};
+const ALWAYS_VISIBLE_ROUTE_PARTS = ["cycle-status"];
+const APP_ROUTES = {
+  "/dashboard": {
+    key: "dashboard",
+    label: "Command Center",
+    activeHash: "#market-console-section",
+    sections: [
+      "operator-strip",
+      "feature-alert-strip",
+      "dashboard-hero",
+      "dashboard-ribbon",
+      "pulse-section",
+      "smart-money-section",
+      "dashboard-metrics",
+      "market-console-section",
+      "feature-readiness-section",
+    ],
+  },
+  "/markets": {
+    key: "markets",
+    label: "Markets",
+    activeHash: "#intelligence-section",
+    sections: ["market-console-section", "intelligence-section", "assets-section", "predictions-section"],
+  },
+  "/trade": {
+    key: "trade",
+    label: "Trade",
+    activeHash: "#trading-workspace-section",
+    sections: ["trading-workspace-section"],
+  },
+  "/signals": {
+    key: "signals",
+    label: "Signals",
+    activeHash: "#social-trader-section",
+    sections: ["social-trader-section", "trader-intelligence-section", "leaderboard-section", "detail-section"],
+  },
+  "/portfolio": {
+    key: "portfolio",
+    label: "Portfolio",
+    activeHash: "#paper-section",
+    sections: ["dashboard-metrics", "paper-section"],
+  },
+  "/settings": {
+    key: "settings",
+    label: "Settings",
+    activeHash: "#account-section",
+    sections: [
+      "feature-alert-strip",
+      "feature-readiness-section",
+      "account-section",
+      "workspace-section",
+      "connectors-section",
+      "operations-infra-section",
+      "launch-section",
+      "cutover-section",
+    ],
+  },
+};
+
+function normalizeAppRoutePath(pathname = window.location.pathname) {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  return APP_ROUTE_ALIASES[normalized] || normalized;
+}
+
+function currentAppRoute() {
+  const path = normalizeAppRoutePath();
+  return APP_ROUTES[path] || APP_ROUTES[APP_ROUTE_DEFAULT];
+}
+
+function routeElementKeys(element) {
+  const keys = [];
+  if (element.id) {
+    keys.push(element.id);
+  }
+  if (element.classList.contains("dashboard-hero")) {
+    keys.push("dashboard-hero");
+  }
+  if (element.classList.contains("dashboard-ribbon")) {
+    keys.push("dashboard-ribbon");
+  }
+  return keys;
+}
+
+function applyAppRoute() {
+  const body = document.body;
+  const main = document.querySelector(".dashboard-main");
+  if (!body || !main) {
+    return;
+  }
+
+  const route = currentAppRoute();
+  const visibleParts = new Set([...ALWAYS_VISIBLE_ROUTE_PARTS, ...route.sections]);
+  body.dataset.appRoute = route.key;
+  document.title = route.key === "dashboard" ? t("document_title") : `BITprivat ${route.label}`;
+
+  document.querySelectorAll(".app-tabbar a[data-route]").forEach((link) => {
+    const linkRoute = normalizeAppRoutePath(link.getAttribute("data-route") || link.getAttribute("href") || "");
+    const isActive = linkRoute === normalizeAppRoutePath();
+    link.classList.toggle("active", isActive);
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+
+  main.querySelectorAll(":scope > section, :scope > p").forEach((element) => {
+    const isVisible = routeElementKeys(element).some((key) => visibleParts.has(key));
+    element.classList.toggle("route-page-hidden", !isVisible);
+    element.classList.toggle("route-page-active", isVisible);
+  });
+
+  setActiveDashboardSection(route.activeHash);
+  const activeSection = document.getElementById("operator-active-section");
+  if (activeSection) {
+    activeSection.textContent = route.label;
   }
 }
 
@@ -818,7 +964,7 @@ function initDashboardSectionObserver() {
   });
 
   targets.forEach((target) => observer.observe(target));
-  setActiveDashboardSection(window.location.hash || links[0].getAttribute("href"));
+  setActiveDashboardSection(window.location.hash || currentAppRoute().activeHash || links[0].getAttribute("href"));
 }
 
 function dashboardWindowSubtitle(hash) {
@@ -905,7 +1051,11 @@ function handleDashboardHashChange() {
   if (openDashboardWindowFromHash()) {
     return;
   }
-  setActiveDashboardSection(window.location.hash || "#market-console-section");
+  if (!window.location.hash) {
+    applyAppRoute();
+    return;
+  }
+  setActiveDashboardSection(window.location.hash);
 }
 
 function openDashboardWindow(hash, trigger = null, { ignoreSuppression = false } = {}) {

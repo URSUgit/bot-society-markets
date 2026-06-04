@@ -20,6 +20,21 @@ const RESERVED_ROOT_REWRITES = {
   "api.bitprivat.com": "/health",
   "status.bitprivat.com": "/status",
 };
+const APP_DASHBOARD_PATHS = new Set([
+  "/dashboard",
+  "/dashboard/",
+  "/app",
+  "/markets",
+  "/markets/",
+  "/trade",
+  "/trade/",
+  "/signals",
+  "/signals/",
+  "/portfolio",
+  "/portfolio/",
+  "/settings",
+  "/settings/",
+]);
 
 function normalizeOrigin(originBaseUrl) {
   const origin = new URL(originBaseUrl);
@@ -326,14 +341,14 @@ export default {
     }
     if (
       (incomingUrl.hostname === "bitprivat.com" || incomingUrl.hostname === "www.bitprivat.com")
-      && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/landing" || incomingUrl.pathname === "/portfolio")
+      && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/landing")
     ) {
       return assetResponse(INDEX_HTML, "text/html; charset=utf-8");
     }
-    if (incomingUrl.hostname === "app.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/dashboard" || incomingUrl.pathname === "/dashboard/")) {
+    if (incomingUrl.hostname === "app.bitprivat.com" && (incomingUrl.pathname === "/" || APP_DASHBOARD_PATHS.has(incomingUrl.pathname))) {
       return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
     }
-    if (incomingUrl.pathname === "/dashboard" || incomingUrl.pathname === "/dashboard/" || incomingUrl.pathname === "/app") {
+    if (APP_DASHBOARD_PATHS.has(incomingUrl.pathname)) {
       return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
     }
     if (incomingUrl.pathname === "/simulation" || incomingUrl.pathname === "/simulation/" || incomingUrl.pathname === "/lab") {

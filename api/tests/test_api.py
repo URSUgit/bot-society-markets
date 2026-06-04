@@ -413,12 +413,12 @@ def test_business_model_strategy_endpoint_maps_investor_deck() -> None:
 
 def test_public_legal_pages_are_served() -> None:
     with build_client() as client:
-        portfolio_response = client.get("/portfolio")
-        assert portfolio_response.status_code == 200
-        assert "market intelligence os" in portfolio_response.text.lower()
-        assert "business model strategy" in portfolio_response.text.lower()
-        assert 'id="portfolio-position-table"' in portfolio_response.text
-        assert 'id="portfolio-category-grid"' in portfolio_response.text
+        landing_response = client.get("/landing")
+        assert landing_response.status_code == 200
+        assert "market intelligence os" in landing_response.text.lower()
+        assert "business model strategy" in landing_response.text.lower()
+        assert 'id="portfolio-position-table"' in landing_response.text
+        assert 'id="portfolio-category-grid"' in landing_response.text
 
         terms_response = client.get("/terms")
         assert terms_response.status_code == 200
@@ -447,6 +447,13 @@ def test_professional_console_pages_are_served() -> None:
         assert 'class="dashboard-body command-os bit-engine-product-ui"' in dashboard_response.text
         assert 'class="app-command-brand"' in dashboard_response.text
         assert 'class="sidebar-nav app-tabbar"' in dashboard_response.text
+        assert 'data-preference-number-format' in dashboard_response.text
+        assert 'data-route="/dashboard" href="/dashboard"' in dashboard_response.text
+        assert 'data-route="/markets" href="/markets"' in dashboard_response.text
+        assert 'data-route="/trade" href="/trade"' in dashboard_response.text
+        assert 'data-route="/signals" href="/signals"' in dashboard_response.text
+        assert 'data-route="/portfolio" href="/portfolio"' in dashboard_response.text
+        assert 'data-route="/settings" href="/settings"' in dashboard_response.text
         assert "Command Center" in dashboard_response.text
         assert "app-brand-chart" in dashboard_response.text
         assert 'data-nav-kind="app"' in dashboard_response.text
@@ -489,6 +496,14 @@ def test_professional_console_pages_are_served() -> None:
         assert hyperliquid_css_response.status_code == 200
         assert "--hl-bg: #0b0e11" in hyperliquid_css_response.text
         assert ".hl-orderbook" in hyperliquid_css_response.text
+        assert ".route-page-hidden" in hyperliquid_css_response.text
+        assert ".app-toolbar-select" in hyperliquid_css_response.text
+
+        for route in ("/markets", "/trade", "/signals", "/portfolio", "/settings"):
+            route_response = client.get(route)
+            assert route_response.status_code == 200
+            assert 'class="dashboard-body command-os bit-engine-product-ui"' in route_response.text
+            assert 'class="sidebar-nav app-tabbar"' in route_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

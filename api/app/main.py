@@ -1497,11 +1497,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def landing() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
-    @app.get("/portfolio")
-    def portfolio() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
-
     @app.get("/dashboard")
+    @app.get("/markets")
+    @app.get("/trade")
+    @app.get("/signals")
+    @app.get("/portfolio")
+    @app.get("/settings")
     def dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
 
@@ -1529,17 +1530,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/dachboard")
     @app.get("/dashbord")
     @app.get("/app")
-    def dashboard_aliases() -> RedirectResponse:
-        return RedirectResponse(url="/dashboard", status_code=307)
+    @app.get("/markets/")
+    @app.get("/trade/")
+    @app.get("/signals/")
+    @app.get("/portfolio/")
+    @app.get("/settings/")
+    def dashboard_aliases(request: Request) -> RedirectResponse:
+        path = {
+            "/markets/": "/markets",
+            "/trade/": "/trade",
+            "/signals/": "/signals",
+            "/portfolio/": "/portfolio",
+            "/settings/": "/settings",
+        }.get(request.url.path, None)
+        return RedirectResponse(url=path or "/dashboard", status_code=307)
 
     @app.get("/landing/")
     @app.get("/home")
     def landing_aliases() -> RedirectResponse:
         return RedirectResponse(url="/landing", status_code=307)
-
-    @app.get("/portfolio/")
-    def portfolio_aliases() -> RedirectResponse:
-        return RedirectResponse(url="/portfolio", status_code=307)
 
     @app.get("/simulation/")
     @app.get("/lab")
