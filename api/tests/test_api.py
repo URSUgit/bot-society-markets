@@ -445,9 +445,11 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="run-all-connector-checks-button"' in dashboard_response.text
         assert 'id="connector-diagnostic-panel"' in dashboard_response.text
         assert 'class="dashboard-body command-os bit-engine-product-ui"' in dashboard_response.text
-        assert 'class="sidebar-brand"' in dashboard_response.text
-        assert "bit-engine-mark" in dashboard_response.text
-        assert ">Overview</a>" in dashboard_response.text
+        assert 'class="app-command-brand"' in dashboard_response.text
+        assert 'class="sidebar-nav app-tabbar"' in dashboard_response.text
+        assert "Command Center" in dashboard_response.text
+        assert "app-brand-chart" in dashboard_response.text
+        assert ">Home</a>" in dashboard_response.text
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-marketplace-toolbar"' in dashboard_response.text
