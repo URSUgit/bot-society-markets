@@ -1247,7 +1247,8 @@ function decorateFeatureNavigation(items = []) {
     }
   });
   byRoute.forEach((item, route) => {
-    const link = document.querySelector(`.sidebar-nav a[href="${CSS.escape(route)}"]`);
+    const link = document.querySelector(`.dashboard-route-resolver a[href="${CSS.escape(route)}"]`)
+      || document.querySelector(`.sidebar-nav:not(.app-tabbar) a[href="${CSS.escape(route)}"]`);
     if (!link) {
       return;
     }

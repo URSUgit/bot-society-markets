@@ -6,42 +6,46 @@
   <title>BITprivat Command Center</title>
   <link rel="stylesheet" href="/static/styles.css?v=pro-auth-1">
 </head>
-<body class="dashboard-body command-os bit-engine-product-ui" data-theme="day" data-language="en" data-workspace-style="institutional">
+<body class="dashboard-body command-os bit-engine-product-ui" data-theme="night" data-language="en" data-workspace-style="institutional">
   <div class="dashboard-shell">
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <span class="brand-mark bit-engine-mark">BP</span>
-        <div>
-          <p class="eyebrow">BITprivat</p>
-          <h1 class="sidebar-title" data-i18n="app_title">Market OS</h1>
-          <p class="sidebar-subtitle" data-i18n="app_subtitle">Markets, bots, and strategy testing in one clear workflow.</p>
+    <aside class="sidebar app-command-chrome" aria-label="BITprivat command navigation">
+      <div class="app-command-topbar">
+        <a class="app-command-brand" href="#market-console-section" aria-label="BITprivat home">
+          <span class="app-brand-chart" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong>BITprivat</strong>
+        </a>
+        <label class="app-command-search">
+          <span class="sr-only">Search markets, traders, strategies</span>
+          <input type="search" placeholder="Search markets, traders, strategies&hellip;" autocomplete="off" aria-label="Search markets, traders, strategies">
+          <kbd>&#8984;K</kbd>
+        </label>
+        <div class="app-command-actions" aria-label="Account status and notifications">
+          <span class="app-alert-count"><i aria-hidden="true"></i>3</span>
+          <button class="app-icon-button" type="button" aria-label="Notifications">
+            <span class="app-bell-glyph" aria-hidden="true"></span>
+            <em>2</em>
+          </button>
+          <span class="app-wallet-pill"><i aria-hidden="true"></i>0x55AF&hellip;9d55</span>
+          <span class="app-avatar" aria-label="User avatar">IP</span>
         </div>
       </div>
-      <nav class="sidebar-nav">
-        <span class="sidebar-nav-label" data-i18n="nav_operate">Operate</span>
-        <a class="active" href="#market-console-section" data-i18n="nav_overview">Overview</a>
-        <a href="#feature-readiness-section" data-i18n="nav_feature_status">Feature Status</a>
-        <a href="#trading-workspace-section" data-i18n="nav_trading_workspace">Trading Workspace</a>
-        <a href="#social-trader-section" data-i18n="nav_social_traders">Social Traders</a>
-        <a href="#trader-intelligence-section">Trader Intelligence</a>
-        <a href="#intelligence-section" data-i18n="nav_markets">Markets</a>
-        <a href="#paper-section" data-i18n="nav_paper_trade">Paper Trade</a>
-        <a href="#leaderboard-section" data-i18n="nav_bots">Bots</a>
-        <span class="sidebar-nav-label" data-i18n="nav_build">Build</span>
-        <a href="/simulation" target="_blank" rel="noopener" data-i18n="nav_strategy_lab">Strategy Lab</a>
-        <a href="#connectors-section" data-i18n="nav_connectors">Connectors</a>
-        <a href="#operations-infra-section" data-i18n="nav_infrastructure">Infrastructure</a>
-        <span class="sidebar-nav-label" data-i18n="nav_workspace">Workspace</span>
-        <a href="#account-section" data-i18n="nav_account">Account</a>
-        <a href="#workspace-section" data-i18n="nav_rules_alerts">Rules & Alerts</a>
-        <span class="sidebar-nav-label" data-i18n="nav_company">Company</span>
-        <a href="/status" target="_blank" rel="noopener" data-i18n="nav_public_status">Public Status</a>
-        <a href="/landing" target="_blank" rel="noopener" data-i18n="nav_public_website">Public Website</a>
+      <nav class="sidebar-nav app-tabbar" aria-label="Primary navigation">
+        <a class="active" data-icon="home" href="#market-console-section">Home</a>
+        <a data-icon="markets" href="#intelligence-section">Markets</a>
+        <a data-icon="trade" href="#trading-workspace-section">Trade</a>
+        <a data-icon="signals" href="#social-trader-section">Signals</a>
+        <a data-icon="lab" href="/simulation">Lab</a>
+        <a data-icon="portfolio" href="#paper-section">Portfolio</a>
+        <a data-icon="settings" href="#account-section">Settings</a>
       </nav>
-      <div class="sidebar-card">
-        <p class="eyebrow">Start here</p>
-        <p>1. Run a cycle. 2. Open Strategy Lab. 3. Simulate before any real execution.</p>
-      </div>
+      <nav class="sidebar-nav dashboard-route-resolver" aria-hidden="true" tabindex="-1">
+        <a href="#feature-readiness-section" data-route-resolver="true" data-i18n="nav_feature_status">Feature Status</a>
+        <a href="#trader-intelligence-section" data-route-resolver="true">Trader Intelligence</a>
+        <a href="#leaderboard-section" data-route-resolver="true" data-i18n="nav_bots">Bots</a>
+        <a href="#connectors-section" data-route-resolver="true" data-i18n="nav_connectors">Connectors</a>
+        <a href="#operations-infra-section" data-route-resolver="true" data-i18n="nav_infrastructure">Infrastructure</a>
+        <a href="#workspace-section" data-route-resolver="true" data-i18n="nav_rules_alerts">Rules & Alerts</a>
+      </nav>
     </aside>
 
     <main class="dashboard-main">
@@ -107,23 +111,24 @@
         <a class="button tertiary small-button" href="#feature-readiness-section">Open status matrix</a>
       </section>
 
-      <section class="dashboard-hero card command-brief">
+      <section class="dashboard-hero card command-brief app-page-header">
         <div class="command-brief-main">
-          <p class="eyebrow">BITprivat Market OS</p>
-          <h2>Compact trading intelligence, with every unfinished feature labeled.</h2>
+          <p class="live-command-pill"><span aria-hidden="true"></span><strong>LIVE</strong> Prices update every tick</p>
+          <h2>Command Center</h2>
+          <p class="page-header-subtitle">0 open positions &middot; 3 traders being copied</p>
           <p class="hero-submeta" id="hero-submeta">Loading market and execution context...</p>
         </div>
         <div class="command-brief-actions">
-          <button class="button primary" id="run-cycle-button" type="button">Run cycle</button>
-          <a class="button secondary" href="#trading-workspace-section">Trading workspace</a>
-          <a class="button secondary" href="/simulation" target="_blank" rel="noopener">Strategy lab</a>
-          <a class="button secondary" href="#social-trader-section">Social traders</a>
-          <a class="button secondary" href="#trader-intelligence-section">Trader intelligence</a>
+          <button class="button secondary app-export-button" type="button"><span aria-hidden="true"></span>Export</button>
+          <select class="page-range-select" aria-label="Dashboard time range">
+            <option value="30d" selected>30D</option>
+            <option value="7d">7D</option>
+            <option value="1d">1D</option>
+            <option value="all">ALL</option>
+          </select>
+          <a class="button primary app-new-position-button" href="#trading-workspace-section">+ New Position</a>
         </div>
-        <div class="workspace-style-switch" role="group" aria-label="Workspace visual style">
-          <button type="button" data-workspace-style="trader" aria-pressed="false">Trader</button>
-          <button class="active" type="button" data-workspace-style="institutional" aria-pressed="true">Institutional</button>
-        </div>
+        <button class="sr-only" id="run-cycle-button" type="button">Run cycle</button>
         <div class="command-brief-kpis" aria-label="Workspace quick metrics">
           <article>
             <span>Mode</span>
