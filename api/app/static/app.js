@@ -6357,10 +6357,11 @@ async function loadDashboard(options = {}) {
     renderPaperTrading(snapshot.paper_trading);
     renderPaperVenues(snapshot.paper_venues);
     renderSocialTrading(snapshot.social_trading);
-    if (options.refreshSocial) {
+    const routePrefersFreshSocial = ["/signals", "/dashboard"].includes(window.location.pathname);
+    if (options.refreshSocial || routePrefersFreshSocial) {
       await hydrateLiveSocialTrading({ fresh: true });
     } else {
-      void hydrateLiveSocialTrading();
+      void hydrateLiveSocialTrading({ fresh: true });
     }
     void loadTraderIntelligence();
     await renderDashboardMarketChart(snapshot.assets);
