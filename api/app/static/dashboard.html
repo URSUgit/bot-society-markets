@@ -1709,6 +1709,70 @@
           </div>
         </article>
 
+        <article class="card side-card bot-create-card" id="bot-create-section">
+          <div class="section-head compact-section-head">
+            <div>
+              <p class="eyebrow">Bot factory</p>
+              <h3>Create research bot</h3>
+            </div>
+            <span class="status-pill" data-variant="neutral">Paper-only</span>
+          </div>
+          <p class="panel-note">Define a custom bot identity for research, alerts, and paper validation. Live execution stays locked behind legal and risk gates.</p>
+          <form class="stack-form bot-create-form" id="bot-create-form">
+            <label>
+              <span>Bot name</span>
+              <input id="bot-create-name" name="name" type="text" minlength="3" maxlength="80" placeholder="Event Dislocation Scout" required>
+            </label>
+            <label>
+              <span>Strategy archetype</span>
+              <select id="bot-create-archetype" name="archetype">
+                <option value="Social signal momentum">Social signal momentum</option>
+                <option value="Prediction market event scanner">Prediction market event scanner</option>
+                <option value="Macro regime analyst">Macro regime analyst</option>
+                <option value="Breakout technical scout">Breakout technical scout</option>
+                <option value="Risk sentinel">Risk sentinel</option>
+                <option value="Custom research bot">Custom research bot</option>
+              </select>
+            </label>
+            <label>
+              <span>Asset universe</span>
+              <input id="bot-create-assets" name="asset_universe" type="text" placeholder="BTC, ETH, SOL" value="BTC, ETH, SOL" required>
+            </label>
+            <label>
+              <span>Focus</span>
+              <input id="bot-create-focus" name="focus" type="text" maxlength="140" placeholder="Crypto catalysts and liquid BTC/ETH setups" required>
+            </label>
+            <label>
+              <span>Horizon</span>
+              <select id="bot-create-horizon" name="horizon_label">
+                <option value="Intraday">Intraday</option>
+                <option value="Swing">Swing</option>
+                <option value="Swing / multiweek" selected>Swing / multiweek</option>
+                <option value="Multiweek">Multiweek</option>
+              </select>
+            </label>
+            <label>
+              <span>Risk style</span>
+              <select id="bot-create-risk" name="risk_style">
+                <option value="Paper-only, capped risk" selected>Paper-only, capped risk</option>
+                <option value="Conservative confirmation-first">Conservative confirmation-first</option>
+                <option value="Aggressive momentum, paper-only">Aggressive momentum, paper-only</option>
+                <option value="Risk sentinel / defensive">Risk sentinel / defensive</option>
+              </select>
+            </label>
+            <label>
+              <span>Thesis</span>
+              <textarea id="bot-create-thesis" name="thesis" rows="4" maxlength="700" placeholder="What should this bot look for, avoid, and explain before issuing a signal?" required></textarea>
+            </label>
+            <label class="checkbox-field compact-checkbox">
+              <input id="bot-create-follow" name="follow_after_create" type="checkbox" checked>
+              <span>Follow after creation</span>
+            </label>
+            <button class="button primary" id="bot-create-submit" type="submit">Create Bot</button>
+            <p class="panel-note" id="bot-create-status">Created bots start with no score until predictions are generated and resolved.</p>
+          </form>
+        </article>
+
         <article class="card side-card" id="alerts-section">
           <p class="eyebrow">Alert posture</p>
           <h3>Inbox summary</h3>

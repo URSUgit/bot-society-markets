@@ -156,6 +156,44 @@ class BotDetail(BotSummary):
     recent_predictions: list[PredictionView]
 
 
+class BotCreateRequest(BaseModel):
+    name: str = Field(min_length=3, max_length=80)
+    archetype: str = Field(default="Custom research bot", min_length=3, max_length=80)
+    focus: str = Field(min_length=3, max_length=140)
+    horizon_label: str = Field(default="Swing / multiweek", min_length=3, max_length=80)
+    thesis: str = Field(min_length=20, max_length=700)
+    risk_style: str = Field(default="Paper-only, capped risk", min_length=3, max_length=120)
+    asset_universe: list[str] = Field(default_factory=lambda: ["BTC", "ETH", "SOL"], min_length=1, max_length=12)
+    slug: str | None = Field(default=None, min_length=3, max_length=80)
+    follow_after_create: bool = True
+
+    @field_validator("asset_universe")
+    @classmethod
+    def normalize_asset_universe(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for asset in value:
+            symbol = re.sub(r"[^A-Za-z0-9._-]", "", str(asset or "").strip().upper())
+            if not symbol:
+                continue
+            if len(symbol) > 16:
+                raise ValueError("asset symbols must be 16 characters or fewer")
+            if symbol not in normalized:
+                normalized.append(symbol)
+        if not normalized:
+            raise ValueError("asset_universe must include at least one valid symbol")
+        return normalized
+
+    @field_validator("slug")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        if len(slug) < 3:
+            raise ValueError("slug must contain at least 3 letters or numbers")
+        return slug
+
+
 class OperationSnapshot(BaseModel):
     id: int
     cycle_type: str

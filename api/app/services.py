@@ -54,6 +54,7 @@ from .models import (
     BusinessModelSnapshot,
     BusinessModelStrategyFamily,
     BusinessModelTeamRole,
+    BotCreateRequest,
     BotDetail,
     BotSummary,
     CreatorBotTrainingStatus,
@@ -2726,6 +2727,41 @@ class BotSocietyService:
         leaderboard = self._build_bot_summaries(repository, user_slug)
         self.leaderboard_cache[cache_key] = (datetime.now(timezone.utc), leaderboard)
         return leaderboard
+
+    def create_bot(self, user_slug: str, payload: BotCreateRequest) -> BotDetail:
+        repository = BotSocietyRepository(self.database)
+        base_slug = payload.slug or slugify(payload.name)
+        if not base_slug or len(base_slug) < 3:
+            raise ValueError("Bot name must produce a valid slug")
+        slug = base_slug[:80].strip("-")
+        if repository.get_bot(slug):
+            raise ValueError(f"A bot with slug '{slug}' already exists")
+
+        now = self._now()
+        bot_row = {
+            "slug": slug,
+            "name": payload.name.strip(),
+            "archetype": payload.archetype.strip(),
+            "focus": payload.focus.strip(),
+            "horizon_label": payload.horizon_label.strip(),
+            "thesis": payload.thesis.strip(),
+            "risk_style": payload.risk_style.strip(),
+            "asset_universe": ",".join(payload.asset_universe),
+            "is_active": True,
+            "created_at": now,
+        }
+        try:
+            repository.create_bot(bot_row)
+        except IntegrityError as exc:
+            raise ValueError(f"A bot with slug '{slug}' already exists") from exc
+
+        if payload.follow_after_create:
+            repository.create_follow(user_slug, slug, now)
+        self._clear_live_caches()
+        detail = self.get_bot_detail(slug, user_slug)
+        if not detail:
+            raise ValueError("Bot was created but could not be loaded")
+        return detail
 
     def get_bot_detail(self, slug: str, user_slug: str | None = None) -> BotDetail | None:
         repository = BotSocietyRepository(self.database)

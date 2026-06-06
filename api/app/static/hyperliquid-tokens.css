@@ -670,6 +670,35 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-route-resolver {
   display: none !important;
 }
 
+body.dashboard-body.command-os.bit-engine-product-ui .bot-create-card {
+  align-self: start;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .bot-create-form {
+  display: grid;
+  gap: var(--hl-2);
+  margin-top: var(--hl-3);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .bot-create-form label {
+  display: grid;
+  gap: 6px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .bot-create-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .compact-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .compact-section-head {
+  gap: var(--hl-2);
+}
+
 /* Compact command context. */
 body.dashboard-body.command-os.bit-engine-product-ui .operator-strip {
   display: grid;

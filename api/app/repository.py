@@ -184,6 +184,15 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._row(connection.execute(stmt))
 
+    def create_bot(self, bot: dict[str, Any]) -> dict[str, Any]:
+        stmt = bots_table.insert().values(**bot)
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+        created = self.get_bot(str(bot["slug"]))
+        if not created:
+            raise ValueError("Bot was not created")
+        return created
+
     def list_latest_market_snapshots(self) -> list[dict[str, Any]]:
         with self.database.connect() as connection:
             assets = sorted(

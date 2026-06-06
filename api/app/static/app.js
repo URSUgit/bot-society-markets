@@ -461,6 +461,7 @@ function applyWorkspaceMode(snapshot = latestSnapshot) {
     "wallet-connect-form",
     "trader-intelligence-form",
     "trader-intelligence-ask-form",
+    "bot-create-form",
   ];
 
   if (workspaceNote) {
@@ -469,7 +470,7 @@ function applyWorkspaceMode(snapshot = latestSnapshot) {
       workspaceNote.classList.remove("notice-warning");
       workspaceNote.classList.add("notice-soft");
     } else {
-      workspaceNote.textContent = "Demo workspace is read-only. Sign in or create an account to save follows, watchlist items, channels, and alert actions.";
+      workspaceNote.textContent = "Demo workspace is read-only. Sign in or create an account to create bots, save follows, watchlist items, channels, and alert actions.";
       workspaceNote.classList.remove("notice-soft");
       workspaceNote.classList.add("notice-warning");
     }
@@ -480,7 +481,7 @@ function applyWorkspaceMode(snapshot = latestSnapshot) {
     if (!form) {
       return;
     }
-    form.querySelectorAll("input, select, button").forEach((field) => {
+    form.querySelectorAll("input, select, textarea, button").forEach((field) => {
       field.disabled = !canEdit;
     });
   });
@@ -6497,6 +6498,74 @@ async function unfollowBot(botSlug) {
   await loadDashboard();
 }
 
+async function createResearchBot(form) {
+  if (!requireEditable()) {
+    return;
+  }
+  const status = document.getElementById("bot-create-status");
+  const submit = document.getElementById("bot-create-submit");
+  const data = new FormData(form);
+  const assets = String(data.get("asset_universe") || "")
+    .split(",")
+    .map((asset) => asset.trim().toUpperCase())
+    .filter(Boolean);
+  const payload = {
+    name: String(data.get("name") || "").trim(),
+    archetype: String(data.get("archetype") || "Custom research bot").trim(),
+    focus: String(data.get("focus") || "").trim(),
+    horizon_label: String(data.get("horizon_label") || "Swing / multiweek").trim(),
+    thesis: String(data.get("thesis") || "").trim(),
+    risk_style: String(data.get("risk_style") || "Paper-only, capped risk").trim(),
+    asset_universe: assets,
+    follow_after_create: Boolean(data.get("follow_after_create")),
+  };
+  if (payload.thesis.length < 20) {
+    setStatus("Add a clear thesis of at least 20 characters before creating the bot.");
+    document.getElementById("bot-create-thesis")?.focus();
+    return;
+  }
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Creating...";
+  }
+  if (status) {
+    status.textContent = "Creating bot identity and adding it to your research leaderboard...";
+  }
+  setStatus(`Creating research bot: ${payload.name}`);
+  try {
+    const bot = await fetchJson("/api/v1/bots", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    form.reset();
+    const assetsInput = document.getElementById("bot-create-assets");
+    const followInput = document.getElementById("bot-create-follow");
+    if (assetsInput) {
+      assetsInput.value = "BTC, ETH, SOL";
+    }
+    if (followInput) {
+      followInput.checked = true;
+    }
+    await loadDashboard({ silent: true });
+    if (status) {
+      status.textContent = `${bot.name} is active as a paper-only research bot with ${bot.asset_universe.join(", ")} coverage.`;
+    }
+    selectedBotSlug = bot.slug;
+    await renderBotDetail(bot.slug);
+    setStatus(`${bot.name} created. It starts unscored until predictions are generated and resolved.`);
+  } catch (error) {
+    if (status) {
+      status.textContent = `Create failed: ${error.message}`;
+    }
+    setStatus(`Bot creation failed: ${error.message}`);
+  } finally {
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = "Create Bot";
+    }
+  }
+}
+
 async function runSocialDiscovery(button = null) {
   if (button) {
     button.disabled = true;
@@ -6936,6 +7005,7 @@ function bindForms() {
   const walletConnectForm = document.getElementById("wallet-connect-form");
   const socialAnalyzeForm = document.getElementById("social-analyze-form");
   const traderIntelligenceForm = document.getElementById("trader-intelligence-form");
+  const botCreateForm = document.getElementById("bot-create-form");
 
   if (simulationForm) {
     simulationForm.addEventListener("submit", async (event) => {
@@ -6979,6 +7049,13 @@ function bindForms() {
     socialAnalyzeForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await analyzeSocialTraderTarget(socialAnalyzeForm);
+    });
+  }
+
+  if (botCreateForm) {
+    botCreateForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await createResearchBot(botCreateForm);
     });
   }
 
@@ -8080,6 +8157,7 @@ async function boot() {
   bindInteractions();
   bindForms();
   bindPreferenceControls();
+  applyWorkspaceMode();
   initProfessionalTradingWorkspace();
   initDashboardSectionObserver();
   window.addEventListener("keydown", (event) => {

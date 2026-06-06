@@ -234,6 +234,64 @@ def test_bot_detail_and_cycle_flow() -> None:
         assert len(pending_payload) >= 6
 
 
+def test_user_can_create_research_bot() -> None:
+    with build_client() as client:
+        unauthenticated_response = client.post(
+            "/api/v1/bots",
+            json={
+                "name": "Unauth Bot",
+                "focus": "BTC and ETH test signals",
+                "thesis": "This bot should not be created from demo mode because creation is personal workspace state.",
+            },
+        )
+        assert unauthenticated_response.status_code == 401
+
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Bot Builder",
+                "email": "bot-builder@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        create_response = client.post(
+            "/api/v1/bots",
+            json={
+                "name": "Event Dislocation Scout",
+                "archetype": "Prediction market event scanner",
+                "focus": "Crypto catalysts, prediction-market dislocations, and liquid BTC/ETH setups",
+                "horizon_label": "Swing / multiweek",
+                "thesis": "Watch social evidence, venue pricing, and momentum changes before issuing paper-only research calls.",
+                "risk_style": "Paper-only, capped risk until legal approval",
+                "asset_universe": ["btc", "eth", "btc"],
+                "follow_after_create": True,
+            },
+        )
+        assert create_response.status_code == 200
+        created = create_response.json()
+        assert created["slug"] == "event-dislocation-scout"
+        assert created["asset_universe"] == ["BTC", "ETH"]
+        assert created["is_followed"] is True
+        assert created["predictions"] == 0
+
+        leaderboard_response = client.get("/api/v1/bots")
+        assert leaderboard_response.status_code == 200
+        assert any(bot["slug"] == "event-dislocation-scout" for bot in leaderboard_response.json())
+
+        duplicate_response = client.post(
+            "/api/v1/bots",
+            json={
+                "name": "Event Dislocation Scout",
+                "focus": "Duplicate slug check",
+                "thesis": "The platform should prevent duplicate slugs so leaderboard rows remain stable.",
+            },
+        )
+        assert duplicate_response.status_code == 400
+        assert "already exists" in duplicate_response.json()["detail"]
+
+
 def test_admin_cycle_survives_audit_sink_failure() -> None:
     with build_client() as client:
         with patch("api.app.services.BotSocietyService.record_audit_event", side_effect=RuntimeError("audit unavailable")):
@@ -471,6 +529,9 @@ def test_professional_console_pages_are_served() -> None:
         assert 'id="social-detail-content"' in dashboard_response.text
         assert 'id="social-discovery-run-list"' in dashboard_response.text
         assert 'id="social-execution-ledger-list"' in dashboard_response.text
+        assert 'id="bot-create-form"' in dashboard_response.text
+        assert 'id="bot-create-submit"' in dashboard_response.text
+        assert "Create research bot" in dashboard_response.text
         assert "Bot decision receipt" in dashboard_response.text
         assert "Build Creator Bot" in dashboard_response.text
         assert "Scan New Videos" in dashboard_response.text
@@ -492,6 +553,8 @@ def test_professional_console_pages_are_served() -> None:
         assert "/api/v1/trading/preview" in app_js_response.text
         assert "/api/v1/trading/orders" in app_js_response.text
         assert "dashboard-window-social-open" in app_js_response.text
+        assert "createResearchBot" in app_js_response.text
+        assert "/api/v1/bots" in app_js_response.text
         hyperliquid_css_response = client.get("/static/hyperliquid-tokens.css")
         assert hyperliquid_css_response.status_code == 200
         assert "--hl-bg: #0b0e11" in hyperliquid_css_response.text

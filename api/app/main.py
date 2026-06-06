@@ -36,6 +36,7 @@ from .models import (
     BillingSnapshot,
     BillingPortalSessionRequest,
     BillingWebhookAck,
+    BotCreateRequest,
     BotDetail,
     BotSummary,
     BusinessModelEnvelope,
@@ -511,6 +512,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/bots", response_model=list[BotSummary])
     def bots(request: Request) -> list[BotSummary]:
         return get_service(request).get_leaderboard(current_user_slug(request))
+
+    @app.post("/api/v1/bots", response_model=BotDetail)
+    @app.post("/api/bots", response_model=BotDetail)
+    def create_bot(payload: BotCreateRequest, request: Request) -> BotDetail:
+        user_slug = authenticated_user_slug(request)
+        bot = run_validated(lambda: get_service(request).create_bot(user_slug, payload))
+        audit_event(
+            request,
+            action="bot.create",
+            resource_type="bot",
+            resource_id=bot.slug,
+            actor_user_slug=user_slug,
+            after_state={
+                "slug": bot.slug,
+                "name": bot.name,
+                "asset_universe": bot.asset_universe,
+                "followed": bot.is_followed,
+            },
+        )
+        return bot
 
     @app.get("/api/v1/bots/{slug}", response_model=BotDetail)
     @app.get("/api/bots/{slug}", response_model=BotDetail)
