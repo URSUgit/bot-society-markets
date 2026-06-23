@@ -189,7 +189,9 @@ gh variable set AKASH_DATABASE_MODE --body sqlite --repo URSUgit/bot-society-mar
 Use this only as a recovery/demo origin:
 
 - it is not durable across lease/container recreation
-- it disables the worker SDL and runs a single web service
+- by default the example below creates a single web service
+- use `-WithWorker` when updating an existing web+worker deployment so Akash
+  does not reject the update with a service group mismatch
 - social discovery should stay in `demo` unless you explicitly accept that
   YouTube-derived profiles are stored only in container-local SQLite
 
@@ -373,6 +375,7 @@ single-service SQLite SDL:
 
 ```powershell
 .\deploy\akash\trigger-github-cli-deploy.ps1 -Mode create -DatabaseMode sqlite -SocialDiscoveryProvider demo -ConfirmSpend
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode update -DatabaseMode sqlite -WithWorker -SocialDiscoveryProvider demo -ConfirmSpend
 ```
 
 Full operating guide:

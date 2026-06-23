@@ -37,7 +37,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$templatePath = if ($DatabaseMode -eq "sqlite") {
+$templatePath = if ($DatabaseMode -eq "sqlite" -and -not $WithWorker) {
     Join-Path $PSScriptRoot "web-demo-sqlite.yaml"
 } elseif ($WithWorker) {
     Join-Path $PSScriptRoot "web-worker-external-postgres.yaml"
@@ -49,8 +49,10 @@ if (-not (Test-Path -LiteralPath $templatePath)) {
     throw "Template not found: $templatePath"
 }
 
-$defaultOutputName = if ($DatabaseMode -eq "sqlite") {
+$defaultOutputName = if ($DatabaseMode -eq "sqlite" -and -not $WithWorker) {
     "web-demo-sqlite.bitprivat.generated.yaml"
+} elseif ($DatabaseMode -eq "sqlite" -and $WithWorker) {
+    "web-worker-demo-sqlite.bitprivat.generated.yaml"
 } elseif ($WithWorker) {
     "web-worker-external-postgres.bitprivat.generated.yaml"
 } else {
@@ -111,6 +113,8 @@ if ($DatabaseMode -eq "postgres") {
         "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
         $databaseUrlEscaped
     )
+} else {
+    $rendered = $rendered -replace "- BSM_DATABASE_URL=postgresql\+psycopg://USER:PASSWORD@HOST/DBNAME\?sslmode=require", "- BSM_DATABASE_PATH=/tmp/BotSocietyMarkets/bot_society_markets.db"
 }
 $rendered = $rendered.Replace("status.bitprivat.com", $statusHostEscaped)
 $rendered = $rendered.Replace("api.bitprivat.com", $apiHostEscaped)

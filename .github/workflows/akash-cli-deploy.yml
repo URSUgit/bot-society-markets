@@ -144,11 +144,6 @@ jobs:
               exit 1
               ;;
           esac
-          if [ "$database_mode" = "sqlite" ] && [ "$with_worker" = "true" ]; then
-            echo "::notice title=SQLite emergency mode::Disabling worker service because web-demo-sqlite.yaml is single-service and non-durable."
-            with_worker="false"
-          fi
-
           confirm_spend="${{ github.event.inputs.confirm_spend }}"
           if [ -z "$confirm_spend" ]; then
             confirm_spend="$AKASH_CLI_AUTO_CONFIRM_SPEND"
