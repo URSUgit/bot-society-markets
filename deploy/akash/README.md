@@ -219,6 +219,31 @@ Useful commands:
 .\deploy\akash\deploy-production.ps1 -WithWorker
 ```
 
+## Akash CLI Provider TLS
+
+Some Akash providers expose the off-chain manifest endpoint with a certificate
+chain that is not trusted by the default GitHub runner CA store. When that
+happens, the blockchain update can succeed but `provider-services send-manifest`
+fails with an error like:
+
+```text
+tls: unable to verify certificate: (x509: certificate signed by unknown authority)
+```
+
+The CLI workflow supports two controlled fixes:
+
+```text
+AKASH_PROVIDER_URL=https://provider.example.com:8443
+AKASH_PROVIDER_CA_PEM=<optional pinned provider CA certificate secret>
+AKASH_PROVIDER_TLS_BOOTSTRAP=true
+```
+
+Preferred production setting is `AKASH_PROVIDER_CA_PEM`, stored as a GitHub
+secret. If a pinned CA is not available, `AKASH_PROVIDER_TLS_BOOTSTRAP=true`
+builds a temporary CA bundle from the explicitly configured provider URL during
+the GitHub Actions run. Keep that variable scoped to a known provider and remove
+it once the provider serves a publicly trusted certificate chain.
+
 Operator setup helpers:
 
 ```powershell

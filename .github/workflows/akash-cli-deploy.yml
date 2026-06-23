@@ -201,6 +201,9 @@ jobs:
           AKASH_CLI_MNEMONIC: ${{ secrets.AKASH_CLI_MNEMONIC }}
           AKASH_DSEQ: ${{ github.event.inputs.dseq || secrets.AKASH_CLI_DSEQ }}
           AKASH_PROVIDER: ${{ github.event.inputs.provider || secrets.AKASH_CLI_PROVIDER }}
+          AKASH_PROVIDER_URL: ${{ vars.AKASH_PROVIDER_URL }}
+          AKASH_PROVIDER_CA_PEM: ${{ secrets.AKASH_PROVIDER_CA_PEM }}
+          AKASH_PROVIDER_TLS_BOOTSTRAP: ${{ vars.AKASH_PROVIDER_TLS_BOOTSTRAP }}
           AKASH_CLI_CREATE_DSEQ: ${{ github.event.inputs.dseq }}
           AKASH_CLI_CREATE_PROVIDER: ${{ github.event.inputs.provider }}
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}

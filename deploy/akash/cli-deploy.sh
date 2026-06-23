@@ -14,6 +14,76 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+provider_hostport_from_url() {
+  local url="$1"
+  url="${url#http://}"
+  url="${url#https://}"
+  url="${url%%/*}"
+  printf "%s" "$url"
+}
+
+provider_host_from_hostport() {
+  local hostport="$1"
+  hostport="${hostport#[}"
+  hostport="${hostport%%]*}"
+  if [[ "$hostport" == *:* && "$hostport" != *"]"* ]]; then
+    hostport="${hostport%%:*}"
+  fi
+  printf "%s" "$hostport"
+}
+
+configure_provider_tls_trust() {
+  local provider_url="${AKASH_PROVIDER_URL:-}"
+  local trust_bootstrap
+  trust_bootstrap="$(bool_env "${AKASH_PROVIDER_TLS_BOOTSTRAP:-false}")"
+
+  if [ -z "${AKASH_PROVIDER_CA_PEM:-}" ] && [ "$trust_bootstrap" != "true" ]; then
+    return
+  fi
+
+  local bundle="${AKASH_PROVIDER_CA_BUNDLE:-${RUNNER_TEMP:-/tmp}/akash-provider-ca-bundle.pem}"
+  local base_bundle=""
+  for candidate in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+    if [ -r "$candidate" ]; then
+      base_bundle="$candidate"
+      break
+    fi
+  done
+
+  if [ -n "$base_bundle" ]; then
+    cp "$base_bundle" "$bundle"
+  else
+    : > "$bundle"
+  fi
+
+  if [ -n "${AKASH_PROVIDER_CA_PEM:-}" ]; then
+    log "Adding pinned Akash provider CA PEM to temporary trust bundle"
+    {
+      printf "\n"
+      printf "%s\n" "$AKASH_PROVIDER_CA_PEM"
+      printf "\n"
+    } >> "$bundle"
+  fi
+
+  if [ "$trust_bootstrap" = "true" ]; then
+    if [ -z "$provider_url" ]; then
+      fail "AKASH_PROVIDER_TLS_BOOTSTRAP=true requires AKASH_PROVIDER_URL so the trust scope is explicit."
+    fi
+    require_command openssl
+    local hostport host
+    hostport="$(provider_hostport_from_url "$provider_url")"
+    host="$(provider_host_from_hostport "$hostport")"
+    log "Bootstrapping Akash provider TLS trust for $hostport"
+    if ! timeout 20 openssl s_client -showcerts -connect "$hostport" -servername "$host" </dev/null 2>/dev/null \
+      | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' >> "$bundle"; then
+      fail "Could not fetch provider certificate chain from $hostport."
+    fi
+  fi
+
+  export SSL_CERT_FILE="$bundle"
+  log "Using temporary Akash provider TLS bundle at $SSL_CERT_FILE"
+}
+
 install_provider_services() {
   if command -v provider-services >/dev/null 2>&1; then
     provider-services version
@@ -246,13 +316,21 @@ write_result_env() {
 send_manifest_to_provider() {
   local dseq="$1"
   local provider="$2"
+  configure_provider_tls_trust
 
   # provider-services v0.12 accepts wallet/provider flags here, but not chain query flags.
-  provider-services send-manifest "$AKASH_SDL_PATH" \
-    --dseq "$dseq" \
-    --provider "$provider" \
-    --from "$AKASH_KEY_NAME" \
+  local args=(
+    send-manifest
+    "$AKASH_SDL_PATH"
+    --dseq "$dseq"
+    --provider "$provider"
+    --from "$AKASH_KEY_NAME"
     --keyring-backend "$AKASH_KEYRING_BACKEND"
+  )
+  if [ -n "${AKASH_PROVIDER_URL:-}" ]; then
+    args+=(--provider-url "$AKASH_PROVIDER_URL")
+  fi
+  provider-services "${args[@]}"
 }
 
 status_deployment() {
