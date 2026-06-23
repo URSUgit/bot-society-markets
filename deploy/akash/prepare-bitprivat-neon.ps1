@@ -1,6 +1,8 @@
 param(
-    [Parameter(Mandatory = $true)]
     [string]$DatabaseUrl,
+
+    [ValidateSet("postgres", "sqlite")]
+    [string]$DatabaseMode = "postgres",
 
     [string]$CanonicalHost = "bitprivat.com",
 
@@ -35,7 +37,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$templatePath = if ($WithWorker) {
+$templatePath = if ($DatabaseMode -eq "sqlite") {
+    Join-Path $PSScriptRoot "web-demo-sqlite.yaml"
+} elseif ($WithWorker) {
     Join-Path $PSScriptRoot "web-worker-external-postgres.yaml"
 } else {
     Join-Path $PSScriptRoot "web-external-postgres.yaml"
@@ -45,7 +49,9 @@ if (-not (Test-Path -LiteralPath $templatePath)) {
     throw "Template not found: $templatePath"
 }
 
-$defaultOutputName = if ($WithWorker) {
+$defaultOutputName = if ($DatabaseMode -eq "sqlite") {
+    "web-demo-sqlite.bitprivat.generated.yaml"
+} elseif ($WithWorker) {
     "web-worker-external-postgres.bitprivat.generated.yaml"
 } else {
     "web-external-postgres.bitprivat.generated.yaml"
@@ -79,7 +85,11 @@ $resolvedImageRef = if ($ImageRef) {
 }
 
 $template = Get-Content -LiteralPath $templatePath -Raw
-$databaseUrlEscaped = $DatabaseUrl.Replace("`r", "").Replace("`n", "")
+if ($DatabaseMode -eq "postgres" -and -not $DatabaseUrl) {
+    throw "DatabaseUrl is required when DatabaseMode is postgres. Use -DatabaseMode sqlite for the emergency no-Postgres SDL."
+}
+
+$databaseUrlEscaped = if ($DatabaseUrl) { $DatabaseUrl.Replace("`r", "").Replace("`n", "") } else { "" }
 $canonicalHostEscaped = $CanonicalHost.Trim()
 $rootDomainEscaped = $RootDomain.Trim()
 $wwwHostEscaped = "www.$rootDomainEscaped"
@@ -95,10 +105,13 @@ $socialDiscoveryIntervalEscaped = if ($SocialDiscoveryIntervalSeconds) { $Social
 $rendered = $template.Replace(
     "ghcr.io/ursugit/bot-society-markets:latest",
     $resolvedImageRef
-).Replace(
-    "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
-    $databaseUrlEscaped
 )
+if ($DatabaseMode -eq "postgres") {
+    $rendered = $rendered.Replace(
+        "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require",
+        $databaseUrlEscaped
+    )
+}
 $rendered = $rendered.Replace("status.bitprivat.com", $statusHostEscaped)
 $rendered = $rendered.Replace("api.bitprivat.com", $apiHostEscaped)
 $rendered = $rendered.Replace("app.bitprivat.com", $appHostEscaped)
@@ -147,4 +160,5 @@ if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
 Set-Content -LiteralPath $resolvedOutputPath -Value $rendered -Encoding UTF8
 Write-Output "Generated Akash manifest: $resolvedOutputPath"
 Write-Output "Pinned image: $resolvedImageRef"
+Write-Output "Database mode: $DatabaseMode"
 Write-Output "Pricing denom: $PricingDenom"

@@ -219,11 +219,15 @@ extract_first_attr() {
 }
 
 render_sdl() {
-  if [ -z "${BSM_DATABASE_URL:-}" ]; then
-    fail "BSM_DATABASE_URL is required for manifest/create/update CLI deploys."
-  fi
   if [ -z "${IMAGE_REF:-}" ]; then
     fail "IMAGE_REF is required for manifest/create/update CLI deploys."
+  fi
+  case "${AKASH_DATABASE_MODE:-postgres}" in
+    postgres|sqlite) ;;
+    *) fail "Unsupported AKASH_DATABASE_MODE '${AKASH_DATABASE_MODE:-}'. Use postgres or sqlite." ;;
+  esac
+  if [ "${AKASH_DATABASE_MODE:-postgres}" = "postgres" ] && [ -z "${BSM_DATABASE_URL:-}" ]; then
+    fail "BSM_DATABASE_URL is required for Postgres manifest/create/update CLI deploys. Use AKASH_DATABASE_MODE=sqlite for emergency no-Postgres deploys."
   fi
 
   require_command pwsh
@@ -234,8 +238,8 @@ render_sdl() {
     Bypass
     -File
     ./deploy/akash/prepare-bitprivat-neon.ps1
-    -DatabaseUrl
-    "$BSM_DATABASE_URL"
+    -DatabaseMode
+    "${AKASH_DATABASE_MODE:-postgres}"
     -ImageRef
     "$IMAGE_REF"
     -OutputPath
@@ -245,6 +249,13 @@ render_sdl() {
     -SocialDiscoveryProvider
     "$BSM_SOCIAL_DISCOVERY_PROVIDER"
   )
+
+  if [ "${AKASH_DATABASE_MODE:-postgres}" = "postgres" ]; then
+    args+=(
+      -DatabaseUrl
+      "$BSM_DATABASE_URL"
+    )
+  fi
 
   if [ "$(bool_env "${WITH_WORKER:-false}")" = "true" ]; then
     args+=(-WithWorker)
@@ -522,11 +533,12 @@ main() {
   AKASH_BID_WAIT_SECONDS="${AKASH_BID_WAIT_SECONDS:-120}"
   AKASH_MANIFEST_WAIT_SECONDS="${AKASH_MANIFEST_WAIT_SECONDS:-10}"
   AKASH_SDL_PATH="${AKASH_SDL_PATH:-deploy/akash/akash-cli.generated.yaml}"
+  AKASH_DATABASE_MODE="${AKASH_DATABASE_MODE:-postgres}"
   BSM_SOCIAL_DISCOVERY_PROVIDER="${BSM_SOCIAL_DISCOVERY_PROVIDER:-demo}"
 
   export AKASH_KEY_NAME AKASH_KEYRING_BACKEND AKASH_CHAIN_ID AKASH_NODE
   export AKASH_GAS AKASH_GAS_ADJUSTMENT AKASH_GAS_PRICES AKASH_DEPOSIT
-  export AKASH_SDL_PATH BSM_SOCIAL_DISCOVERY_PROVIDER
+  export AKASH_SDL_PATH AKASH_DATABASE_MODE BSM_SOCIAL_DISCOVERY_PROVIDER
 
   require_command jq
   install_provider_services

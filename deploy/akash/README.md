@@ -171,6 +171,35 @@ Tradeoffs:
 - if the deployment is recreated, local SQLite data can be lost
 - use external Postgres before you rely on it for real operations
 
+## Emergency SQLite Recovery
+
+If the managed Postgres provider is unavailable or over quota, use the CLI
+workflow's SQLite mode to bring the Akash origin back online without requiring
+`BSM_DATABASE_URL`.
+
+```powershell
+gh variable set AKASH_DATABASE_MODE --body sqlite --repo URSUgit/bot-society-markets
+.\deploy\akash\trigger-github-cli-deploy.ps1 `
+  -Mode create `
+  -DatabaseMode sqlite `
+  -SocialDiscoveryProvider demo `
+  -ConfirmSpend
+```
+
+Use this only as a recovery/demo origin:
+
+- it is not durable across lease/container recreation
+- it disables the worker SDL and runs a single web service
+- social discovery should stay in `demo` unless you explicitly accept that
+  YouTube-derived profiles are stored only in container-local SQLite
+
+When durable Postgres is healthy again, switch back:
+
+```powershell
+gh variable set AKASH_DATABASE_MODE --body postgres --repo URSUgit/bot-society-markets
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode create -DatabaseMode postgres -WithWorker -ConfirmSpend
+```
+
 ## Akash Console Steps
 
 1. Open [Akash Console](https://console.akash.network/).
@@ -337,6 +366,13 @@ Update the existing deployment through the crypto wallet CLI path:
 
 ```powershell
 .\deploy\akash\trigger-github-cli-deploy.ps1 -Mode update -ConfirmSpend
+```
+
+If Neon/Postgres is temporarily blocked, the same CLI lane can render the
+single-service SQLite SDL:
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode create -DatabaseMode sqlite -SocialDiscoveryProvider demo -ConfirmSpend
 ```
 
 Full operating guide:

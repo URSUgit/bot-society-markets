@@ -6,6 +6,8 @@ param(
     [string]$ImageRef,
     [string]$Dseq,
     [string]$Provider,
+    [ValidateSet("postgres", "sqlite")]
+    [string]$DatabaseMode = "postgres",
     [ValidateSet("auto", "demo", "youtube")]
     [string]$SocialDiscoveryProvider = "auto",
     [int]$WaitSeconds = 90,
@@ -56,6 +58,7 @@ $workflowArgs = @(
     "-f", "wait_seconds=$WaitSeconds",
     "-f", "verify=$verifyValue",
     "-f", "with_worker=$withWorkerValue",
+    "-f", "database_mode=$DatabaseMode",
     "-f", "confirm_spend=$confirmSpendValue",
     "-f", "social_discovery_provider=$SocialDiscoveryProvider"
 )
@@ -72,7 +75,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to trigger Akash CLI Deploy workflow."
 }
 
-Write-Output "Triggered Akash CLI Deploy for $resolvedImageRef in $Mode mode."
+Write-Output "Triggered Akash CLI Deploy for $resolvedImageRef in $Mode mode using $DatabaseMode database mode."
 if (($Mode -eq "update" -or $Mode -eq "create" -or $Mode -eq "close") -and -not $ConfirmSpend) {
     Write-Warning "The workflow will skip $Mode until confirm_spend=true is supplied. Re-run with -ConfirmSpend when the deploy wallet is funded."
 }

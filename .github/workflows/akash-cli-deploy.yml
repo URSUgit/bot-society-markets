@@ -48,6 +48,14 @@ on:
         required: false
         default: true
         type: boolean
+      database_mode:
+        description: Database backend for the Akash SDL.
+        required: false
+        default: postgres
+        type: choice
+        options:
+          - postgres
+          - sqlite
       confirm_spend:
         description: Required for create/update because CLI signs blockchain transactions and spends AKT.
         required: false
@@ -91,6 +99,7 @@ jobs:
           BSM_YOUTUBE_API_KEY: ${{ secrets.BSM_YOUTUBE_API_KEY }}
           AKASH_CLI_AUTO_CONFIRM_SPEND: ${{ vars.AKASH_CLI_AUTO_CONFIRM_SPEND }}
           AKASH_CLI_WITH_WORKER: ${{ vars.AKASH_CLI_WITH_WORKER || 'true' }}
+          AKASH_DATABASE_MODE_DEFAULT: ${{ vars.AKASH_DATABASE_MODE || 'postgres' }}
         run: |
           set -euo pipefail
           image_ref="${{ github.event.inputs.image_ref }}"
@@ -124,6 +133,22 @@ jobs:
             with_worker="true"
           fi
 
+          database_mode="${{ github.event.inputs.database_mode }}"
+          if [ -z "$database_mode" ]; then
+            database_mode="$AKASH_DATABASE_MODE_DEFAULT"
+          fi
+          case "$database_mode" in
+            postgres|sqlite) ;;
+            *)
+              echo "::error::Unsupported database_mode '$database_mode'. Use postgres or sqlite."
+              exit 1
+              ;;
+          esac
+          if [ "$database_mode" = "sqlite" ] && [ "$with_worker" = "true" ]; then
+            echo "::notice title=SQLite emergency mode::Disabling worker service because web-demo-sqlite.yaml is single-service and non-durable."
+            with_worker="false"
+          fi
+
           confirm_spend="${{ github.event.inputs.confirm_spend }}"
           if [ -z "$confirm_spend" ]; then
             confirm_spend="$AKASH_CLI_AUTO_CONFIRM_SPEND"
@@ -147,6 +172,7 @@ jobs:
             echo "wait_seconds=$wait_seconds"
             echo "verify=$verify"
             echo "with_worker=$with_worker"
+            echo "database_mode=$database_mode"
             echo "confirm_spend=$confirm_spend"
             echo "social_provider=$social_provider"
           } >> "$GITHUB_OUTPUT"
@@ -167,7 +193,7 @@ jobs:
           if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "manifest" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
             missing+=("AKASH_CLI_DSEQ")
           fi
-          if { [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.mode }}" != "close" ]; } && [ -z "$BSM_DATABASE_URL" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.mode }}" != "close" ]; } && [ "${{ steps.options.outputs.database_mode }}" != "sqlite" ] && [ -z "$BSM_DATABASE_URL" ]; then
             missing+=("BSM_DATABASE_URL")
           fi
           if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "create" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ "${{ steps.options.outputs.confirm_spend }}" != "true" ]; then
@@ -206,6 +232,7 @@ jobs:
           AKASH_PROVIDER_TLS_BOOTSTRAP: ${{ vars.AKASH_PROVIDER_TLS_BOOTSTRAP }}
           AKASH_ALLOW_PROVIDER_OVERRIDE: ${{ vars.AKASH_ALLOW_PROVIDER_OVERRIDE }}
           AKASH_FORCE_PROVIDER_URL: ${{ vars.AKASH_FORCE_PROVIDER_URL }}
+          AKASH_DATABASE_MODE: ${{ steps.options.outputs.database_mode }}
           AKASH_CLI_CREATE_DSEQ: ${{ github.event.inputs.dseq }}
           AKASH_CLI_CREATE_PROVIDER: ${{ github.event.inputs.provider }}
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
