@@ -236,6 +236,8 @@ The CLI workflow supports two controlled fixes:
 AKASH_PROVIDER_URL=https://provider.example.com:8443
 AKASH_PROVIDER_CA_PEM=<optional pinned provider CA certificate secret>
 AKASH_PROVIDER_TLS_BOOTSTRAP=true
+AKASH_ALLOW_PROVIDER_OVERRIDE=false
+AKASH_FORCE_PROVIDER_URL=false
 ```
 
 Preferred production setting is `AKASH_PROVIDER_CA_PEM`, stored as a GitHub
@@ -243,6 +245,12 @@ secret. If a pinned CA is not available, `AKASH_PROVIDER_TLS_BOOTSTRAP=true`
 builds a temporary CA bundle from the explicitly configured provider URL during
 the GitHub Actions run. Keep that variable scoped to a known provider and remove
 it once the provider serves a publicly trusted certificate chain.
+
+For safety, update/manifest mode resolves the active lease from the DSEQ before
+spending an update transaction. A stale `AKASH_PROVIDER` secret is ignored unless
+`AKASH_ALLOW_PROVIDER_OVERRIDE=true`. Likewise, `AKASH_PROVIDER_URL` is used for
+certificate trust bootstrap by default, but is only passed directly to
+`provider-services --provider-url` when `AKASH_FORCE_PROVIDER_URL=true`.
 
 Operator setup helpers:
 

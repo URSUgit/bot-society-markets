@@ -204,6 +204,8 @@ jobs:
           AKASH_PROVIDER_URL: ${{ vars.AKASH_PROVIDER_URL }}
           AKASH_PROVIDER_CA_PEM: ${{ secrets.AKASH_PROVIDER_CA_PEM }}
           AKASH_PROVIDER_TLS_BOOTSTRAP: ${{ vars.AKASH_PROVIDER_TLS_BOOTSTRAP }}
+          AKASH_ALLOW_PROVIDER_OVERRIDE: ${{ vars.AKASH_ALLOW_PROVIDER_OVERRIDE }}
+          AKASH_FORCE_PROVIDER_URL: ${{ vars.AKASH_FORCE_PROVIDER_URL }}
           AKASH_CLI_CREATE_DSEQ: ${{ github.event.inputs.dseq }}
           AKASH_CLI_CREATE_PROVIDER: ${{ github.event.inputs.provider }}
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}

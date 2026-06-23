@@ -281,12 +281,28 @@ resolve_lease_from_active() {
   local leases_json
   leases_json="$(get_active_lease_json "$dseq")"
 
-  RESOLVED_PROVIDER="$(jq -r '(.leases // [])[0] | .lease.lease_id.provider // .lease.id.provider // .lease_id.provider // .bid_id.provider // empty' <<<"$leases_json")"
+  local lease_count
+  lease_count="$(jq -r '(.leases // []) | length' <<<"$leases_json")"
+  if [ "$lease_count" = "0" ]; then
+    echo "$leases_json" | jq '.'
+    fail "No active lease was found for DSEQ $dseq. Create a new deployment or update AKASH_CLI_DSEQ before running update/manifest mode."
+  fi
+
+  local active_provider
+  active_provider="$(jq -r '(.leases // [])[0] | .lease.lease_id.provider // .lease.id.provider // .lease_id.provider // .bid_id.provider // empty' <<<"$leases_json")"
+  RESOLVED_PROVIDER="$active_provider"
   RESOLVED_GSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.gseq // .lease.id.gseq // .lease_id.gseq // .bid_id.gseq // "1"' <<<"$leases_json")"
   RESOLVED_OSEQ="$(jq -r '(.leases // [])[0] | .lease.lease_id.oseq // .lease.id.oseq // .lease_id.oseq // .bid_id.oseq // "1"' <<<"$leases_json")"
 
   if [ -n "${AKASH_PROVIDER:-}" ]; then
-    RESOLVED_PROVIDER="$AKASH_PROVIDER"
+    if [ "$AKASH_PROVIDER" = "$active_provider" ]; then
+      RESOLVED_PROVIDER="$AKASH_PROVIDER"
+    elif [ "$(bool_env "${AKASH_ALLOW_PROVIDER_OVERRIDE:-false}")" = "true" ]; then
+      log "Overriding active lease provider $active_provider with AKASH_PROVIDER=$AKASH_PROVIDER"
+      RESOLVED_PROVIDER="$AKASH_PROVIDER"
+    else
+      log "Ignoring AKASH_PROVIDER override because active lease provider is $active_provider. Set AKASH_ALLOW_PROVIDER_OVERRIDE=true to force it."
+    fi
   fi
   if [ -n "${AKASH_GSEQ:-}" ]; then
     RESOLVED_GSEQ="$AKASH_GSEQ"
@@ -327,7 +343,7 @@ send_manifest_to_provider() {
     --from "$AKASH_KEY_NAME"
     --keyring-backend "$AKASH_KEYRING_BACKEND"
   )
-  if [ -n "${AKASH_PROVIDER_URL:-}" ]; then
+  if [ -n "${AKASH_PROVIDER_URL:-}" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" = "true" ]; then
     args+=(--provider-url "$AKASH_PROVIDER_URL")
   fi
   provider-services "${args[@]}"
