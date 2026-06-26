@@ -384,8 +384,16 @@ Full operating guide:
 
 Denomination note:
 
-- SDL pricing and deployment escrow use ACT: `uact`
+- SDL pricing defaults to ACT: `uact`
+- if the marketplace returns zero bids, try Akash's native denom: `uakt`
 - CLI gas uses AKT: `uakt`
+
+Manual CLI deploy examples:
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode create -DatabaseMode sqlite -WithWorker -PricingDenom uact -ConfirmSpend
+.\deploy\akash\trigger-github-cli-deploy.ps1 -Mode create -DatabaseMode sqlite -WithWorker -PricingDenom uakt -ConfirmSpend
+```
 
 ## bitprivat.com DNS Shape
 

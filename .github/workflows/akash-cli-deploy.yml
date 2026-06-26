@@ -56,6 +56,14 @@ on:
         options:
           - postgres
           - sqlite
+      pricing_denom:
+        description: Akash SDL pricing denom.
+        required: false
+        default: uact
+        type: choice
+        options:
+          - uact
+          - uakt
       confirm_spend:
         description: Required for create/update because CLI signs blockchain transactions and spends AKT.
         required: false
@@ -100,6 +108,7 @@ jobs:
           AKASH_CLI_AUTO_CONFIRM_SPEND: ${{ vars.AKASH_CLI_AUTO_CONFIRM_SPEND }}
           AKASH_CLI_WITH_WORKER: ${{ vars.AKASH_CLI_WITH_WORKER || 'true' }}
           AKASH_DATABASE_MODE_DEFAULT: ${{ vars.AKASH_DATABASE_MODE || 'postgres' }}
+          AKASH_PRICING_DENOM_DEFAULT: ${{ vars.AKASH_PRICING_DENOM || 'uact' }}
         run: |
           set -euo pipefail
           image_ref="${{ github.event.inputs.image_ref }}"
@@ -144,6 +153,18 @@ jobs:
               exit 1
               ;;
           esac
+
+          pricing_denom="${{ github.event.inputs.pricing_denom }}"
+          if [ -z "$pricing_denom" ]; then
+            pricing_denom="$AKASH_PRICING_DENOM_DEFAULT"
+          fi
+          case "$pricing_denom" in
+            uact|uakt) ;;
+            *)
+              echo "::error::Unsupported pricing_denom '$pricing_denom'. Use uact or uakt."
+              exit 1
+              ;;
+          esac
           confirm_spend="${{ github.event.inputs.confirm_spend }}"
           if [ -z "$confirm_spend" ]; then
             confirm_spend="$AKASH_CLI_AUTO_CONFIRM_SPEND"
@@ -168,6 +189,7 @@ jobs:
             echo "verify=$verify"
             echo "with_worker=$with_worker"
             echo "database_mode=$database_mode"
+            echo "pricing_denom=$pricing_denom"
             echo "confirm_spend=$confirm_spend"
             echo "social_provider=$social_provider"
           } >> "$GITHUB_OUTPUT"
@@ -228,6 +250,7 @@ jobs:
           AKASH_ALLOW_PROVIDER_OVERRIDE: ${{ vars.AKASH_ALLOW_PROVIDER_OVERRIDE }}
           AKASH_FORCE_PROVIDER_URL: ${{ vars.AKASH_FORCE_PROVIDER_URL }}
           AKASH_DATABASE_MODE: ${{ steps.options.outputs.database_mode }}
+          AKASH_PRICING_DENOM: ${{ steps.options.outputs.pricing_denom }}
           AKASH_CLI_CREATE_DSEQ: ${{ github.event.inputs.dseq }}
           AKASH_CLI_CREATE_PROVIDER: ${{ github.event.inputs.provider }}
           BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
