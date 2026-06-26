@@ -51,6 +51,10 @@ $verifyValue = if ($NoVerify) { "false" } else { "true" }
 $withWorkerValue = if ($WithWorker) { "true" } else { "false" }
 $confirmSpendValue = if ($ConfirmSpend) { "true" } else { "false" }
 
+if ($DatabaseMode -eq "sqlite" -and $WithWorker) {
+    Write-Warning "SQLite + worker is for Akash service-group compatibility only. Web and worker containers do not share the SQLite file, so use DatabaseMode postgres for real worker-fed social discovery."
+}
+
 $workflowArgs = @(
     "workflow", "run", "akash-cli-deploy.yml",
     "--repo", $Repo,

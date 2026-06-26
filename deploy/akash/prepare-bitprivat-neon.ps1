@@ -91,6 +91,10 @@ if ($DatabaseMode -eq "postgres" -and -not $DatabaseUrl) {
     throw "DatabaseUrl is required when DatabaseMode is postgres. Use -DatabaseMode sqlite for the emergency no-Postgres SDL."
 }
 
+if ($DatabaseMode -eq "sqlite" -and $WithWorker) {
+    Write-Warning "SQLite + worker is an emergency service-shape compatibility mode only. Akash web and worker containers do not share /tmp SQLite storage, so worker social-discovery writes will not feed the web UI. Use Postgres for real web+worker discovery."
+}
+
 $databaseUrlEscaped = if ($DatabaseUrl) { $DatabaseUrl.Replace("`r", "").Replace("`n", "") } else { "" }
 $canonicalHostEscaped = $CanonicalHost.Trim()
 $rootDomainEscaped = $RootDomain.Trim()

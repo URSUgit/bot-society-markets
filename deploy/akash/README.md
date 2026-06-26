@@ -192,6 +192,9 @@ Use this only as a recovery/demo origin:
 - by default the example below creates a single web service
 - use `-WithWorker` when updating an existing web+worker deployment so Akash
   does not reject the update with a service group mismatch
+- `sqlite + worker` is not a real shared-data topology: Akash web and worker
+  containers do not share `/tmp`, so worker social-discovery writes will not
+  appear in the web dashboard unless you use Postgres or add shared storage
 - social discovery should stay in `demo` unless you explicitly accept that
   YouTube-derived profiles are stored only in container-local SQLite
 
