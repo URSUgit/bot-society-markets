@@ -385,7 +385,9 @@ Full operating guide:
 Denomination note:
 
 - SDL pricing defaults to ACT: `uact`
-- if the marketplace returns zero bids, try Akash's native denom: `uakt`
+- the workflow can render `uakt`, but the deployment deposit and wallet must
+  support the same denom; if chain validation returns `Deposit invalid`, switch
+  back to `uact`
 - CLI gas uses AKT: `uakt`
 
 Manual CLI deploy examples:
