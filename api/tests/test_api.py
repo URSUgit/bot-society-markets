@@ -516,7 +516,9 @@ def test_professional_console_pages_are_served() -> None:
         assert "app-brand-chart" in dashboard_response.text
         assert 'data-nav-kind="app"' in dashboard_response.text
         assert "nav-route-badge" in dashboard_response.text
-        assert "/static/hyperliquid-tokens.css?v=hl-1" in dashboard_response.text
+        assert "/static/hyperliquid-tokens.css?v=hl-2" in dashboard_response.text
+        assert 'id="delivery-mode-strip"' in dashboard_response.text
+        assert "Checking backend delivery" in dashboard_response.text
         assert 'id="social-trader-section"' in dashboard_response.text
         assert 'id="social-trader-grid"' in dashboard_response.text
         assert 'id="social-marketplace-toolbar"' in dashboard_response.text

@@ -426,6 +426,8 @@ let savedStrategies = [];
 let savedBacktestRuns = [];
 let sectionObserverInitialized = false;
 const EDGE_TRANSIENT_STATUS_CODES = new Set([522, 523, 524, 530]);
+const LIVE_DELIVERY_MODES = new Set(["live-origin", "edge-live-cache", "direct-live-origin", "application-origin"]);
+const FALLBACK_DELIVERY_MODES = new Set(["edge-fallback", "edge-snapshot", "origin-unavailable", "origin-probe-failed"]);
 let suppressDashboardWindowOpenUntil = 0;
 let dashboardWindowState = {
   section: null,
@@ -434,6 +436,10 @@ let dashboardWindowState = {
 };
 let currentOrderPreview = null;
 let currentOrderRequest = null;
+let apiDeliveryState = {
+  updatedAt: null,
+  endpoints: new Map(),
+};
 
 function workspaceEditable(snapshot = latestSnapshot) {
   return Boolean(snapshot?.auth_session?.authenticated) && !snapshot?.user_profile?.is_demo_user;
@@ -519,6 +525,8 @@ async function fetchJson(path, options = {}) {
     }
   }
 
+  recordApiDeliveryMode(path, response.headers.get("X-BITprivat-Data-Mode") || "application-origin");
+
   if (!response.ok) {
     let message = `Failed to load ${path}`;
     try {
@@ -578,6 +586,113 @@ function setStatus(message) {
   if (status) {
     status.textContent = message;
   }
+}
+
+function normalizeDeliveryMode(mode) {
+  const value = String(mode || "").trim().toLowerCase();
+  return value || "application-origin";
+}
+
+function deliveryEndpointLabel(path) {
+  const value = String(path || "").split("?")[0];
+  if (value.includes("/social-trading")) {
+    return "social traders";
+  }
+  if (value.includes("/system/providers")) {
+    return "providers";
+  }
+  if (value.includes("/system/pulse")) {
+    return "system pulse";
+  }
+  if (value.includes("/dashboard")) {
+    return "dashboard";
+  }
+  if (value.includes("/landing")) {
+    return "landing";
+  }
+  return value.replace(/^\/api\/v1\//, "").replace(/^\/api\//, "") || "api";
+}
+
+function deliveryModeLabel(mode) {
+  switch (normalizeDeliveryMode(mode)) {
+    case "live-origin":
+      return "Live origin";
+    case "edge-live-cache":
+      return "Edge live cache";
+    case "direct-live-origin":
+      return "Direct live origin";
+    case "edge-fallback":
+      return "Edge fallback";
+    case "edge-snapshot":
+      return "Edge snapshot";
+    case "origin-unavailable":
+      return "Origin unavailable";
+    case "origin-probe-failed":
+      return "Origin probe failed";
+    case "application-origin":
+      return "Application origin";
+    default:
+      return humanizeKey(mode);
+  }
+}
+
+function recordApiDeliveryMode(path, mode) {
+  if (!isRelativeApiPath(path)) {
+    return;
+  }
+  const normalizedMode = normalizeDeliveryMode(mode);
+  apiDeliveryState.updatedAt = new Date();
+  apiDeliveryState.endpoints.set(deliveryEndpointLabel(path), {
+    mode: normalizedMode,
+    path: String(path || ""),
+    observedAt: apiDeliveryState.updatedAt,
+  });
+  renderDeliveryModeStrip();
+}
+
+function renderDeliveryModeStrip() {
+  const strip = document.getElementById("delivery-mode-strip");
+  const title = document.getElementById("delivery-mode-title");
+  const detail = document.getElementById("delivery-mode-detail");
+  if (!strip || !title || !detail) {
+    return;
+  }
+
+  const endpoints = [...apiDeliveryState.endpoints.entries()];
+  if (!endpoints.length) {
+    strip.dataset.state = "checking";
+    title.textContent = "Checking backend delivery";
+    detail.textContent = "Waiting for the first API response header...";
+    return;
+  }
+
+  const fallbackEndpoints = endpoints.filter(([, item]) => FALLBACK_DELIVERY_MODES.has(item.mode));
+  const unknownEndpoints = endpoints.filter(([, item]) => !LIVE_DELIVERY_MODES.has(item.mode) && !FALLBACK_DELIVERY_MODES.has(item.mode));
+  const liveEndpoints = endpoints.filter(([, item]) => LIVE_DELIVERY_MODES.has(item.mode));
+  const modeSummary = endpoints
+    .slice(-4)
+    .map(([label, item]) => `${label}: ${deliveryModeLabel(item.mode)}`)
+    .join(" | ");
+
+  if (fallbackEndpoints.length) {
+    strip.dataset.state = "fallback";
+    title.textContent = "Cloudflare fallback is serving public API data";
+    detail.textContent = `${fallbackEndpoints.map(([label]) => label).join(", ")} is snapshot/cached data. Real origin must be restored before trusting live social trading, providers, or automation. ${modeSummary}`;
+    return;
+  }
+
+  if (unknownEndpoints.length) {
+    strip.dataset.state = "checking";
+    title.textContent = "Backend delivery mode needs verification";
+    detail.textContent = `${unknownEndpoints.map(([label, item]) => `${label}: ${deliveryModeLabel(item.mode)}`).join(" | ")}. Keep trading actions in paper/research mode.`;
+    return;
+  }
+
+  strip.dataset.state = liveEndpoints.some(([, item]) => item.mode === "edge-live-cache") ? "cached" : "live";
+  title.textContent = liveEndpoints.some(([, item]) => item.mode === "edge-live-cache")
+    ? "Live origin cached at edge"
+    : "Live backend origin connected";
+  detail.textContent = `${modeSummary}. Updated ${fmtRelativeTime(apiDeliveryState.updatedAt)}.`;
 }
 
 function loadPreferences() {
@@ -728,7 +843,7 @@ const APP_ROUTE_ALIASES = {
   "/": APP_ROUTE_DEFAULT,
   "/app": APP_ROUTE_DEFAULT,
 };
-const ALWAYS_VISIBLE_ROUTE_PARTS = ["cycle-status"];
+const ALWAYS_VISIBLE_ROUTE_PARTS = ["cycle-status", "delivery-mode-strip", "feature-alert-strip"];
 const APP_ROUTES = {
   "/dashboard": {
     key: "dashboard",
@@ -6267,6 +6382,7 @@ async function requestSocialTradingEnvelope(path) {
           headers: { "Content-Type": "application/json" },
         });
         if (directResponse.ok) {
+          recordApiDeliveryMode(path, "direct-live-origin");
           return {
             envelope: await directResponse.json(),
             deliveryMode: "direct-live-origin",
@@ -6284,9 +6400,11 @@ async function requestSocialTradingEnvelope(path) {
   if (!edgeResponse.ok) {
     throw new Error(`Failed to load ${path}`);
   }
+  const edgeDeliveryMode = edgeResponse.headers.get("X-BITprivat-Data-Mode") || "application-origin";
+  recordApiDeliveryMode(path, edgeDeliveryMode);
   return {
     envelope: await edgeResponse.json(),
-    deliveryMode: edgeResponse.headers.get("X-BITprivat-Data-Mode") || "live-origin",
+    deliveryMode: edgeDeliveryMode,
   };
 }
 

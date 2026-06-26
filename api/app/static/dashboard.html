@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BITprivat Command Center</title>
   <link rel="stylesheet" href="/static/styles.css?v=pro-auth-1">
-  <link rel="stylesheet" href="/static/hyperliquid-tokens.css?v=hl-1">
+  <link rel="stylesheet" href="/static/hyperliquid-tokens.css?v=hl-2">
 </head>
 <body class="dashboard-body command-os bit-engine-product-ui" data-theme="night" data-language="en" data-workspace-style="institutional">
   <div class="dashboard-shell">
@@ -161,6 +161,17 @@
             <small id="operator-provider-detail">Readiness posture</small>
           </a>
         </div>
+      </section>
+
+      <section class="delivery-mode-strip" id="delivery-mode-strip" data-state="checking" aria-label="Public API delivery mode">
+        <div class="delivery-mode-state">
+          <span class="delivery-mode-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="delivery-mode-title">Checking backend delivery</strong>
+            <span id="delivery-mode-detail">Waiting for the first API response header...</span>
+          </div>
+        </div>
+        <a class="button tertiary small-button" href="/status">Open status</a>
       </section>
 
       <section class="platform-truth-alert" id="feature-alert-strip" aria-label="Platform readiness warning">

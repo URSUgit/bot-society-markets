@@ -138,24 +138,28 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .operator
   order: 1 !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .platform-truth-alert {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .delivery-mode-strip {
   order: 2 !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .dashboard-hero.app-page-header {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .platform-truth-alert {
   order: 3 !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui #trading-workspace-section {
+body.dashboard-body.command-os.bit-engine-product-ui .dashboard-main > .dashboard-hero.app-page-header {
   order: 4 !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui #feature-readiness-section {
+body.dashboard-body.command-os.bit-engine-product-ui #trading-workspace-section {
   order: 5 !important;
 }
 
-body.dashboard-body.command-os.bit-engine-product-ui #market-console-section {
+body.dashboard-body.command-os.bit-engine-product-ui #feature-readiness-section {
   order: 6 !important;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui #market-console-section {
+  order: 7 !important;
 }
 
 /* Reusable component mappings: Panel, StatCard, StatusChip, TabBar, OrderTicket, OrderBook, PositionsTable. */
@@ -750,6 +754,67 @@ body.dashboard-body.command-os.bit-engine-product-ui .operator-metric {
   min-height: 54px;
   padding: var(--hl-2);
   text-decoration: none;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hl-3);
+  min-height: 42px;
+  padding: var(--hl-2) var(--hl-3);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius-panel);
+  background: var(--hl-panel);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-state {
+  display: flex;
+  align-items: center;
+  gap: var(--hl-2);
+  min-width: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-state > div {
+  min-width: 0;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hl-muted);
+  flex: 0 0 auto;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip strong {
+  display: block;
+  color: var(--hl-text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip span {
+  color: var(--hl-text-2);
+  font-size: 12px;
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip[data-state="live"] .delivery-mode-dot,
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip[data-state="cached"] .delivery-mode-dot {
+  background: var(--hl-accent);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip[data-state="fallback"] {
+  border-color: var(--hl-red-line);
+  background: linear-gradient(180deg, var(--hl-red-soft), var(--hl-panel));
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip[data-state="fallback"] .delivery-mode-dot {
+  background: var(--hl-red);
+}
+
+body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip[data-state="checking"] .delivery-mode-dot {
+  background: var(--hl-warning);
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui .preference-select,
@@ -1604,6 +1669,7 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
   }
 
   body.dashboard-body.command-os.bit-engine-product-ui .operator-strip,
+  body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip,
   body.dashboard-body.command-os.bit-engine-product-ui .dashboard-hero.app-page-header {
     grid-template-columns: 1fr;
   }
@@ -1660,7 +1726,8 @@ body.dashboard-body.command-os.bit-engine-product-ui .dashboard-window-panel {
 
   body.dashboard-body.command-os.bit-engine-product-ui .command-brief-actions,
   body.dashboard-body.command-os.bit-engine-product-ui .trading-head-actions,
-  body.dashboard-body.command-os.bit-engine-product-ui .panel-topline {
+  body.dashboard-body.command-os.bit-engine-product-ui .panel-topline,
+  body.dashboard-body.command-os.bit-engine-product-ui .delivery-mode-strip {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
@@ -1707,6 +1774,7 @@ body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .side-c
 }
 
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .operator-strip,
+body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .delivery-mode-strip,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .platform-truth-alert,
 body.dashboard-body.command-os.bit-engine-product-ui[data-theme="night"] .trading-bottom-panel {
   background: var(--hl-panel) !important;
