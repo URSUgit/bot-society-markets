@@ -218,6 +218,45 @@ extract_first_attr() {
   '
 }
 
+bid_provider_jq='
+  def bid_provider:
+    .bid.bid_id.provider // .bid.id.provider // .bid.provider // .bid_id.provider // empty;
+  def bid_gseq:
+    .bid.bid_id.gseq // .bid.id.gseq // .bid.gseq // .bid_id.gseq // "1";
+  def bid_oseq:
+    .bid.bid_id.oseq // .bid.id.oseq // .bid.oseq // .bid_id.oseq // "1";
+'
+
+select_bid_field() {
+  local bids_json="$1"
+  local provider="$2"
+  local field="$3"
+  jq -r --arg provider "$provider" --arg field "$field" "$bid_provider_jq"'
+    (.bids // [])
+    | map(select(bid_provider == $provider))
+    | .[0]
+    | if $field == "gseq" then bid_gseq
+      elif $field == "oseq" then bid_oseq
+      else bid_provider
+      end
+  ' <<<"$bids_json"
+}
+
+select_open_bid_provider() {
+  local bids_json="$1"
+  local excludes_csv="${2:-}"
+  jq -r --arg excludes "$excludes_csv" "$bid_provider_jq"'
+    def trim: gsub("^\\s+|\\s+$"; "");
+    def excluded($provider):
+      ($excludes | split(",") | map(trim) | map(select(length > 0)) | index($provider)) != null;
+    (.bids // [])
+    | map(select((bid_provider | length) > 0))
+    | map(select(excluded(bid_provider) | not))
+    | .[0]
+    | bid_provider // empty
+  ' <<<"$bids_json"
+}
+
 render_sdl() {
   if [ -z "${IMAGE_REF:-}" ]; then
     fail "IMAGE_REF is required for manifest/create/update CLI deploys."
@@ -343,7 +382,19 @@ write_result_env() {
 send_manifest_to_provider() {
   local dseq="$1"
   local provider="$2"
-  configure_provider_tls_trust
+  local saved_provider_url="${AKASH_PROVIDER_URL:-}"
+  local saved_tls_bootstrap="${AKASH_PROVIDER_TLS_BOOTSTRAP:-}"
+
+  if [ -n "$saved_provider_url" ] && [ -n "${AKASH_PROVIDER:-}" ] && [ "$provider" != "$AKASH_PROVIDER" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
+    log "Skipping pinned provider URL/TLS bootstrap because selected provider differs from AKASH_PROVIDER."
+    AKASH_PROVIDER_URL=""
+    AKASH_PROVIDER_TLS_BOOTSTRAP="false"
+    configure_provider_tls_trust
+    AKASH_PROVIDER_URL="$saved_provider_url"
+    AKASH_PROVIDER_TLS_BOOTSTRAP="$saved_tls_bootstrap"
+  else
+    configure_provider_tls_trust
+  fi
 
   # provider-services v0.12 accepts wallet/provider flags here, but not chain query flags.
   local args=(
@@ -440,18 +491,32 @@ create_deployment() {
   local provider
   provider="${AKASH_CLI_CREATE_PROVIDER:-}"
   if [ -z "$provider" ]; then
-    provider="$(jq -r '(.bids // [])[0] | .bid.bid_id.provider // .bid.id.provider // .bid.provider // .bid_id.provider // empty' <<<"$bids_json")"
+    local exclude_providers="${AKASH_CLI_EXCLUDE_PROVIDERS:-}"
+    if [ -z "$exclude_providers" ] && [ -n "${AKASH_PROVIDER:-}" ]; then
+      exclude_providers="$AKASH_PROVIDER"
+    fi
+
+    local bid_count
+    bid_count="$(jq -r '(.bids // []) | length' <<<"$bids_json")"
+    if [ -n "$exclude_providers" ]; then
+      log "Selecting provider from $bid_count open bid(s), excluding configured provider(s)."
+    else
+      log "Selecting provider from $bid_count open bid(s)."
+    fi
+    provider="$(select_open_bid_provider "$bids_json" "$exclude_providers")"
+  else
+    log "Using explicitly requested create provider $provider"
+  fi
+
+  if [ -z "$provider" ]; then
+    echo "$bids_json" | jq '.'
+    fail "No eligible open bid was found for DSEQ $dseq. Increase AKASH_BID_WAIT_SECONDS, adjust AKASH_CLI_EXCLUDE_PROVIDERS, or pass a provider explicitly."
   fi
 
   local gseq
   local oseq
-  gseq="${AKASH_GSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.gseq // .bid.id.gseq // .bid.gseq // .bid_id.gseq // "1"' <<<"$bids_json")}"
-  oseq="${AKASH_OSEQ:-$(jq -r '(.bids // [])[0] | .bid.bid_id.oseq // .bid.id.oseq // .bid.oseq // .bid_id.oseq // "1"' <<<"$bids_json")}"
-
-  if [ -z "$provider" ]; then
-    echo "$bids_json" | jq '.'
-    fail "No open bid was found for DSEQ $dseq. Increase AKASH_BID_WAIT_SECONDS or set AKASH_PROVIDER after inspecting bids."
-  fi
+  gseq="${AKASH_GSEQ:-$(select_bid_field "$bids_json" "$provider" gseq)}"
+  oseq="${AKASH_OSEQ:-$(select_bid_field "$bids_json" "$provider" oseq)}"
 
   log "Creating lease with provider $provider"
   provider-services tx market lease create \
