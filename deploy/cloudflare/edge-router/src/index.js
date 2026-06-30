@@ -94,6 +94,28 @@ function assetResponse(body, contentType) {
   });
 }
 
+function appAssetFallback(pathname) {
+  if (APP_DASHBOARD_PATHS.has(pathname)) {
+    return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
+  }
+  if (pathname === "/simulation" || pathname === "/simulation/" || pathname === "/lab") {
+    return assetResponse(SIMULATION_HTML, "text/html; charset=utf-8");
+  }
+  if (pathname === "/static/styles.css") {
+    return assetResponse(STYLES_CSS, "text/css; charset=utf-8");
+  }
+  if (pathname === "/static/hyperliquid-tokens.css") {
+    return assetResponse(HYPERLIQUID_TOKENS_CSS, "text/css; charset=utf-8");
+  }
+  if (pathname === "/static/app.js") {
+    return assetResponse(APP_JS, "application/javascript; charset=utf-8");
+  }
+  if (pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
+    return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
+  }
+  return null;
+}
+
 function publicSnapshotResponse(payload) {
   return jsonResponse({
     ...payload,
@@ -344,15 +366,6 @@ export default {
     ) {
       return assetResponse(INDEX_HTML, "text/html; charset=utf-8");
     }
-    if (incomingUrl.hostname === "app.bitprivat.com" && (incomingUrl.pathname === "/" || APP_DASHBOARD_PATHS.has(incomingUrl.pathname))) {
-      return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
-    }
-    if (APP_DASHBOARD_PATHS.has(incomingUrl.pathname)) {
-      return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
-    }
-    if (incomingUrl.pathname === "/simulation" || incomingUrl.pathname === "/simulation/" || incomingUrl.pathname === "/lab") {
-      return assetResponse(SIMULATION_HTML, "text/html; charset=utf-8");
-    }
     if (incomingUrl.pathname === "/terms" || incomingUrl.pathname === "/terms-of-service" || incomingUrl.pathname === "/legal/terms") {
       return assetResponse(TERMS_HTML, "text/html; charset=utf-8");
     }
@@ -364,18 +377,6 @@ export default {
     }
     if (incomingUrl.pathname === "/status" || incomingUrl.pathname === "/status/" || incomingUrl.pathname === "/ops") {
       return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
-    }
-    if (incomingUrl.pathname === "/static/styles.css") {
-      return assetResponse(STYLES_CSS, "text/css; charset=utf-8");
-    }
-    if (incomingUrl.pathname === "/static/hyperliquid-tokens.css") {
-      return assetResponse(HYPERLIQUID_TOKENS_CSS, "text/css; charset=utf-8");
-    }
-    if (incomingUrl.pathname === "/static/app.js") {
-      return assetResponse(APP_JS, "application/javascript; charset=utf-8");
-    }
-    if (incomingUrl.pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
-      return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
     }
     const publicFallback = publicApiSnapshot(incomingUrl.pathname);
     if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback && !requireLiveOrigin) {
@@ -399,6 +400,7 @@ export default {
     }
 
     const upstreamPath = rewritePath(incomingUrl.hostname, incomingUrl.pathname);
+    const assetFallback = appAssetFallback(upstreamPath);
     const upstreamUrl = new URL(upstreamPath + incomingUrl.search, origin);
 
     const headers = buildOriginHeaders(request, incomingUrl, origin, env);
@@ -427,10 +429,22 @@ export default {
           originError: error?.message || error?.name || "origin fetch failed",
         });
       }
+      if (assetFallback) {
+        return withDeliveryMode(assetFallback, "edge-asset-fallback", {
+          reason: "origin fetch failed",
+          originError: error?.message || error?.name || "origin fetch failed",
+        });
+      }
       throw error;
     }
     if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500 && !requireLiveOrigin) {
       return withDeliveryMode(publicFallback, "edge-fallback", {
+        reason: "origin returned server error",
+        originStatus: upstreamResponse.status,
+      });
+    }
+    if (assetFallback && upstreamResponse.status >= 500 && !requireLiveOrigin) {
+      return withDeliveryMode(assetFallback, "edge-asset-fallback", {
         reason: "origin returned server error",
         originStatus: upstreamResponse.status,
       });
@@ -447,6 +461,9 @@ export default {
     );
     if (incomingUrl.hostname === "api.bitprivat.com") {
       response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    }
+    if (assetFallback && response.ok) {
+      response.headers.set("X-BITprivat-Data-Mode", "live-origin");
     }
     if (canCachePublicRead && response.ok) {
       response.headers.set("X-BITprivat-Data-Mode", "live-origin");
