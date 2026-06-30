@@ -403,17 +403,18 @@ send_manifest_to_provider() {
   local provider="$2"
   local saved_provider_url="${AKASH_PROVIDER_URL:-}"
   local saved_tls_bootstrap="${AKASH_PROVIDER_TLS_BOOTSTRAP:-}"
+  local command_provider_url="$saved_provider_url"
+  local command_tls_bootstrap="$saved_tls_bootstrap"
 
   if [ -n "$saved_provider_url" ] && [ -n "${AKASH_PROVIDER:-}" ] && [ "$provider" != "$AKASH_PROVIDER" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
     log "Skipping pinned provider URL/TLS bootstrap because selected provider differs from AKASH_PROVIDER."
-    AKASH_PROVIDER_URL=""
-    AKASH_PROVIDER_TLS_BOOTSTRAP="false"
-    configure_provider_tls_trust
-    AKASH_PROVIDER_URL="$saved_provider_url"
-    AKASH_PROVIDER_TLS_BOOTSTRAP="$saved_tls_bootstrap"
-  else
-    configure_provider_tls_trust
+    command_provider_url=""
+    command_tls_bootstrap="false"
   fi
+
+  AKASH_PROVIDER_URL="$command_provider_url"
+  AKASH_PROVIDER_TLS_BOOTSTRAP="$command_tls_bootstrap"
+  configure_provider_tls_trust
 
   # provider-services v0.12 accepts wallet/provider flags here, but not chain query flags.
   local args=(
@@ -424,10 +425,20 @@ send_manifest_to_provider() {
     --from "$AKASH_KEY_NAME"
     --keyring-backend "$AKASH_KEYRING_BACKEND"
   )
-  if [ -n "${AKASH_PROVIDER_URL:-}" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" = "true" ]; then
-    args+=(--provider-url "$AKASH_PROVIDER_URL")
+  if [ -n "$command_provider_url" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" = "true" ]; then
+    args+=(--provider-url "$command_provider_url")
   fi
-  provider-services "${args[@]}"
+
+  local result=0
+  if provider-services "${args[@]}"; then
+    result=0
+  else
+    result=$?
+  fi
+
+  AKASH_PROVIDER_URL="$saved_provider_url"
+  AKASH_PROVIDER_TLS_BOOTSTRAP="$saved_tls_bootstrap"
+  return "$result"
 }
 
 status_deployment() {
