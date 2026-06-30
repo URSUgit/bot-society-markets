@@ -348,6 +348,38 @@ To trigger it manually from PowerShell:
 .\deploy\akash\trigger-github-deploy.ps1
 ```
 
+## Console Air Bootstrap To Encrypted Production
+
+Use this path when Console Air is needed to choose a reliable provider but
+production secrets must remain in GitHub Actions.
+
+1. In Console Air, create a deployment from
+   `deploy/akash/console-air-bootstrap.yaml`.
+2. The bootstrap intentionally uses isolated SQLite and demo social discovery.
+   It exists only to create the correct web + worker resource shape safely.
+3. Reject bids from providers with known ingress problems. Select a provider,
+   create the lease, and record its DSEQ.
+4. Replace the bootstrap manifest with the encrypted production configuration:
+
+```powershell
+.\deploy\akash\trigger-github-cli-deploy.ps1 `
+  -Mode manifest `
+  -Dseq "NEW_DSEQ" `
+  -DatabaseMode postgres `
+  -WithWorker `
+  -SocialDiscoveryProvider youtube `
+  -NoVerify
+```
+
+The workflow reads `BSM_DATABASE_URL` and `BSM_YOUTUBE_API_KEY` from GitHub
+Secrets. It does not print them or store them in the repository. After the
+workflow succeeds, verify the new ingress before closing the previous
+deployment.
+
+`deploy/akash/console-air-production.yaml` is a production reference with
+explicit placeholders. Do not deploy it until both placeholders are replaced
+locally.
+
 ## Crypto Wallet CLI Deploy
 
 If the Akash Console API works only for the credit-card / managed-wallet path,
