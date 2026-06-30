@@ -453,6 +453,15 @@ status_deployment() {
     get_active_lease_json "$AKASH_DSEQ" | jq '.leases // .'
     resolve_lease_from_active "$AKASH_DSEQ"
 
+    local saved_provider_url="${AKASH_PROVIDER_URL:-}"
+    local saved_tls_bootstrap="${AKASH_PROVIDER_TLS_BOOTSTRAP:-}"
+    if [ -n "$saved_provider_url" ] && [ -n "${AKASH_PROVIDER:-}" ] && [ "$RESOLVED_PROVIDER" != "$AKASH_PROVIDER" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
+      log "Skipping pinned provider URL/TLS bootstrap for status because the active lease uses another provider."
+      AKASH_PROVIDER_URL=""
+      AKASH_PROVIDER_TLS_BOOTSTRAP="false"
+    fi
+    configure_provider_tls_trust
+
     log "Best-effort lease status"
     provider-services lease-status \
       --dseq "$AKASH_DSEQ" \
@@ -472,6 +481,9 @@ status_deployment() {
       --keyring-backend "$AKASH_KEYRING_BACKEND" \
       --service web \
       --tail 120 || true
+
+    AKASH_PROVIDER_URL="$saved_provider_url"
+    AKASH_PROVIDER_TLS_BOOTSTRAP="$saved_tls_bootstrap"
 
     write_result_env "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
   fi
