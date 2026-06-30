@@ -319,11 +319,30 @@ require_spend_confirmation() {
 
 get_active_lease_json() {
   local dseq="$1"
-  provider-services query market lease list \
+  local leases_json
+  leases_json="$(provider-services query market lease list \
     --owner "$AKASH_OWNER_ADDRESS" \
     --dseq "$dseq" \
     --state active \
-    "${AKASH_QUERY_FLAGS[@]}"
+    "${AKASH_QUERY_FLAGS[@]}")"
+
+  if [ "$(jq -r '(.leases // []) | length' <<<"$leases_json")" != "0" ]; then
+    printf '%s\n' "$leases_json"
+    return
+  fi
+
+  # provider-services can lag the chain's current market query version. Use
+  # the public v1beta5 REST gateway as a read-only fallback before failing.
+  local rest_api="${AKASH_REST_API:-https://api.akashnet.net}"
+  local rest_json
+  rest_json="$(curl -fsS --get \
+    "${rest_api%/}/akash/market/v1beta5/leases/list" \
+    --data-urlencode "filters.owner=$AKASH_OWNER_ADDRESS" \
+    --data-urlencode "filters.dseq=$dseq" \
+    --data-urlencode "filters.state=active" \
+    --data-urlencode "pagination.limit=20")"
+  log "Resolved active lease through the Akash v1beta5 REST fallback" >&2
+  printf '%s\n' "$rest_json"
 }
 
 resolve_lease_from_active() {
