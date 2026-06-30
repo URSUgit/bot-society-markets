@@ -188,8 +188,7 @@ function requestRequiresLiveOrigin(request, incomingUrl) {
 function buildOriginHeaders(request, incomingUrl, origin, env) {
   const headers = new Headers(request.headers);
   // Akash ingress validates the Host header against the SDL accept list.
-  // The current random ingress host is included in AKASH_EXTRA_ACCEPT_HOSTS,
-  // so this pins Cloudflare to the exact lease instead of any shared app host.
+  // Pin Cloudflare to the exact Akash lease instead of any shared app host.
   headers.set("Host", env.ORIGIN_RESOLVE_OVERRIDE || origin.hostname);
   headers.set("x-forwarded-host", incomingUrl.host);
   headers.set("x-forwarded-proto", incomingUrl.protocol.replace(":", "") || "https");
