@@ -43,6 +43,10 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Generate Worker public assets
+        if: steps.cloudflare.outputs.configured == 'true'
+        run: python deploy/cloudflare/generate-public-assets.py
+
       - name: Validate Worker deploy
         if: steps.cloudflare.outputs.configured == 'true'
         env:
