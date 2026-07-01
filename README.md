@@ -36,6 +36,7 @@ This repository contains both the founder documentation package and a profession
 - [BITprivat Master Rebuild and Commercialization Plan](docs/33-bitprivat-master-rebuild-plan.md)
 - [BITprivat Master Rebuild Plan PDF](docs/33-bitprivat-master-rebuild-plan.pdf)
 - [BITprivat Data and Strategy Platform Plan](docs/37-quantconnect-capability-and-retail-ux-plan.md)
+- [BITprivat Investor Pitch Deck Generation Prompt](docs/38-investor-pitch-deck-generation-prompt.md)
 - [Prototype Guide](prototype/README.md)
 
 ## Code Structure
