@@ -109,12 +109,23 @@ $checks = @(
     @{
         Name = "Dashboard shell"
         Url = "$RootUrl/dashboard?v=$cacheBust"
-        Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*market-console-section*" }
+        Assert = {
+            param($r)
+            $r.StatusCode -eq 200 -and
+            $r.Content -like "*page-root*" -and
+            $r.Content -like "*primary-nav*" -and
+            $r.Content -like "*platform.css*"
+        }
     },
     @{
         Name = "App dashboard"
         Url = "$AppUrl/?v=$cacheBust"
-        Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*market-console-section*" -and $r.Content -like "*trader-intelligence-section*" }
+        Assert = {
+            param($r)
+            $r.StatusCode -eq 200 -and
+            $r.Content -like "*page-root*" -and
+            $r.Content -like "*primary-nav*"
+        }
     },
     @{
         Name = "API pulse"
@@ -131,8 +142,8 @@ $checks = @(
 
 if ($ExpectOperatorStrip) {
     $checks += @{
-        Name = "Dashboard operator strip"
-        Url = "$RootUrl/dashboard?v=$cacheBust"
+        Name = "Legacy operator console"
+        Url = "$RootUrl/legacy-dashboard?v=$cacheBust"
         Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*operator-strip*" }
     }
 }
@@ -152,9 +163,15 @@ if ($ExpectSocialTrading) {
             Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*display_name*" -and $r.Content -like "*composite_score*" }
         },
         @{
-            Name = "Dashboard social section"
-            Url = "$RootUrl/dashboard?v=$cacheBust"
-            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*social-trader-section*" -and ($r.Content -like "*Run YouTube Discovery*" -or $r.Content -like "*Scan New Videos*") }
+            Name = "Social traders route"
+            Url = "$RootUrl/social-traders?v=$cacheBust"
+            Assert = {
+                param($r)
+                $r.StatusCode -eq 200 -and
+                $r.Content -like "*page-root*" -and
+                $r.Content -like "*Expert bots*" -and
+                $r.Content -like "*platform.js*"
+            }
         }
     )
 }
