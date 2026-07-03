@@ -12,6 +12,7 @@ OUTPUT = ROOT / "deploy" / "cloudflare" / "edge-router" / "src" / "public-assets
 
 ASSETS = [
     ("INDEX_HTML", STATIC_DIR / "index.html"),
+    ("PLATFORM_HTML", STATIC_DIR / "platform.html"),
     ("DASHBOARD_HTML", STATIC_DIR / "dashboard.html"),
     ("SIMULATION_HTML", STATIC_DIR / "simulation.html"),
     ("STATUS_HTML", STATIC_DIR / "status.html"),
@@ -21,6 +22,8 @@ ASSETS = [
     ("STYLES_CSS", STATIC_DIR / "styles.css"),
     ("HYPERLIQUID_TOKENS_CSS", STATIC_DIR / "hyperliquid-tokens.css"),
     ("APP_JS", STATIC_DIR / "app.js"),
+    ("PLATFORM_CSS", STATIC_DIR / "platform.css"),
+    ("PLATFORM_JS", STATIC_DIR / "platform.js"),
     ("LIGHTWEIGHT_CHARTS_JS", STATIC_DIR / "vendor" / "lightweight-charts.standalone.production.js"),
 ]
 

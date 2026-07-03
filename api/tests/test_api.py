@@ -495,80 +495,74 @@ def test_professional_console_pages_are_served() -> None:
     with build_client() as client:
         dashboard_response = client.get("/dashboard")
         assert dashboard_response.status_code == 200
-        assert 'id="operator-strip"' in dashboard_response.text
-        assert 'id="operator-active-section"' in dashboard_response.text
-        assert 'id="market-console-section"' in dashboard_response.text
-        assert 'id="market-console-decisions"' in dashboard_response.text
-        assert 'id="leaderboard-summary"' in dashboard_response.text
-        assert 'id="run-all-connector-checks-button"' in dashboard_response.text
-        assert 'id="connector-diagnostic-panel"' in dashboard_response.text
-        assert 'class="dashboard-body command-os bit-engine-product-ui"' in dashboard_response.text
-        assert 'class="app-command-brand"' in dashboard_response.text
-        assert 'class="sidebar-nav app-tabbar"' in dashboard_response.text
-        assert 'data-preference-number-format' in dashboard_response.text
+        assert 'class="bp-app"' in dashboard_response.text
+        assert 'id="app-rail"' in dashboard_response.text
+        assert 'id="page-root"' in dashboard_response.text
+        assert 'id="mode-banner"' in dashboard_response.text
+        assert 'id="app-drawer"' in dashboard_response.text
+        assert 'id="command-palette"' in dashboard_response.text
         assert 'data-route="/dashboard" href="/dashboard"' in dashboard_response.text
-        assert 'data-route="/markets" href="/markets"' in dashboard_response.text
-        assert 'data-route="/trade" href="/trade"' in dashboard_response.text
-        assert 'data-route="/signals" href="/signals"' in dashboard_response.text
+        assert 'data-route="/data" href="/data"' in dashboard_response.text
+        assert 'data-route="/ideas" href="/ideas"' in dashboard_response.text
+        assert 'data-route="/strategies" href="/strategies"' in dashboard_response.text
+        assert 'data-route="/results" href="/results"' in dashboard_response.text
+        assert 'data-route="/social-traders" href="/social-traders"' in dashboard_response.text
+        assert 'data-route="/paper" href="/paper"' in dashboard_response.text
         assert 'data-route="/portfolio" href="/portfolio"' in dashboard_response.text
+        assert 'data-route="/connections" href="/connections"' in dashboard_response.text
+        assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
-        assert "Command Center" in dashboard_response.text
-        assert "app-brand-chart" in dashboard_response.text
-        assert 'data-nav-kind="app"' in dashboard_response.text
-        assert "nav-route-badge" in dashboard_response.text
-        assert "/static/hyperliquid-tokens.css?v=hl-2" in dashboard_response.text
-        assert 'id="delivery-mode-strip"' in dashboard_response.text
-        assert "Checking backend delivery" in dashboard_response.text
-        assert 'id="social-trader-section"' in dashboard_response.text
-        assert 'id="social-trader-grid"' in dashboard_response.text
-        assert 'id="social-marketplace-toolbar"' in dashboard_response.text
-        assert 'id="social-marketplace-search"' in dashboard_response.text
-        assert 'id="social-sort-select"' in dashboard_response.text
-        assert 'id="social-visible-count"' in dashboard_response.text
-        assert 'id="social-source-registry"' in dashboard_response.text
-        assert 'id="social-backend-map"' in dashboard_response.text
-        assert 'id="social-detail-drawer"' in dashboard_response.text
-        assert 'id="social-detail-content"' in dashboard_response.text
-        assert 'id="social-discovery-run-list"' in dashboard_response.text
-        assert 'id="social-execution-ledger-list"' in dashboard_response.text
-        assert 'id="bot-create-form"' in dashboard_response.text
-        assert 'id="bot-create-submit"' in dashboard_response.text
-        assert "Create research bot" in dashboard_response.text
-        assert "Bot decision receipt" in dashboard_response.text
-        assert "Build Creator Bot" in dashboard_response.text
-        assert "Scan New Videos" in dashboard_response.text
-        assert 'id="order-preview-window"' in dashboard_response.text
-        assert 'id="order-preview-submit"' in dashboard_response.text
-        assert 'id="simple-trade-symbol"' in dashboard_response.text
-        assert 'id="dashboard-window-nav"' in dashboard_response.text
-        assert "/static/app.js?v=pro-auth-1" in dashboard_response.text
-        app_js_response = client.get("/static/app.js")
-        assert app_js_response.status_code == 200
-        assert "hydrateLiveSocialTrading" in app_js_response.text
-        assert "syncDashboardWindowNav" in app_js_response.text
-        assert "X-BITprivat-Data-Mode" in app_js_response.text
-        assert "Standby snapshot" in app_js_response.text
-        assert "socialTradingRetryTimer" in app_js_response.text
-        assert "resolvePublicSocialReadOrigin" in app_js_response.text
-        assert "Direct live" in app_js_response.text
-        assert "previewTradingOrder" in app_js_response.text
-        assert "/api/v1/trading/preview" in app_js_response.text
-        assert "/api/v1/trading/orders" in app_js_response.text
-        assert "dashboard-window-social-open" in app_js_response.text
-        assert "createResearchBot" in app_js_response.text
-        assert "/api/v1/bots" in app_js_response.text
-        hyperliquid_css_response = client.get("/static/hyperliquid-tokens.css")
-        assert hyperliquid_css_response.status_code == 200
-        assert "--hl-bg: #0b0e11" in hyperliquid_css_response.text
-        assert ".hl-orderbook" in hyperliquid_css_response.text
-        assert ".route-page-hidden" in hyperliquid_css_response.text
-        assert ".app-toolbar-select" in hyperliquid_css_response.text
+        assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-3" in dashboard_response.text
 
-        for route in ("/markets", "/trade", "/signals", "/portfolio", "/settings"):
+        app_js_response = client.get("/static/platform.js")
+        assert app_js_response.status_code == 200
+        assert "renderCurrentPage" in app_js_response.text
+        assert "renderData" in app_js_response.text
+        assert "renderIdeas" in app_js_response.text
+        assert "renderStrategies" in app_js_response.text
+        assert "renderSocial" in app_js_response.text
+        assert "submitOrderPreview" in app_js_response.text
+        assert "/api/v1/trading/preview" in app_js_response.text
+        assert "bp-ideas" in app_js_response.text
+        assert "proxy returns are not verified" in app_js_response.text.lower()
+
+        app_css_response = client.get("/static/platform.css")
+        assert app_css_response.status_code == 200
+        assert "--rail-width" in app_css_response.text
+        assert ".app-drawer" in app_css_response.text
+        assert "body[data-experience=\"pro\"]" in app_css_response.text
+
+        product_routes = (
+            "/home",
+            "/markets",
+            "/data",
+            "/ideas",
+            "/strategies",
+            "/results",
+            "/trade",
+            "/paper",
+            "/signals",
+            "/social-traders",
+            "/portfolio",
+            "/connections",
+            "/learn",
+            "/settings",
+        )
+        for route in product_routes:
             route_response = client.get(route)
             assert route_response.status_code == 200
-            assert 'class="dashboard-body command-os bit-engine-product-ui"' in route_response.text
-            assert 'class="sidebar-nav app-tabbar"' in route_response.text
+            assert 'class="bp-app"' in route_response.text
+            assert 'class="primary-nav"' in route_response.text
+
+        legacy_response = client.get("/legacy-dashboard")
+        assert legacy_response.status_code == 200
+        assert 'id="operator-strip"' in legacy_response.text
+        assert 'id="market-console-section"' in legacy_response.text
+        assert 'id="social-trader-section"' in legacy_response.text
+        assert 'id="run-all-connector-checks-button"' in legacy_response.text
+        assert 'id="order-preview-window"' in legacy_response.text
+        assert "/static/app.js?v=pro-auth-1" in legacy_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200
@@ -2561,7 +2555,8 @@ def test_home_route_can_open_dashboard_for_custom_domain() -> None:
         home_response = client.get("/")
         assert home_response.status_code == 200
         assert "text/html" in home_response.headers["content-type"]
-        assert "Command Center" in home_response.text
+        assert 'class="bp-app"' in home_response.text
+        assert 'id="page-root"' in home_response.text
 
         landing_response = client.get("/landing")
         assert landing_response.status_code == 200

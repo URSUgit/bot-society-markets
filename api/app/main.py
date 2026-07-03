@@ -1511,7 +1511,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if request_host in _marketing_hosts(active_settings):
             return FileResponse(STATIC_DIR / "index.html")
         if active_settings.site_home_page == "dashboard":
-            return FileResponse(STATIC_DIR / "dashboard.html")
+            return FileResponse(STATIC_DIR / "platform.html")
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/landing")
@@ -1519,12 +1519,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/dashboard")
+    @app.get("/home")
     @app.get("/markets")
+    @app.get("/data")
+    @app.get("/ideas")
+    @app.get("/strategies")
+    @app.get("/results")
     @app.get("/trade")
+    @app.get("/paper")
     @app.get("/signals")
+    @app.get("/social-traders")
     @app.get("/portfolio")
+    @app.get("/connections")
+    @app.get("/learn")
     @app.get("/settings")
-    def dashboard() -> FileResponse:
+    def product_app() -> FileResponse:
+        return FileResponse(STATIC_DIR / "platform.html")
+
+    @app.get("/legacy-dashboard")
+    def legacy_dashboard() -> FileResponse:
         return FileResponse(STATIC_DIR / "dashboard.html")
 
     @app.get("/simulation")
@@ -1552,22 +1565,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/dashbord")
     @app.get("/app")
     @app.get("/markets/")
+    @app.get("/data/")
+    @app.get("/ideas/")
+    @app.get("/strategies/")
+    @app.get("/results/")
     @app.get("/trade/")
+    @app.get("/paper/")
     @app.get("/signals/")
+    @app.get("/social-traders/")
     @app.get("/portfolio/")
+    @app.get("/connections/")
+    @app.get("/learn/")
     @app.get("/settings/")
     def dashboard_aliases(request: Request) -> RedirectResponse:
         path = {
             "/markets/": "/markets",
+            "/data/": "/data",
+            "/ideas/": "/ideas",
+            "/strategies/": "/strategies",
+            "/results/": "/results",
             "/trade/": "/trade",
+            "/paper/": "/paper",
             "/signals/": "/signals",
+            "/social-traders/": "/social-traders",
             "/portfolio/": "/portfolio",
+            "/connections/": "/connections",
+            "/learn/": "/learn",
             "/settings/": "/settings",
         }.get(request.url.path, None)
         return RedirectResponse(url=path or "/dashboard", status_code=307)
 
     @app.get("/landing/")
-    @app.get("/home")
     def landing_aliases() -> RedirectResponse:
         return RedirectResponse(url="/landing", status_code=307)
 

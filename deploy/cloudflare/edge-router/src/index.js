@@ -4,6 +4,9 @@ import {
   HYPERLIQUID_TOKENS_CSS,
   INDEX_HTML,
   LIGHTWEIGHT_CHARTS_JS,
+  PLATFORM_CSS,
+  PLATFORM_HTML,
+  PLATFORM_JS,
   PRIVACY_HTML,
   RISK_HTML,
   SIMULATION_HTML,
@@ -23,15 +26,33 @@ const RESERVED_ROOT_REWRITES = {
 const APP_DASHBOARD_PATHS = new Set([
   "/dashboard",
   "/dashboard/",
+  "/home",
+  "/home/",
   "/app",
   "/markets",
   "/markets/",
+  "/data",
+  "/data/",
+  "/ideas",
+  "/ideas/",
+  "/strategies",
+  "/strategies/",
+  "/results",
+  "/results/",
   "/trade",
   "/trade/",
+  "/paper",
+  "/paper/",
   "/signals",
   "/signals/",
+  "/social-traders",
+  "/social-traders/",
   "/portfolio",
   "/portfolio/",
+  "/connections",
+  "/connections/",
+  "/learn",
+  "/learn/",
   "/settings",
   "/settings/",
 ]);
@@ -96,6 +117,9 @@ function assetResponse(body, contentType) {
 
 function appAssetFallback(pathname) {
   if (APP_DASHBOARD_PATHS.has(pathname)) {
+    return assetResponse(PLATFORM_HTML, "text/html; charset=utf-8");
+  }
+  if (pathname === "/legacy-dashboard" || pathname === "/legacy-dashboard/") {
     return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
   }
   if (pathname === "/simulation" || pathname === "/simulation/" || pathname === "/lab") {
@@ -109,6 +133,12 @@ function appAssetFallback(pathname) {
   }
   if (pathname === "/static/app.js") {
     return assetResponse(APP_JS, "application/javascript; charset=utf-8");
+  }
+  if (pathname === "/static/platform.css") {
+    return assetResponse(PLATFORM_CSS, "text/css; charset=utf-8");
+  }
+  if (pathname === "/static/platform.js") {
+    return assetResponse(PLATFORM_JS, "application/javascript; charset=utf-8");
   }
   if (pathname === "/static/vendor/lightweight-charts.standalone.production.js") {
     return assetResponse(LIGHTWEIGHT_CHARTS_JS, "application/javascript; charset=utf-8");
