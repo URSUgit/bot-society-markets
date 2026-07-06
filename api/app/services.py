@@ -106,7 +106,9 @@ from .models import (
     SocialDiscoveryRunView,
     SocialDiscoveryRunResult,
     SocialBackendRuntime,
+    SocialEvidenceEnvelope,
     SocialEvidenceItem,
+    SocialEvidenceView,
     SocialManagedPaperDecision,
     SocialManagedPaperExecutionRequest,
     SocialManagedPaperExecutionResult,
@@ -157,6 +159,8 @@ from .models import (
     TraderIntelligenceSourceView,
     TraderIntelligenceWorkspace,
     UserIdentity,
+    UserPreferences,
+    UserPreferencesUpdateRequest,
     UserProfile,
     UserSecuritySnapshot,
     UserWalletConnectChallenge,
@@ -569,6 +573,30 @@ class BotSocietyService:
         repository = BotSocietyRepository(self.database)
         auth_profile = self._load_or_create_auth_profile(repository, user_slug)
         return self._to_onboarding_snapshot(auth_profile)
+
+    def get_user_preferences(self, user_slug: str) -> UserPreferences:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        return self._to_user_preferences(auth_profile)
+
+    def update_user_preferences(self, user_slug: str, payload: UserPreferencesUpdateRequest) -> UserPreferences:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+        auth_profile = self._load_or_create_auth_profile(repository, user_slug)
+        now = self._now()
+        updated_profile = {
+            **auth_profile,
+            "preferred_language": payload.language or auth_profile.get("preferred_language") or "en",
+            "preferred_theme": payload.theme or auth_profile.get("preferred_theme") or "night",
+            "preferred_workspace_mode": payload.workspace_mode or auth_profile.get("preferred_workspace_mode") or "pro",
+            "timezone": payload.timezone or auth_profile.get("timezone") or "UTC",
+            "updated_at": now,
+        }
+        repository.upsert_user_auth_profile(updated_profile)
+        return self._to_user_preferences(updated_profile)
 
     def update_auth_onboarding(self, user_slug: str, payload: AuthOnboardingUpdateRequest) -> AuthOnboardingSnapshot:
         repository = BotSocietyRepository(self.database)
@@ -1012,6 +1040,32 @@ class BotSocietyService:
         )
         self.social_trading_snapshot_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
         return snapshot
+
+    def list_social_evidence(
+        self,
+        *,
+        platform: str | None = None,
+        asset: str | None = None,
+        trader_slug: str | None = None,
+        limit: int = 50,
+    ) -> SocialEvidenceEnvelope:
+        repository = BotSocietyRepository(self.database)
+        normalized_platform = platform.strip().lower() if platform else None
+        normalized_asset = asset.strip().upper() if asset else None
+        normalized_trader_slug = trader_slug.strip().lower() if trader_slug else None
+        rows = repository.list_social_evidence(
+            platform=normalized_platform,
+            asset=normalized_asset,
+            trader_slug=normalized_trader_slug,
+            limit=limit,
+        )
+        evidence = [self._to_social_evidence_record(row) for row in rows]
+        return SocialEvidenceEnvelope(
+            generated_at=self._now(),
+            count=len(evidence),
+            limit=limit,
+            evidence=evidence,
+        )
 
     def get_trader_intelligence_workspace(self, user_slug: str) -> TraderIntelligenceWorkspace:
         repository = BotSocietyRepository(self.database)
@@ -9606,6 +9660,34 @@ class BotSocietyService:
             derived_return=derived_return,
         )
 
+    @staticmethod
+    def _to_social_evidence_record(row: dict) -> SocialEvidenceView:
+        confidence = round(float(row.get("confidence") or 0), 3)
+        engagement_score = round(float(row.get("engagement_score") or 0), 3)
+        derived_return = round(float(row.get("derived_return") or 0), 4)
+        return SocialEvidenceView(
+            external_id=str(row["external_id"]),
+            trader_id=int(row["trader_id"]),
+            trader_slug=str(row["trader_slug"]),
+            trader_display_name=str(row["trader_display_name"]),
+            trader_handle=str(row["trader_handle"]),
+            platform=str(row["platform"]),
+            source_url=str(row["trader_source_url"]),
+            title=str(row["title"]),
+            summary=str(row["summary"]),
+            url=str(row["url"]),
+            asset=str(row["asset"]),
+            direction=str(row["direction"]),
+            confidence=confidence,
+            engagement_score=engagement_score,
+            evidence_weight=round(min(1.0, max(0.0, (confidence * 0.68) + (engagement_score * 0.32))), 3),
+            impact_label=BotSocietyService._social_evidence_impact_label(derived_return),
+            risk_flag=BotSocietyService._social_evidence_risk_flag(confidence, derived_return),
+            observed_at=str(row["observed_at"]),
+            derived_return=derived_return,
+            validation_state="proxy",
+        )
+
     def _creator_bot_training_status(
         self,
         row: dict,
@@ -10816,6 +10898,26 @@ class BotSocietyService:
             timezone=str(auth_profile.get("timezone") or "UTC"),
             updated_at=auth_profile.get("updated_at"),
             recommended_next_step=self._recommended_onboarding_step(auth_profile),
+        )
+
+    @staticmethod
+    def _to_user_preferences(auth_profile: dict[str, object]) -> UserPreferences:
+        language = str(auth_profile.get("preferred_language") or "en")
+        if language not in {"en", "ro"}:
+            language = "en"
+        theme = str(auth_profile.get("preferred_theme") or "night")
+        if theme not in {"day", "night"}:
+            theme = "night"
+        workspace_mode = str(auth_profile.get("preferred_workspace_mode") or "pro")
+        if workspace_mode not in {"simple", "pro"}:
+            workspace_mode = "pro"
+        return UserPreferences(
+            user_slug=str(auth_profile["user_slug"]),
+            language=language,
+            theme=theme,
+            workspace_mode=workspace_mode,
+            timezone=str(auth_profile.get("timezone") or "UTC"),
+            updated_at=auth_profile.get("updated_at"),
         )
 
     def _create_session_for_user(self, user_slug: str) -> tuple[AuthSessionSnapshot, str]:

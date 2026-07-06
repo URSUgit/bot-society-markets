@@ -67,6 +67,7 @@ from .models import (
     ProductionCutoverEnvelope,
     ProviderStatusEnvelope,
     SignalView,
+    SocialEvidenceEnvelope,
     SocialDiscoveryRunResult,
     SocialManagedPaperExecutionRequest,
     SocialManagedPaperExecutionResult,
@@ -98,6 +99,8 @@ from .models import (
     TraderIntelligenceProfileView,
     TraderIntelligenceWorkspace,
     UserProfile,
+    UserPreferences,
+    UserPreferencesUpdateRequest,
     UserWalletConnectChallenge,
     UserWalletConnection,
     UserWalletConnectRequest,
@@ -411,6 +414,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return snapshot
 
+    @app.get("/api/v1/preferences", response_model=UserPreferences)
+    @app.get("/api/preferences", response_model=UserPreferences)
+    def user_preferences(request: Request) -> UserPreferences:
+        user_slug = authenticated_user_slug(request)
+        return get_service(request).get_user_preferences(user_slug)
+
+    @app.put("/api/v1/preferences", response_model=UserPreferences)
+    @app.put("/api/preferences", response_model=UserPreferences)
+    def update_user_preferences(payload: UserPreferencesUpdateRequest, request: Request) -> UserPreferences:
+        user_slug = authenticated_user_slug(request)
+        before = get_service(request).get_user_preferences(user_slug)
+        preferences = run_validated(lambda: get_service(request).update_user_preferences(user_slug, payload))
+        audit_event(
+            request,
+            action="preferences.update",
+            resource_type="user_preferences",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            before_state=before.model_dump(),
+            after_state=preferences.model_dump(),
+        )
+        return preferences
+
     @app.get("/api/v1/auth/mfa/status", response_model=AuthMfaStatusResponse)
     @app.get("/api/auth/mfa/status", response_model=AuthMfaStatusResponse)
     def auth_mfa_status(request: Request) -> AuthMfaStatusResponse:
@@ -558,6 +584,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def social_traders(request: Request) -> list[SocialTraderScorecard]:
         user_slug = current_user_slug(request) or active_settings.default_user_slug
         return get_service(request).get_social_trading_snapshot(user_slug).top_traders
+
+    @app.get("/api/v1/social/evidence", response_model=SocialEvidenceEnvelope)
+    @app.get("/api/social/evidence", response_model=SocialEvidenceEnvelope)
+    def social_evidence(
+        request: Request,
+        platform: str | None = None,
+        asset: str | None = None,
+        trader_slug: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> SocialEvidenceEnvelope:
+        return get_service(request).list_social_evidence(
+            platform=platform,
+            asset=asset,
+            trader_slug=trader_slug,
+            limit=limit,
+        )
 
     @app.post("/api/v1/social-traders/discover", response_model=SocialDiscoveryRunResult)
     @app.post("/api/social-traders/discover", response_model=SocialDiscoveryRunResult)
@@ -1380,7 +1422,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             production_cutover=get_service(request).get_production_cutover()
         )
 
+    @app.get("/api/v1/audit/events", response_model=AuditLogEnvelope)
     @app.get("/api/v1/system/audit", response_model=AuditLogEnvelope)
+    @app.get("/api/audit/events", response_model=AuditLogEnvelope)
     @app.get("/api/system/audit", response_model=AuditLogEnvelope)
     def audit_logs(
         request: Request,

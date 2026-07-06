@@ -2739,3 +2739,86 @@ def test_validation_rejects_unknown_assets() -> None:
         response = client.post("/api/me/watchlist", json={"asset": "DOGE"})
         assert response.status_code == 400
         assert "Unknown asset" in response.json()["detail"]
+
+
+def test_v1_preferences_update_persists_and_audits() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Preference User",
+                "email": "preferences@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        initial_response = client.get("/api/v1/preferences")
+        assert initial_response.status_code == 200
+        assert initial_response.json()["language"] == "en"
+        assert initial_response.json()["theme"] == "night"
+        assert initial_response.json()["workspace_mode"] == "pro"
+        assert initial_response.json()["confirmations"]["live_trading"] is True
+        assert initial_response.json()["live_trading_enabled"] is False
+
+        update_response = client.put(
+            "/api/v1/preferences",
+            json={
+                "language": "ro",
+                "theme": "day",
+                "workspace_mode": "simple",
+                "timezone": "Europe/Bucharest",
+            },
+        )
+        assert update_response.status_code == 200
+        updated = update_response.json()
+        assert updated["user_slug"] == user_slug
+        assert updated["language"] == "ro"
+        assert updated["theme"] == "day"
+        assert updated["workspace_mode"] == "simple"
+        assert updated["timezone"] == "Europe/Bucharest"
+
+        persisted_response = client.get("/api/v1/preferences")
+        assert persisted_response.status_code == 200
+        assert persisted_response.json()["language"] == "ro"
+
+        audit_response = client.get("/api/v1/audit/events", params={"action": "preferences.update"})
+        assert audit_response.status_code == 200
+        audit_logs = audit_response.json()["audit_logs"]
+        assert audit_logs
+        assert audit_logs[0]["actor_user_slug"] == user_slug
+        assert audit_logs[0]["resource_type"] == "user_preferences"
+        assert audit_logs[0]["after_state"]["language"] == "ro"
+
+
+def test_v1_social_evidence_contract_and_filters() -> None:
+    with build_client() as client:
+        response = client.get("/api/v1/social/evidence", params={"limit": 5})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] > 0
+        assert payload["limit"] == 5
+        assert "proxy" in payload["performance_basis"].lower()
+        first = payload["evidence"][0]
+        assert first["external_id"]
+        assert first["trader_slug"]
+        assert first["trader_display_name"]
+        assert first["platform"] == "youtube"
+        assert first["validation_state"] == "proxy"
+        assert 0 <= first["evidence_weight"] <= 1
+
+        asset_response = client.get("/api/v1/social/evidence", params={"asset": first["asset"], "limit": 20})
+        assert asset_response.status_code == 200
+        asset_payload = asset_response.json()
+        assert asset_payload["count"] > 0
+        assert all(item["asset"] == first["asset"] for item in asset_payload["evidence"])
+
+        trader_response = client.get(
+            "/api/v1/social/evidence",
+            params={"trader_slug": first["trader_slug"], "limit": 20},
+        )
+        assert trader_response.status_code == 200
+        trader_payload = trader_response.json()
+        assert trader_payload["count"] > 0
+        assert all(item["trader_slug"] == first["trader_slug"] for item in trader_payload["evidence"])

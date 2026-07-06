@@ -987,6 +987,48 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
+    def list_social_evidence(
+        self,
+        *,
+        platform: str | None = None,
+        asset: str | None = None,
+        trader_slug: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                social_trader_events_table.c.id,
+                social_trader_events_table.c.external_id,
+                social_trader_events_table.c.trader_id,
+                social_traders_table.c.slug.label("trader_slug"),
+                social_traders_table.c.display_name.label("trader_display_name"),
+                social_traders_table.c.handle.label("trader_handle"),
+                social_traders_table.c.source_url.label("trader_source_url"),
+                social_trader_events_table.c.platform,
+                social_trader_events_table.c.title,
+                social_trader_events_table.c.summary,
+                social_trader_events_table.c.url,
+                social_trader_events_table.c.asset,
+                social_trader_events_table.c.direction,
+                social_trader_events_table.c.confidence,
+                social_trader_events_table.c.engagement_score,
+                social_trader_events_table.c.observed_at,
+                social_trader_events_table.c.derived_return,
+                social_trader_events_table.c.created_at,
+            )
+            .join(social_traders_table, social_traders_table.c.id == social_trader_events_table.c.trader_id)
+            .order_by(desc(social_trader_events_table.c.observed_at), desc(social_trader_events_table.c.id))
+            .limit(limit)
+        )
+        if platform:
+            stmt = stmt.where(social_trader_events_table.c.platform == platform)
+        if asset:
+            stmt = stmt.where(social_trader_events_table.c.asset == asset)
+        if trader_slug:
+            stmt = stmt.where(social_traders_table.c.slug == trader_slug)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
     def list_social_trader_events_for_traders(
         self,
         trader_ids: Iterable[int],

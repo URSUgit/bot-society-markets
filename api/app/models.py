@@ -1188,6 +1188,38 @@ class SocialEvidenceItem(BaseModel):
     derived_return: float
 
 
+class SocialEvidenceView(BaseModel):
+    external_id: str
+    trader_id: int
+    trader_slug: str
+    trader_display_name: str
+    trader_handle: str
+    platform: SocialPlatform
+    source_url: str
+    title: str
+    summary: str
+    url: str
+    asset: str
+    direction: Direction
+    confidence: float = Field(ge=0, le=1)
+    engagement_score: float = Field(ge=0, le=1)
+    evidence_weight: float = Field(ge=0, le=1)
+    impact_label: str
+    risk_flag: str | None = None
+    observed_at: str
+    derived_return: float
+    validation_state: SocialValidationState = "proxy"
+    provenance_note: str = "Public creator evidence normalized for research; performance is not fill-validated PnL."
+
+
+class SocialEvidenceEnvelope(BaseModel):
+    generated_at: str
+    count: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    evidence: list[SocialEvidenceView] = Field(default_factory=list)
+    performance_basis: str = "Content-derived proxy evidence until resolved against market prices and fills."
+
+
 class SocialTraderAllocationGuidance(BaseModel):
     recommended_mode: SocialTradeMode
     suggested_allocation_usd: float = Field(ge=0)
@@ -1991,6 +2023,39 @@ class AuditLogEntry(BaseModel):
 
 class AuditLogEnvelope(BaseModel):
     audit_logs: list[AuditLogEntry]
+
+
+class UserPreferences(BaseModel):
+    user_slug: str
+    language: UiLanguage = "en"
+    theme: UiTheme = "night"
+    workspace_mode: WorkspaceMode = "pro"
+    timezone: str = "UTC"
+    confirmations: dict[str, bool] = Field(
+        default_factory=lambda: {
+            "destructive_actions": True,
+            "paper_orders": True,
+            "live_trading": True,
+        }
+    )
+    live_trading_enabled: bool = False
+    updated_at: str | None = None
+
+
+class UserPreferencesUpdateRequest(BaseModel):
+    language: UiLanguage | None = None
+    theme: UiTheme | None = None
+    workspace_mode: WorkspaceMode | None = None
+    timezone: str | None = Field(default=None, min_length=2, max_length=64)
+
+    @model_validator(mode="after")
+    def normalize_timezone(self) -> "UserPreferencesUpdateRequest":
+        if self.timezone is not None:
+            normalized = re.sub(r"\s+", " ", self.timezone).strip()
+            if not normalized:
+                raise ValueError("timezone cannot be empty")
+            self.timezone = normalized
+        return self
 
 
 class ProviderStatusEnvelope(BaseModel):
