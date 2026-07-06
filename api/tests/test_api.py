@@ -117,11 +117,17 @@ def test_dashboard_snapshot_has_professional_data() -> None:
         assert payload["provider_status"]["social_discovery_provider_source"] == "demo-social-discovery"
         assert payload["provider_status"]["social_discovery_ready"] is True
         assert payload["provider_status"]["youtube_discovery_queries"]
+        assert payload["provider_status"]["freshness_probes"]
+        assert {
+            probe["component"] for probe in payload["provider_status"]["freshness_probes"]
+        } >= {"market_data", "signals"}
         assert payload["provider_status"]["environment_name"] == "development"
         assert payload["provider_status"]["deployment_target"] == "local"
         assert payload["provider_status"]["database_backend"] == "sqlite"
         assert payload["user_profile"]["is_demo_user"] is True
         assert payload["system_pulse"]["live_provider_count"] >= 0
+        assert payload["system_pulse"]["stale_provider_count"] >= 0
+        assert isinstance(payload["system_pulse"]["freshness_alerts"], list)
         assert payload["system_pulse"]["total_recent_signals"] >= 1
         assert payload["system_pulse"]["signal_mix"]
         assert payload["macro_snapshot"]["series"]
@@ -2676,6 +2682,33 @@ def test_signal_quality_scoring_is_exposed_on_signal_api() -> None:
         assert max(signal["source_quality_score"] for signal in payload) >= 0.6
         social_signal = next(signal for signal in payload if signal["channel"] == "social")
         assert social_signal["source_type"] == "social"
+
+
+def test_provider_freshness_probes_are_exposed_on_system_contracts() -> None:
+    with build_client() as client:
+        provider_response = client.get("/api/v1/system/providers")
+        assert provider_response.status_code == 200
+        provider_payload = provider_response.json()["provider_status"]
+        probes = provider_payload["freshness_probes"]
+        assert probes
+        probe_map = {probe["component"]: probe for probe in probes}
+        assert {"market_data", "signals"}.issubset(probe_map)
+        for probe in probe_map.values():
+            assert probe["status"] in {"fresh", "watch", "stale", "missing"}
+            assert probe["sample_count"] >= 0
+            assert 0 <= probe["average_freshness"] <= 1
+            if probe["status"] != "fresh":
+                assert probe["alert"]
+                assert probe["recommended_action"]
+
+        pulse_response = client.get("/api/v1/system/pulse")
+        assert pulse_response.status_code == 200
+        pulse_payload = pulse_response.json()["system_pulse"]
+        expected_stale_count = sum(
+            1 for probe in probes if probe["status"] in {"stale", "missing"}
+        )
+        assert pulse_payload["stale_provider_count"] == expected_stale_count
+        assert pulse_payload["freshness_alerts"] == provider_payload["freshness_alerts"]
 
 
 def test_notification_retry_flow_and_health() -> None:

@@ -23,6 +23,7 @@ ConnectorDiagnosticStatus = Literal["pass", "warn", "fail", "blocked"]
 RiskCheckStatus = Literal["pass", "warn", "fail", "blocked"]
 InfrastructureTaskState = Literal["ready", "attention", "planned"]
 FeatureReadinessState = Literal["live", "paper_only", "partial", "blocked", "planned"]
+FreshnessProbeStatus = Literal["fresh", "watch", "stale", "missing"]
 SocialPlatform = Literal["youtube", "x", "reddit", "telegram", "newsletter", "other"]
 SocialTradeMode = Literal["signals", "managed_paper"]
 SocialTraderState = Literal["discovered", "watching", "followed", "paused"]
@@ -215,6 +216,18 @@ class ProviderComponentStatus(BaseModel):
     warning: str | None = None
 
 
+class ProviderFreshnessProbe(BaseModel):
+    component: str
+    source: str
+    status: FreshnessProbeStatus
+    sample_count: int = Field(ge=0)
+    latest_at: str | None = None
+    age_minutes: int | None = Field(default=None, ge=0)
+    average_freshness: float = Field(ge=0, le=1)
+    alert: str | None = None
+    recommended_action: str | None = None
+
+
 class ProviderStatus(BaseModel):
     environment_name: str
     deployment_target: str
@@ -258,6 +271,8 @@ class ProviderStatus(BaseModel):
     rss_feed_urls: list[str]
     reddit_subreddits: list[str] = Field(default_factory=list)
     venue_signal_providers: list[ProviderComponentStatus] = Field(default_factory=list)
+    freshness_probes: list[ProviderFreshnessProbe] = Field(default_factory=list)
+    freshness_alerts: list[str] = Field(default_factory=list)
     market_fallback_active: bool = False
     signal_fallback_active: bool = False
     macro_fallback_active: bool = False
@@ -292,6 +307,8 @@ class SystemPulseSnapshot(BaseModel):
     average_signal_freshness: float = Field(ge=0, le=1)
     pending_predictions: int = Field(ge=0)
     retry_queue_depth: int = Field(ge=0)
+    stale_provider_count: int = Field(ge=0)
+    freshness_alerts: list[str] = Field(default_factory=list)
     signal_mix: list[SignalMixItem] = Field(default_factory=list)
     venue_pulse: list[VenuePulseItem] = Field(default_factory=list)
 

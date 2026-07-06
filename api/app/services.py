@@ -98,6 +98,7 @@ from .models import (
     PaperVenueView,
     PredictionView,
     ProviderComponentStatus,
+    ProviderFreshnessProbe,
     ProviderStatus,
     ProductionCutoverSnapshot,
     ProductionCutoverStep,
@@ -4492,6 +4493,150 @@ class BotSocietyService:
         self._clear_live_caches()
         return self.get_user_profile(user_slug)
 
+    @staticmethod
+    def _parse_probe_timestamp(value: object) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return parse_timestamp(str(value))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _probe_age_minutes(latest_at: datetime | None, now: datetime) -> int | None:
+        if latest_at is None:
+            return None
+        return max(0, int((now - latest_at).total_seconds() // 60))
+
+    @staticmethod
+    def _probe_status(age_minutes: int | None, *, fresh_minutes: int, stale_minutes: int) -> str:
+        if age_minutes is None:
+            return "missing"
+        if age_minutes <= fresh_minutes:
+            return "fresh"
+        if age_minutes <= stale_minutes:
+            return "watch"
+        return "stale"
+
+    @staticmethod
+    def _probe_alert(component_label: str, status: str, age_minutes: int | None) -> str | None:
+        if status == "fresh":
+            return None
+        if status == "missing":
+            return f"{component_label} has not produced any observable data yet."
+        age_label = f"{age_minutes} minute(s)" if age_minutes is not None else "an unknown interval"
+        if status == "watch":
+            return f"{component_label} data is aging; latest sample is {age_label} old."
+        return f"{component_label} data is stale; latest sample is {age_label} old."
+
+    @staticmethod
+    def _probe_action(component_label: str, status: str) -> str | None:
+        if status == "fresh":
+            return None
+        if status == "missing":
+            return f"Run a provider cycle and confirm {component_label.lower()} credentials or fallback settings."
+        if status == "watch":
+            return f"Monitor the next cycle and check {component_label.lower()} provider latency if the status persists."
+        return f"Run provider-status with live probes and inspect {component_label.lower()} credentials, rate limits, and fallbacks."
+
+    def _build_provider_freshness_probes(
+        self,
+        *,
+        recent_signals: list[dict],
+        latest_assets: list[dict],
+    ) -> list[ProviderFreshnessProbe]:
+        now = datetime.now(timezone.utc)
+        probes: list[ProviderFreshnessProbe] = []
+
+        market_times = [
+            parsed
+            for asset in latest_assets
+            if (parsed := self._parse_probe_timestamp(asset.get("as_of"))) is not None
+        ]
+        market_latest = max(market_times, default=None)
+        market_age = self._probe_age_minutes(market_latest, now)
+        market_status = self._probe_status(market_age, fresh_minutes=90, stale_minutes=360)
+        market_freshness = 0.0 if market_age is None else round(clamp(1 - (market_age / 360), 0.0, 1.0), 3)
+        probes.append(
+            ProviderFreshnessProbe(
+                component="market_data",
+                source=self.market_provider_source,
+                status=market_status,
+                sample_count=len(latest_assets),
+                latest_at=to_timestamp(market_latest) if market_latest else None,
+                age_minutes=market_age,
+                average_freshness=market_freshness,
+                alert=self._probe_alert("Market data", market_status, market_age),
+                recommended_action=self._probe_action("Market data", market_status),
+            )
+        )
+
+        signal_times = [
+            parsed
+            for signal in recent_signals
+            if (parsed := self._parse_probe_timestamp(signal.get("observed_at"))) is not None
+        ]
+        signal_latest = max(signal_times, default=None)
+        signal_age = self._probe_age_minutes(signal_latest, now)
+        signal_status = self._probe_status(signal_age, fresh_minutes=180, stale_minutes=720)
+        signal_freshness = (
+            round(mean(float(signal.get("freshness_score") or 0.0) for signal in recent_signals), 3)
+            if recent_signals
+            else 0.0
+        )
+        if signal_status == "fresh" and signal_freshness < 0.25:
+            signal_status = "watch"
+        probes.append(
+            ProviderFreshnessProbe(
+                component="signals",
+                source=self.signal_provider_source,
+                status=signal_status,
+                sample_count=len(recent_signals),
+                latest_at=to_timestamp(signal_latest) if signal_latest else None,
+                age_minutes=signal_age,
+                average_freshness=signal_freshness,
+                alert=self._probe_alert("Signal intake", signal_status, signal_age),
+                recommended_action=self._probe_action("Signal intake", signal_status),
+            )
+        )
+
+        venue_signals = [
+            signal
+            for signal in recent_signals
+            if str(signal.get("source_type") or "") == "prediction-market" or str(signal.get("channel") or "") == "venue"
+        ]
+        if venue_signals or self.venue_signal_providers:
+            venue_times = [
+                parsed
+                for signal in venue_signals
+                if (parsed := self._parse_probe_timestamp(signal.get("observed_at"))) is not None
+            ]
+            venue_latest = max(venue_times, default=None)
+            venue_age = self._probe_age_minutes(venue_latest, now)
+            venue_status = self._probe_status(venue_age, fresh_minutes=360, stale_minutes=1440)
+            venue_freshness = (
+                round(mean(float(signal.get("freshness_score") or 0.0) for signal in venue_signals), 3)
+                if venue_signals
+                else 0.0
+            )
+            if venue_status == "fresh" and venue_freshness < 0.25:
+                venue_status = "watch"
+            probes.append(
+                ProviderFreshnessProbe(
+                    component="venue_signals",
+                    source=",".join(provider.source_name for provider in self.venue_signal_providers) or "venue-adapters",
+                    status=venue_status,
+                    sample_count=len(venue_signals),
+                    latest_at=to_timestamp(venue_latest) if venue_latest else None,
+                    age_minutes=venue_age,
+                    average_freshness=venue_freshness,
+                    alert=self._probe_alert("Venue signal intake", venue_status, venue_age),
+                    recommended_action=self._probe_action("Venue signal intake", venue_status),
+                )
+            )
+
+        return probes
+
     def get_provider_status(self, *, force_refresh: bool = False) -> ProviderStatus:
         if not force_refresh and self._cache_is_fresh(self.provider_status_cache, ttl_seconds=30):
             return self.provider_status_cache[1]
@@ -4505,6 +4650,14 @@ class BotSocietyService:
         signal_configured, signal_live_capable = self._provider_configuration("signal")
         macro_configured, macro_live_capable = self._provider_configuration("macro")
         wallet_configured, wallet_live_capable = self._provider_configuration("wallet")
+        repository = BotSocietyRepository(self.database)
+        recent_signals = repository.list_recent_signals(limit=96)
+        latest_assets = repository.list_latest_market_snapshots()
+        freshness_probes = self._build_provider_freshness_probes(
+            recent_signals=recent_signals,
+            latest_assets=latest_assets,
+        )
+        freshness_alerts = [probe.alert for probe in freshness_probes if probe.alert]
         status = ProviderStatus(
             environment_name=self.settings.environment_name,
             deployment_target=self.settings.deployment_target,
@@ -4548,6 +4701,8 @@ class BotSocietyService:
             rss_feed_urls=list(self.settings.rss_feed_urls),
             reddit_subreddits=list(self.settings.reddit_subreddits),
             venue_signal_providers=venue_statuses,
+            freshness_probes=freshness_probes,
+            freshness_alerts=freshness_alerts,
             market_fallback_active=self.market_provider_fallback,
             signal_fallback_active=self.signal_provider_fallback,
             macro_fallback_active=self.macro_provider_fallback,
@@ -7652,6 +7807,9 @@ class BotSocietyService:
             if pending_predictions is not None
             else len(active_repository.list_predictions(status="pending", limit=500))
         )
+        stale_provider_count = sum(
+            1 for probe in provider_status.freshness_probes if probe.status in {"stale", "missing"}
+        )
         snapshot = SystemPulseSnapshot(
             generated_at=generated_at,
             live_provider_count=live_provider_count,
@@ -7660,6 +7818,8 @@ class BotSocietyService:
             average_signal_freshness=round(average_freshness, 3),
             pending_predictions=pending_prediction_count,
             retry_queue_depth=notification_health.retry_queue_depth,
+            stale_provider_count=stale_provider_count,
+            freshness_alerts=list(provider_status.freshness_alerts),
             signal_mix=self._build_signal_mix(recent_signals),
             venue_pulse=self._build_venue_pulse(recent_signals, latest_assets, provider_status),
         )
