@@ -389,6 +389,9 @@ export default {
     if (incomingUrl.hostname === "status.bitprivat.com" && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/status")) {
       return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
     }
+    if (incomingUrl.pathname === "/legacy-dashboard" || incomingUrl.pathname === "/legacy-dashboard/") {
+      return assetResponse(PLATFORM_HTML, "text/html; charset=utf-8");
+    }
     if (
       (incomingUrl.hostname === "bitprivat.com" || incomingUrl.hostname === "www.bitprivat.com")
       && (incomingUrl.pathname === "/" || incomingUrl.pathname === "/landing")
