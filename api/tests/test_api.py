@@ -22,7 +22,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from fastapi.testclient import TestClient
 
-from api.app.config import Settings
+from api.app.config import Settings, get_settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.financial_signal_extractor import FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
@@ -92,6 +92,75 @@ def test_sqlite_engine_keeps_default_pooling() -> None:
     options = engine_options_for_url("sqlite:///tmp/test.db")
 
     assert options == {"future": True}
+
+
+def test_environment_defaults_to_real_data_only(monkeypatch) -> None:
+    for name in (
+        "BSM_REAL_DATA_ONLY",
+        "BSM_SEED_DEMO_DATA",
+        "BSM_MARKET_PROVIDER",
+        "BSM_SIGNAL_PROVIDER",
+        "BSM_SOCIAL_DISCOVERY_PROVIDER",
+        "BSM_MACRO_PROVIDER",
+        "BSM_WALLET_PROVIDER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = get_settings()
+
+    assert settings.real_data_only is True
+    assert settings.seed_demo_data is False
+    assert settings.market_provider_mode == "auto"
+    assert settings.signal_provider_mode == "rss"
+    assert settings.social_discovery_provider == "youtube"
+    assert settings.macro_provider_mode == "fred"
+    assert settings.wallet_provider_mode == "polymarket"
+
+
+def test_real_data_only_rejects_demo_provider_env(monkeypatch) -> None:
+    monkeypatch.setenv("BSM_REAL_DATA_ONLY", "true")
+    monkeypatch.setenv("BSM_SEED_DEMO_DATA", "true")
+    monkeypatch.setenv("BSM_MARKET_PROVIDER", "demo")
+    monkeypatch.setenv("BSM_SIGNAL_PROVIDER", "demo")
+    monkeypatch.setenv("BSM_SOCIAL_DISCOVERY_PROVIDER", "demo")
+    monkeypatch.setenv("BSM_MACRO_PROVIDER", "demo")
+    monkeypatch.setenv("BSM_WALLET_PROVIDER", "demo")
+
+    settings = get_settings()
+
+    assert settings.real_data_only is True
+    assert settings.seed_demo_data is False
+    assert settings.market_provider_mode == "auto"
+    assert settings.signal_provider_mode == "rss"
+    assert settings.social_discovery_provider == "youtube"
+    assert settings.macro_provider_mode == "fred"
+    assert settings.wallet_provider_mode == "polymarket"
+
+
+def test_real_data_only_clean_database_starts_without_demo_seed() -> None:
+    settings = Settings(
+        real_data_only=True,
+        seed_demo_data=False,
+        market_provider_mode="auto",
+        signal_provider_mode="rss",
+        social_discovery_provider="youtube",
+        macro_provider_mode="fred",
+        wallet_provider_mode="polymarket",
+    )
+
+    with build_client(settings) as client:
+        health_response = client.get("/health")
+        assert health_response.status_code == 200
+
+        provider_response = client.get("/api/system/providers")
+        assert provider_response.status_code == 200
+        provider_status = provider_response.json()["provider_status"]
+        assert provider_status["signal_provider_mode"] == "rss"
+        assert provider_status["social_discovery_provider_mode"] == "youtube"
+        assert provider_status["macro_provider_mode"] == "fred"
+        assert provider_status["wallet_provider_mode"] == "polymarket"
+        assert provider_status["social_discovery_ready"] is False
+        assert provider_status["social_discovery_fallback_active"] is False
 
 
 def test_dashboard_snapshot_has_professional_data() -> None:
@@ -1022,6 +1091,36 @@ def test_youtube_target_analysis_uses_public_video_fallback_on_api_error() -> No
     assert result.traders[0].evidence[0].external_id == "youtube-oembed-abc"
     assert "quotaExceeded" in result.warnings[0]
     assert "public YouTube metadata fallback" in result.warnings[0]
+
+
+def test_youtube_target_analysis_real_only_raises_on_api_error() -> None:
+    provider = YouTubeSocialDiscoveryProvider(
+        api_key="bad-key",
+        queries=("crypto market analysis",),
+        channel_ids=(),
+        video_limit=3,
+        allow_fallbacks=False,
+    )
+
+    def fail_official_api(target: str, *, limit: int):
+        raise HTTPError(
+            "https://youtube.googleapis.test",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=BytesIO(
+                b'{"error":{"message":"quota exceeded","errors":[{"reason":"quotaExceeded"}],"status":"PERMISSION_DENIED"}}'
+            ),
+        )
+
+    provider._videos_from_target = fail_official_api  # type: ignore[method-assign]
+
+    try:
+        provider.discover_target("https://www.youtube.com/watch?v=abc", video_limit=3)
+    except HTTPError as exc:
+        assert exc.code == 403
+    else:
+        raise AssertionError("real-data-only YouTube target analysis must not use fallback data")
 
 
 def test_youtube_target_analysis_resolves_public_handle_to_rss_on_api_error() -> None:

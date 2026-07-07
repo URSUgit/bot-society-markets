@@ -64,7 +64,10 @@ The Akash templates also include the social-trader discovery defaults:
 BSM_MARKET_PROVIDER=auto
 BSM_BINANCE_API_BASE_URL=https://api.binance.com
 BSM_BINANCE_QUOTE_ASSET=USDT
-BSM_SOCIAL_DISCOVERY_PROVIDER=demo
+BSM_REAL_DATA_ONLY=true
+BSM_SEED_DEMO_DATA=false
+BSM_SIGNAL_PROVIDER=rss
+BSM_SOCIAL_DISCOVERY_PROVIDER=youtube
 BSM_YOUTUBE_API_KEY=
 BSM_YOUTUBE_DISCOVERY_QUERIES=crypto market analysis,polymarket trading,prediction market analysis,macro trading
 BSM_YOUTUBE_VIDEO_LIMIT=12
@@ -73,18 +76,15 @@ BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS=1800
 
 `BSM_MARKET_PROVIDER=auto` makes the production container prefer Binance
 public spot ticks first, then Hyperliquid perps context, then CoinGecko spot
-data. If all live feeds fail, the application falls back to deterministic demo
-snapshots and reports the fallback in `/api/system/providers`.
+data. With `BSM_REAL_DATA_ONLY=true`, failed or missing providers must report
+setup/blocked state in `/api/system/providers` instead of seeding deterministic
+data.
 
-Use `demo` until you add a YouTube Data API key. The GitHub Akash Deploy
-workflow now defaults `social_discovery_provider` to `auto`: if the
-`BSM_YOUTUBE_API_KEY` repository secret exists, it renders the deployment with
-`BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`; otherwise it keeps deterministic demo
-discovery. You can still force `demo` or `youtube` from workflow dispatch.
-When the worker service is enabled, it runs social discovery on
-`BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS`; if official quota is exhausted, target
-analysis can still resolve direct videos and `@handle`/channel URLs through
-public YouTube metadata/RSS fallback with lower confidence warnings.
+The GitHub Akash Deploy workflow defaults `social_discovery_provider` to
+`auto`, which now renders `BSM_SOCIAL_DISCOVERY_PROVIDER=youtube`. Add
+`BSM_YOUTUBE_API_KEY` for creator discovery; without it, discovery remains
+blocked until a real provider is configured. When the worker service is
+enabled, it runs social discovery on `BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS`.
 
 After changing the Akash environment, verify the connector state from the
 running image:

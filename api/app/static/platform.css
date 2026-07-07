@@ -359,7 +359,8 @@ textarea:focus-visible {
 
 .state-dot.warning,
 [data-state="partial"] > .state-dot,
-[data-state="demo"] > .state-dot {
+[data-state="demo"] > .state-dot,
+[data-state="setup"] > .state-dot {
   background: var(--warning);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 14%, transparent);
 }
@@ -1031,7 +1032,8 @@ body[data-theme="dark"] .moon-icon {
 .status-chip.ready::before { background: var(--profit); }
 .status-chip.partial::before,
 .status-chip.paper::before,
-.status-chip.demo::before { background: var(--warning); }
+.status-chip.demo::before,
+.status-chip.setup::before { background: var(--warning); }
 .status-chip.blocked::before { background: var(--loss); }
 .status-chip.planned::before { background: var(--info); }
 

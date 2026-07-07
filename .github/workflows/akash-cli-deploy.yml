@@ -175,11 +175,7 @@ jobs:
 
           social_provider="${{ github.event.inputs.social_discovery_provider }}"
           if [ -z "$social_provider" ] || [ "$social_provider" = "auto" ]; then
-            if [ -n "$BSM_YOUTUBE_API_KEY" ]; then
-              social_provider="youtube"
-            else
-              social_provider="demo"
-            fi
+            social_provider="youtube"
           fi
 
           {

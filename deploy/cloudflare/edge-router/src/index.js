@@ -410,7 +410,8 @@ export default {
     if (incomingUrl.pathname === "/status" || incomingUrl.pathname === "/status/" || incomingUrl.pathname === "/ops") {
       return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
     }
-    const publicFallback = publicApiSnapshot(incomingUrl.pathname);
+    const allowPublicSnapshots = env.BSM_ALLOW_EDGE_PUBLIC_SNAPSHOTS === "true";
+    const publicFallback = allowPublicSnapshots ? publicApiSnapshot(incomingUrl.pathname) : null;
     if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback && !requireLiveOrigin) {
       return withDeliveryMode(publicFallback, "edge-snapshot", { reason: "origin override not configured" });
     }

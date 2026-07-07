@@ -322,7 +322,7 @@ class DemoSocialDiscoveryProvider:
             )
         warnings = ["Managed trading remains paper-only until KYC, suitability, adviser, and venue controls are approved."]
         if include_key_warning:
-            warnings.insert(0, "YouTube Data API key is not configured, so BITprivat is running deterministic demo discovery.")
+            warnings.insert(0, "YouTube Data API key is not configured, so creator discovery requires setup before real data is available.")
         return SocialDiscoveryResult(provider=self.source_name, youtube_configured=False, traders=traders, warnings=warnings)
 
     def discover_target(
@@ -374,16 +374,20 @@ class YouTubeSocialDiscoveryProvider:
         channel_ids: tuple[str, ...],
         video_limit: int,
         timeout_seconds: int = 10,
+        allow_fallbacks: bool = True,
     ) -> None:
         self.api_key = api_key
         self.queries = queries
         self.channel_ids = channel_ids
         self.video_limit = video_limit
         self.timeout_seconds = timeout_seconds
+        self.allow_fallbacks = allow_fallbacks
         self._public_channel_id_cache: dict[str, str | None] = {}
 
     def discover(self) -> SocialDiscoveryResult:
         if not self.api_key:
+            if not self.allow_fallbacks:
+                raise ValueError("YouTube discovery requires BSM_YOUTUBE_API_KEY in real-data-only mode")
             return DemoSocialDiscoveryProvider().discover()
 
         warnings: list[str] = []
@@ -393,6 +397,8 @@ class YouTubeSocialDiscoveryProvider:
             channel_meta = self._hydrate_channels(video_items)
             traders = self._aggregate_channels(video_items, channel_meta)
         except Exception as exc:
+            if not self.allow_fallbacks:
+                raise
             fallback = DemoSocialDiscoveryProvider().discover(include_key_warning=False)
             fallback.provider = self.source_name
             fallback.youtube_configured = True
@@ -422,6 +428,8 @@ class YouTubeSocialDiscoveryProvider:
             )
         limit = min(30, max(3, int(video_limit or self.video_limit)))
         if not self.api_key:
+            if not self.allow_fallbacks:
+                raise ValueError("YouTube target analysis requires BSM_YOUTUBE_API_KEY in real-data-only mode")
             try:
                 public_traders = self._public_target_traders(cleaned_target, limit=limit)
             except Exception as exc:
@@ -454,6 +462,8 @@ class YouTubeSocialDiscoveryProvider:
             channel_meta = self._hydrate_channels(videos)
             traders = self._aggregate_channels(videos, channel_meta)
         except Exception as exc:
+            if not self.allow_fallbacks:
+                raise
             return self._target_fallback_result(
                 cleaned_target,
                 limit=limit,
@@ -465,6 +475,16 @@ class YouTubeSocialDiscoveryProvider:
                 f"Analyzed '{cleaned_target}' from up to {limit} latest public YouTube video(s); profile is ready for signal or managed-paper deployment."
             )
         else:
+            if not self.allow_fallbacks:
+                warnings.append(
+                    f"No usable public market-analysis videos were found for '{cleaned_target}' from the official YouTube API."
+                )
+                return SocialDiscoveryResult(
+                    provider=self.source_name,
+                    youtube_configured=True,
+                    traders=[],
+                    warnings=warnings,
+                )
             fallback = self._target_fallback_result(
                 cleaned_target,
                 limit=limit,

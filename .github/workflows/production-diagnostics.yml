@@ -25,11 +25,12 @@ jobs:
       BSM_DATABASE_URL: ${{ secrets.BSM_DATABASE_URL }}
       BSM_ENVIRONMENT_NAME: production
       BSM_DEPLOYMENT_TARGET: github-diagnostic
+      BSM_REAL_DATA_ONLY: true
+      BSM_SEED_DEMO_DATA: false
       BSM_MARKET_PROVIDER: auto
-      BSM_SIGNAL_PROVIDER: demo
+      BSM_SIGNAL_PROVIDER: rss
       BSM_VENUE_SIGNAL_PROVIDERS: polymarket,kalshi
-      BSM_SOCIAL_DISCOVERY_PROVIDER: demo
-      BSM_SEED_DEMO_DATA: true
+      BSM_SOCIAL_DISCOVERY_PROVIDER: youtube
 
     steps:
       - name: Check out repository

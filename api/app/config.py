@@ -90,6 +90,7 @@ class Settings:
     database_path: Path = field(default_factory=_default_database_path)
     export_artifacts_dir: Path = field(default_factory=_default_export_artifacts_dir)
     database_url: str | None = None
+    real_data_only: bool = False
     seed_demo_data: bool = True
     scoring_version: str = "v1"
     default_user_slug: str = "demo-operator"
@@ -233,30 +234,48 @@ def _env_bool(name: str, default: bool) -> bool:
 def get_settings() -> Settings:
     database_path = Path(os.getenv("BSM_DATABASE_PATH", str(_default_database_path())))
     database_url = normalize_database_url(os.getenv("BSM_DATABASE_URL") or None)
-    seed_demo_data = _env_bool("BSM_SEED_DEMO_DATA", True)
+    real_data_only = _env_bool("BSM_REAL_DATA_ONLY", True)
+    seed_demo_data = _env_bool("BSM_SEED_DEMO_DATA", not real_data_only)
+    if real_data_only:
+        seed_demo_data = False
     force_https = _env_bool("BSM_FORCE_HTTPS", False)
     secure_session_cookie_env = os.getenv("BSM_SECURE_SESSION_COOKIE")
     secure_session_cookie = None if secure_session_cookie_env is None else _env_bool("BSM_SECURE_SESSION_COOKIE", False)
 
-    market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", "demo").lower()
+    market_provider_default = "auto" if real_data_only else "demo"
+    market_provider_mode = os.getenv("BSM_MARKET_PROVIDER", market_provider_default).lower()
     if market_provider_mode not in {"demo", "coingecko", "hyperliquid", "binance", "auto"}:
-        market_provider_mode = "demo"
+        market_provider_mode = market_provider_default
+    if real_data_only and market_provider_mode == "demo":
+        market_provider_mode = market_provider_default
 
-    signal_provider_mode = os.getenv("BSM_SIGNAL_PROVIDER", "demo").lower()
+    signal_provider_default = "rss" if real_data_only else "demo"
+    signal_provider_mode = os.getenv("BSM_SIGNAL_PROVIDER", signal_provider_default).lower()
     if signal_provider_mode not in {"demo", "rss", "reddit"}:
-        signal_provider_mode = "demo"
+        signal_provider_mode = signal_provider_default
+    if real_data_only and signal_provider_mode == "demo":
+        signal_provider_mode = signal_provider_default
 
-    social_discovery_provider = os.getenv("BSM_SOCIAL_DISCOVERY_PROVIDER", "demo").lower()
+    social_discovery_default = "youtube" if real_data_only else "demo"
+    social_discovery_provider = os.getenv("BSM_SOCIAL_DISCOVERY_PROVIDER", social_discovery_default).lower()
     if social_discovery_provider not in {"demo", "youtube"}:
-        social_discovery_provider = "demo"
+        social_discovery_provider = social_discovery_default
+    if real_data_only and social_discovery_provider == "demo":
+        social_discovery_provider = social_discovery_default
 
-    macro_provider_mode = os.getenv("BSM_MACRO_PROVIDER", "demo").lower()
+    macro_provider_default = "fred" if real_data_only else "demo"
+    macro_provider_mode = os.getenv("BSM_MACRO_PROVIDER", macro_provider_default).lower()
     if macro_provider_mode not in {"demo", "fred"}:
-        macro_provider_mode = "demo"
+        macro_provider_mode = macro_provider_default
+    if real_data_only and macro_provider_mode == "demo":
+        macro_provider_mode = macro_provider_default
 
-    wallet_provider_mode = os.getenv("BSM_WALLET_PROVIDER", "demo").lower()
+    wallet_provider_default = "polymarket" if real_data_only else "demo"
+    wallet_provider_mode = os.getenv("BSM_WALLET_PROVIDER", wallet_provider_default).lower()
     if wallet_provider_mode not in {"demo", "polymarket"}:
-        wallet_provider_mode = "demo"
+        wallet_provider_mode = wallet_provider_default
+    if real_data_only and wallet_provider_mode == "demo":
+        wallet_provider_mode = wallet_provider_default
 
     fiat_billing_provider = os.getenv("BSM_FIAT_BILLING_PROVIDER", "none").lower()
     if fiat_billing_provider not in {"none", "stripe"}:
@@ -353,6 +372,7 @@ def get_settings() -> Settings:
         database_path=database_path,
         export_artifacts_dir=export_artifacts_dir,
         database_url=database_url,
+        real_data_only=real_data_only,
         seed_demo_data=seed_demo_data,
         market_provider_mode=market_provider_mode,
         signal_provider_mode=signal_provider_mode,

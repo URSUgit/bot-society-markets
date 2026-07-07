@@ -322,7 +322,8 @@ class BotSocietyService:
         self.database.initialize()
         repository = BotSocietyRepository(self.database)
         seeded = seed_demo_dataset(repository) if self.settings.seed_demo_data else False
-        ensure_demo_user_state(repository)
+        if self.settings.seed_demo_data:
+            ensure_demo_user_state(repository)
         social_refresh = self._bootstrap_social_trader_discovery(repository)
         macro_refreshed = self._refresh_macro_data(repository)
         refreshed_signals = repository.refresh_signal_quality_scores()
@@ -330,7 +331,7 @@ class BotSocietyService:
         repository.delete_expired_wallet_connect_challenges(self._now())
         scorer = ScoringEngine(repository, self.settings.scoring_version)
         scored = scorer.score_available_predictions()
-        demo_paper_positions = self._seed_demo_paper_trading(repository)
+        demo_paper_positions = self._seed_demo_paper_trading(repository) if self.settings.seed_demo_data else 0
         alert_deliveries = self._deliver_alerts_for_predictions(repository, repository.list_predictions(limit=12))
         if seeded:
             repository.insert_pipeline_run(
@@ -786,6 +787,18 @@ class BotSocietyService:
                 ],
             )
 
+        if self.settings.real_data_only:
+            return SocialDiscoveryRunResult(
+                discovered=0,
+                updated=0,
+                provider=getattr(self.social_discovery_provider, "source_name", self.settings.social_discovery_provider),
+                youtube_configured=bool(self.settings.youtube_api_key),
+                traders=[],
+                warnings=[
+                    "Real-data-only mode skipped sample social trader bootstrap. Configure BSM_YOUTUBE_API_KEY and run discovery for live creator data."
+                ],
+            )
+
         started_at = self._now()
         result = DemoSocialDiscoveryProvider().discover(include_key_warning=False)
         result.youtube_configured = bool(self.settings.youtube_api_key)
@@ -816,6 +829,8 @@ class BotSocietyService:
             if hasattr(provider, "discover_target"):
                 result = provider.discover_target(payload.query, video_limit=payload.video_limit)
             else:
+                if self.settings.real_data_only:
+                    raise ValueError("Active social provider cannot analyze ad-hoc targets without a real data connector.")
                 result = DemoSocialDiscoveryProvider().discover_target(payload.query, video_limit=payload.video_limit)
                 result.provider = provider_name
                 result.warnings.insert(0, "Active social provider cannot analyze an ad-hoc target, so demo analysis was used.")
@@ -1400,10 +1415,16 @@ class BotSocietyService:
     ) -> list[dict[str, object]]:
         now = self._now()
         if payload.source_type in {"youtube_channel", "youtube_playlist", "youtube_video"}:
-            provider = self.social_discovery_provider if hasattr(self.social_discovery_provider, "discover_target") else DemoSocialDiscoveryProvider()
+            provider = self.social_discovery_provider if hasattr(self.social_discovery_provider, "discover_target") else None
+            if provider is None:
+                if self.settings.real_data_only:
+                    raise ValueError("YouTube trader intelligence requires a configured real social discovery provider.")
+                provider = DemoSocialDiscoveryProvider()
             try:
                 result = provider.discover_target(payload.source_url, video_limit=min(payload.max_sources, 30))
             except Exception:
+                if self.settings.real_data_only:
+                    raise
                 result = DemoSocialDiscoveryProvider().discover_target(payload.source_url, video_limit=min(payload.max_sources, 30))
             sources: list[dict[str, object]] = []
             for trader in result.traders:
@@ -3757,10 +3778,16 @@ class BotSocietyService:
                 self.wallet_provider_source = self.wallet_provider.source_name
                 summary_prefix = "Live public wallet intelligence is active."
             except Exception as exc:
-                generated_rows = self.demo_wallet_provider.generate(tracked_assets)
-                self.wallet_provider_fallback = True
-                self.wallet_provider_source = f"{self.wallet_provider.source_name}-fallback"
-                summary_prefix = f"Wallet fallback active after {exc.__class__.__name__}."
+                if self.settings.real_data_only:
+                    generated_rows = []
+                    self.wallet_provider_fallback = False
+                    self.wallet_provider_source = self.wallet_provider.source_name
+                    summary_prefix = f"Real wallet provider unavailable: {exc.__class__.__name__}."
+                else:
+                    generated_rows = self.demo_wallet_provider.generate(tracked_assets)
+                    self.wallet_provider_fallback = True
+                    self.wallet_provider_source = f"{self.wallet_provider.source_name}-fallback"
+                    summary_prefix = f"Wallet fallback active after {exc.__class__.__name__}."
 
         wallets = [
             WalletProfileView(**row)
@@ -4711,6 +4738,7 @@ class BotSocietyService:
                 self.settings.social_discovery_provider == "youtube"
                 and social_readiness.live_capable
                 and not social_readiness.ready
+                and not self.settings.real_data_only
             ),
         )
         self.provider_status_cache = (datetime.now(timezone.utc), status)
@@ -7898,10 +7926,18 @@ class BotSocietyService:
 
         try:
             market_batch = self.market_provider.generate(latest_snapshots, cycle_index)
+            if not market_batch:
+                raise ValueError("market provider returned zero snapshots")
             self.market_provider_fallback = False
             self.market_provider_source = getattr(self.market_provider, "last_source_name", self.market_provider.source_name)
             live_market_active = self.market_provider_source != self.demo_market_provider.source_name
         except Exception as exc:
+            if self.settings.real_data_only:
+                self.market_provider_fallback = False
+                self.market_provider_source = self.market_provider.source_name
+                raise ValueError(
+                    f"Real market provider failed and synthetic fallback is disabled: {exc.__class__.__name__}: {exc}"
+                ) from exc
             market_batch = self.demo_market_provider.generate(latest_snapshots, cycle_index)
             self.market_provider_fallback = True
             self.market_provider_source = f"{self.market_provider.source_name}-fallback"
@@ -7917,6 +7953,12 @@ class BotSocietyService:
             self.signal_provider_source = self._compose_signal_provider_source()
             live_signal_active = self._signal_live_active()
         except Exception as exc:
+            if self.settings.real_data_only:
+                self.signal_provider_fallback = False
+                self.signal_provider_source = self._compose_signal_provider_source()
+                raise ValueError(
+                    f"Real signal provider failed and synthetic fallback is disabled: {exc.__class__.__name__}: {exc}"
+                ) from exc
             signal_batch = self.demo_signal_provider.generate(market_batch, cycle_index)
             self.signal_provider_fallback = True
             self.signal_provider_source = f"{self._compose_signal_provider_source()}-fallback"
@@ -8339,6 +8381,10 @@ class BotSocietyService:
             self.macro_provider_fallback = False
             self.macro_provider_source = self.macro_provider.source_name
         except Exception:
+            if self.settings.real_data_only:
+                self.macro_provider_fallback = False
+                self.macro_provider_source = self.macro_provider.source_name
+                return 0
             rows = self.demo_macro_provider.generate(repository.count_pipeline_runs())
             self.macro_provider_fallback = self.settings.macro_provider_mode != "demo"
             self.macro_provider_source = (
@@ -8799,7 +8845,7 @@ class BotSocietyService:
             ready = configured and has_scope
             warning = None
             if not configured:
-                warning = "Set BSM_YOUTUBE_API_KEY before promoting YouTube discovery from demo fallback."
+                warning = "Set BSM_YOUTUBE_API_KEY before enabling real YouTube discovery."
             elif not has_scope:
                 warning = "Set BSM_YOUTUBE_DISCOVERY_QUERIES or BSM_YOUTUBE_CHANNEL_IDS so discovery has a search scope."
             return ProviderComponentStatus(
@@ -8892,6 +8938,7 @@ class BotSocietyService:
                 channel_ids=self.settings.youtube_channel_ids,
                 video_limit=self.settings.youtube_video_limit,
                 timeout_seconds=self.settings.outbound_timeout_seconds,
+                allow_fallbacks=not self.settings.real_data_only,
             )
         return DemoSocialDiscoveryProvider()
 
