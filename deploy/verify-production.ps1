@@ -142,9 +142,9 @@ $checks = @(
 
 if ($ExpectOperatorStrip) {
     $checks += @{
-        Name = "Legacy operator console"
+        Name = "Legacy dashboard routes to MVP shell"
         Url = "$RootUrl/legacy-dashboard?v=$cacheBust"
-        Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*operator-strip*" }
+        Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*bp-app*" -and $r.Content -notlike "*operator-strip*" }
     }
 }
 

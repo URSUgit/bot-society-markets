@@ -531,6 +531,13 @@ def test_professional_console_pages_are_served() -> None:
         assert "submitOrderPreview" in app_js_response.text
         assert "/api/v1/trading/preview" in app_js_response.text
         assert "bp-ideas" in app_js_response.text
+        assert "platform-register-form" in app_js_response.text
+        assert "platform-login-form" in app_js_response.text
+        assert "platform-wallet-form" in app_js_response.text
+        assert "USDC" in app_js_response.text
+        assert "USDT" in app_js_response.text
+        assert "No private keys, no custody" in app_js_response.text
+        assert "/legacy-dashboard" not in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()
 
         app_css_response = client.get("/static/platform.css")
@@ -561,14 +568,16 @@ def test_professional_console_pages_are_served() -> None:
             assert 'class="bp-app"' in route_response.text
             assert 'class="primary-nav"' in route_response.text
 
+        legacy_redirect = client.get("/legacy-dashboard", follow_redirects=False)
+        assert legacy_redirect.status_code == 307
+        assert legacy_redirect.headers["location"] == "/dashboard"
+
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
-        assert 'id="operator-strip"' in legacy_response.text
-        assert 'id="market-console-section"' in legacy_response.text
-        assert 'id="social-trader-section"' in legacy_response.text
-        assert 'id="run-all-connector-checks-button"' in legacy_response.text
-        assert 'id="order-preview-window"' in legacy_response.text
-        assert "/static/app.js?v=pro-auth-1" in legacy_response.text
+        assert 'class="bp-app"' in legacy_response.text
+        assert "/static/platform.js?v=retail-os-3" in legacy_response.text
+        assert 'id="operator-strip"' not in legacy_response.text
+        assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
         simulation_response = client.get("/simulation")
         assert simulation_response.status_code == 200

@@ -12,9 +12,9 @@ const STORAGE_KEYS = {
 };
 const I18N = {
   en: {
-    document_title: "BITprivat Command Center",
-    app_title: "Market OS",
-    app_subtitle: "Markets, bots, and strategy testing in one clear workflow.",
+    document_title: "BITprivat MVP",
+    app_title: "Trading Intelligence OS",
+    app_subtitle: "Accounts, wallets, free APIs, signals, and paper trading in one workflow.",
     nav_operate: "Operate",
     nav_overview: "Overview",
     nav_feature_status: "Feature Status",
@@ -843,22 +843,31 @@ const APP_ROUTE_ALIASES = {
   "/": APP_ROUTE_DEFAULT,
   "/app": APP_ROUTE_DEFAULT,
 };
-const ALWAYS_VISIBLE_ROUTE_PARTS = ["cycle-status", "delivery-mode-strip", "feature-alert-strip"];
+const MVP_CONNECTOR_IDS = new Set([
+  "binance-spot-market-data",
+  "coingecko-market-data",
+  "hyperliquid-market-feed",
+  "signal-ingestion",
+  "fred-macro",
+  "polymarket-intel",
+  "kalshi-surfaces",
+  "wallet-intel",
+  "youtube-social-discovery",
+]);
+const ALWAYS_VISIBLE_ROUTE_PARTS = ["cycle-status", "delivery-mode-strip"];
 const APP_ROUTES = {
   "/dashboard": {
     key: "dashboard",
-    label: "Command Center",
-    activeHash: "#market-console-section",
+    label: "MVP",
+    activeHash: "#account-section",
     sections: [
-      "operator-strip",
-      "feature-alert-strip",
       "dashboard-hero",
-      "dashboard-ribbon",
-      "pulse-section",
-      "smart-money-section",
-      "dashboard-metrics",
+      "account-section",
+      "connectors-section",
       "market-console-section",
-      "feature-readiness-section",
+      "trading-workspace-section",
+      "paper-section",
+      "social-trader-section",
     ],
   },
   "/markets": {
@@ -875,7 +884,7 @@ const APP_ROUTES = {
   },
   "/signals": {
     key: "signals",
-    label: "Signals",
+    label: "Intelligence",
     activeHash: "#social-trader-section",
     sections: ["social-trader-section", "trader-intelligence-section", "leaderboard-section", "detail-section"],
   },
@@ -887,17 +896,12 @@ const APP_ROUTES = {
   },
   "/settings": {
     key: "settings",
-    label: "Settings",
+    label: "Connect",
     activeHash: "#account-section",
     sections: [
-      "feature-alert-strip",
-      "feature-readiness-section",
       "account-section",
-      "workspace-section",
       "connectors-section",
-      "operations-infra-section",
-      "launch-section",
-      "cutover-section",
+      "workspace-section",
     ],
   },
 };
@@ -1716,11 +1720,13 @@ function renderConnectorControl(connectorControl) {
     return;
   }
 
-  summary.textContent = connectorControl.summary;
-  badge.textContent = `${connectorControl.live_or_ready_count}/${(connectorControl.connectors || []).length} ready`;
-  badge.dataset.variant = connectorControl.live_or_ready_count >= 4 ? "positive" : "warning";
+  const mvpConnectors = (connectorControl.connectors || []).filter((connector) => MVP_CONNECTOR_IDS.has(connector.id));
+  const readyCount = mvpConnectors.filter((connector) => ["live", "ready"].includes(connector.state)).length;
+  summary.textContent = `${readyCount}/${mvpConnectors.length} free MVP connectors are live or ready. Add only the API keys you already have; demo-safe fallbacks stay available.`;
+  badge.textContent = `${readyCount}/${mvpConnectors.length} ready`;
+  badge.dataset.variant = readyCount >= 4 ? "positive" : "warning";
 
-  grid.innerHTML = (connectorControl.connectors || []).map((connector) => {
+  grid.innerHTML = mvpConnectors.map((connector) => {
     const readinessPercent = Math.round((connector.readiness_score || 0) * 100);
     const envKeys = (connector.env_keys || []).length
       ? connector.env_keys.map((envKey) => `<span>${envKey}</span>`).join("")
@@ -1838,12 +1844,13 @@ async function runAllConnectorDiagnostics(button = null) {
   if (button) {
     button.disabled = true;
   }
-  setStatus("Running activation checks across all connectors...");
+  setStatus("Running activation checks across MVP connectors...");
   try {
     const payload = await fetchJson("/api/system/connectors/diagnostics");
-    renderConnectorDiagnostics(payload.connector_diagnostics || []);
-    const blockedCount = (payload.connector_diagnostics || []).filter((item) => item.blockers?.length).length;
-    setStatus(`Connector sweep finished. ${blockedCount} connector${blockedCount === 1 ? "" : "s"} still blocked.`);
+    const diagnostics = (payload.connector_diagnostics || []).filter((item) => MVP_CONNECTOR_IDS.has(item.connector_id));
+    renderConnectorDiagnostics(diagnostics);
+    const blockedCount = diagnostics.filter((item) => item.blockers?.length).length;
+    setStatus(`MVP connector sweep finished. ${blockedCount} connector${blockedCount === 1 ? "" : "s"} still blocked.`);
   } finally {
     if (button) {
       button.disabled = false;

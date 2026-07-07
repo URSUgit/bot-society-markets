@@ -20,7 +20,7 @@
           <input type="search" placeholder="Search markets, traders, strategies&hellip;" autocomplete="off" aria-label="Search markets, traders, strategies">
           <kbd>&#8984;K</kbd>
         </label>
-        <div class="app-command-actions" aria-label="Account status and notifications">
+        <div class="app-command-actions" aria-label="Account and connection actions">
           <label class="app-toolbar-select app-language-control" aria-label="Language">
             <span class="app-toolbar-icon" aria-hidden="true">Aa</span>
             <select data-preference-language aria-label="Language">
@@ -39,12 +39,8 @@
           <a class="app-icon-button app-settings-link" href="/settings" aria-label="Settings">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path></svg>
           </a>
-          <span class="app-alert-count"><i aria-hidden="true"></i>3</span>
-          <button class="app-icon-button" type="button" aria-label="Notifications">
-            <span class="app-bell-glyph" aria-hidden="true"></span>
-            <em>2</em>
-          </button>
-          <span class="app-wallet-pill"><i aria-hidden="true"></i>0x55AF&hellip;9d55</span>
+          <a class="button tertiary small-button" href="/settings#account-section">Create account</a>
+          <a class="app-wallet-pill" href="/settings#account-section"><i aria-hidden="true"></i>Connect wallet</a>
           <span class="app-avatar" aria-label="User avatar">IP</span>
         </div>
       </div>
@@ -53,7 +49,7 @@
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M5 19V9m6 10V5m6 14v-7"></path></svg>
           </span>
-          Command Center
+          MVP
         </a>
         <a data-icon="markets" data-nav-kind="page" data-route="/markets" href="/markets">
           <span class="nav-icon" aria-hidden="true">
@@ -71,13 +67,13 @@
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M4 13c2-4 4-4 6 0s4 4 6 0 4-4 6 0"></path><path d="M4 18c2-2 4-2 6 0s4 2 6 0 4-2 6 0"></path></svg>
           </span>
-          Signals
+          Intelligence
         </a>
         <a data-icon="lab" data-nav-kind="app" href="/simulation" aria-label="Lab opens the strategy lab application">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M9 3h6"></path><path d="M10 3v6l-5 8a3 3 0 0 0 3 5h8a3 3 0 0 0 3-5l-5-8V3"></path><path d="M8 15h8"></path></svg>
           </span>
-          Lab
+          Strategy Lab
           <span class="nav-route-badge">APP</span>
         </a>
         <a data-icon="portfolio" data-nav-kind="page" data-route="/portfolio" href="/portfolio">
@@ -90,7 +86,7 @@
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path></svg>
           </span>
-          Settings
+          Connect
         </a>
       </nav>
       <nav class="sidebar-nav dashboard-route-resolver" aria-hidden="true" tabindex="-1">
@@ -100,11 +96,9 @@
         <a href="#social-trader-section" data-route-resolver="true">Signals</a>
         <a href="#paper-section" data-route-resolver="true">Portfolio</a>
         <a href="#account-section" data-route-resolver="true">Settings</a>
-        <a href="#feature-readiness-section" data-route-resolver="true" data-i18n="nav_feature_status">Feature Status</a>
         <a href="#trader-intelligence-section" data-route-resolver="true">Trader Intelligence</a>
         <a href="#leaderboard-section" data-route-resolver="true" data-i18n="nav_bots">Bots</a>
         <a href="#connectors-section" data-route-resolver="true" data-i18n="nav_connectors">Connectors</a>
-        <a href="#operations-infra-section" data-route-resolver="true" data-i18n="nav_infrastructure">Infrastructure</a>
         <a href="#workspace-section" data-route-resolver="true" data-i18n="nav_rules_alerts">Rules & Alerts</a>
       </nav>
     </aside>
@@ -185,38 +179,33 @@
 
       <section class="dashboard-hero card command-brief app-page-header">
         <div class="command-brief-main">
-          <p class="live-command-pill"><span aria-hidden="true"></span><strong>LIVE</strong> Prices update every tick</p>
-          <h2>Command Center</h2>
-          <p class="page-header-subtitle">0 open positions &middot; 3 traders being copied</p>
+          <p class="live-command-pill"><span aria-hidden="true"></span><strong>MVP</strong> Paper trading, free data, read-only wallets</p>
+          <h2>All-in-one trading intelligence platform</h2>
+          <p class="page-header-subtitle">Create an account, connect a wallet, activate free APIs, then test trades safely.</p>
           <p class="hero-submeta" id="hero-submeta">Loading market and execution context...</p>
         </div>
         <div class="command-brief-actions">
-          <button class="button secondary app-export-button" type="button"><span aria-hidden="true"></span>Export</button>
-          <select class="page-range-select" aria-label="Dashboard time range">
-            <option value="30d" selected>30D</option>
-            <option value="7d">7D</option>
-            <option value="1d">1D</option>
-            <option value="all">ALL</option>
-          </select>
-          <a class="button primary app-new-position-button" href="#trading-workspace-section">+ New Position</a>
+          <a class="button secondary" href="/settings#account-section">Create account</a>
+          <a class="button secondary" href="/settings#connectors-section">Connect APIs</a>
+          <a class="button primary app-new-position-button" href="#trading-workspace-section">Paper trade</a>
         </div>
         <button class="sr-only" id="run-cycle-button" type="button">Run cycle</button>
         <div class="command-brief-kpis" aria-label="Workspace quick metrics">
           <article>
-            <span>Mode</span>
-            <strong>Paper-first</strong>
-            <small>Research and simulation safe mode</small>
-          </article>
-          <article>
-            <span>Execution</span>
-            <strong>Risk-gated</strong>
-            <small>Preview, checks, then submit</small>
-          </article>
-          <article>
-            <span>Primary view</span>
-            <strong>Chart + ticket</strong>
-            <small>Compact pro workflow</small>
-          </article>
+              <span>Account</span>
+              <strong>Create free</strong>
+              <small>Email workspace with demo fallback</small>
+            </article>
+            <article>
+              <span>Wallet</span>
+              <strong>Read-only</strong>
+              <small>MetaMask, Base, Polygon, Arbitrum</small>
+            </article>
+            <article>
+              <span>Stablecoins</span>
+              <strong>USDC / USDT</strong>
+              <small>Track rails before money movement</small>
+            </article>
           <article>
             <span>Status</span>
             <strong id="command-brief-status">Syncing</strong>
@@ -771,15 +760,15 @@
         <article class="card wide-card">
           <div class="section-head">
             <div>
-              <p class="eyebrow">Connector command</p>
-              <h3>Data, venue, and intelligence adapters powering the bot universe</h3>
+              <p class="eyebrow">Free connectors</p>
+              <h3>Market data, exchange APIs, wallets, and intelligence feeds</h3>
             </div>
             <div class="hero-actions compact-actions">
               <button class="button tertiary small-button" id="run-all-connector-checks-button" type="button">Run All Checks</button>
               <span class="status-pill" id="connector-live-count">Loading</span>
             </div>
           </div>
-          <p class="panel-note" id="connector-summary">Loading connector inventory...</p>
+          <p class="panel-note" id="connector-summary">Loading free API and exchange connector readiness...</p>
           <div class="connector-grid" id="connector-grid"></div>
           <div class="connector-diagnostic-panel" id="connector-diagnostic-panel" hidden>
             <div class="section-head">
@@ -795,7 +784,7 @@
           </div>
         </article>
 
-        <article class="card side-card" id="infrastructure-section">
+          <article class="card side-card" id="infrastructure-section" hidden>
           <div class="section-head">
             <div>
               <p class="eyebrow">Infrastructure readiness</p>
@@ -1305,8 +1294,8 @@
         <article class="card wide-card">
           <div class="section-head">
             <div>
-              <p class="eyebrow" data-i18n="account_eyebrow">Workspace access</p>
-              <h3 data-i18n="account_title">Start in demo mode or sign in for a personal workspace</h3>
+              <p class="eyebrow" data-i18n="account_eyebrow">Account, wallet, APIs</p>
+              <h3 data-i18n="account_title">Create the free MVP workspace and connect your trading stack</h3>
             </div>
             <span class="badge" id="auth-status-badge">Checking session</span>
           </div>
@@ -1521,7 +1510,7 @@
               <div class="workspace-head">
                 <div>
                   <h4>Connected wallets</h4>
-                  <p class="workspace-subtitle" id="wallet-connect-summary">Sign in to connect and manage non-custodial wallets.</p>
+                  <p class="workspace-subtitle" id="wallet-connect-summary">Sign in to connect read-only wallets for stablecoin and portfolio intelligence.</p>
                 </div>
                 <span class="status-pill" id="wallet-connect-status">Locked</span>
               </div>
@@ -1561,11 +1550,16 @@
                 </label>
                 <button class="button tertiary" type="submit">Connect wallet</button>
               </form>
+              <div class="connector-meta stablecoin-rail-list" aria-label="Supported stablecoin rails">
+                <span><strong>Stablecoins:</strong> USDC, USDT</span>
+                <span><strong>Low-cost rails:</strong> Base, Arbitrum, Polygon, Optimism, BNB Chain</span>
+                <span><strong>Mode:</strong> read-only tracking before any live transfer or execution workflow</span>
+              </div>
               <ul class="workspace-list" id="wallet-connect-list"></ul>
               <p class="panel-note">Wallet connection is read-only and non-custodial. EVM chains require an on-wallet signature challenge; private keys are never stored by BITprivat.</p>
             </article>
           </div>
-          <div class="billing-control-grid">
+          <div class="billing-control-grid" hidden>
             <article class="workspace-card billing-workspace-card">
               <div class="workspace-head">
                 <div>

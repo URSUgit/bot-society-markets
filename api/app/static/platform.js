@@ -278,6 +278,16 @@ function statusChip(label, stateName = "partial") {
   return `<span class="status-chip ${escapeHtml(stateName)}">${escapeHtml(label)}</span>`;
 }
 
+function showToast(message) {
+  const region = document.getElementById("toast-region");
+  if (!region) return;
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  region.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 4200);
+}
+
 async function fetchJson(path, options = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 14000);
@@ -297,6 +307,75 @@ async function fetchJson(path, options = {}) {
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function refreshDashboardAfterMutation(message) {
+  await loadDashboard(true);
+  renderCurrentPage();
+  if (document.body.classList.contains("drawer-open")) openAccount();
+  showToast(message);
+}
+
+async function registerPlatformUser(form) {
+  const data = new FormData(form);
+  await fetchJson("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      display_name: data.get("display_name"),
+      email: data.get("email"),
+      password: data.get("password"),
+    }),
+  });
+  await refreshDashboardAfterMutation("Account created. Your personal workspace is active.");
+}
+
+async function loginPlatformUser(form) {
+  const data = new FormData(form);
+  await fetchJson("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: data.get("email"),
+      password: data.get("password"),
+    }),
+  });
+  await refreshDashboardAfterMutation("Signed in.");
+}
+
+function isEvmChain(chain) {
+  return new Set(["ethereum", "arbitrum", "base", "polygon", "optimism", "bsc", "avalanche"]).has(String(chain || "").toLowerCase());
+}
+
+async function connectPlatformWallet(form) {
+  const data = new FormData(form);
+  const chain = String(data.get("chain") || "base").toLowerCase();
+  const provider = String(data.get("provider") || "walletconnect").toLowerCase();
+  let address = String(data.get("address") || "").trim();
+  const label = String(data.get("label") || "").trim() || null;
+  if (isEvmChain(chain)) {
+    if (!window.ethereum?.request) throw new Error("Install or unlock MetaMask, Rabby, or Coinbase Wallet to verify an EVM wallet.");
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    address = String(address || accounts?.[0] || "").toLowerCase();
+    if (!address) throw new Error("No wallet address was returned by the browser wallet.");
+    const challenge = await fetchJson("/api/me/wallets/challenge", {
+      method: "POST",
+      body: JSON.stringify({ chain, provider, address, label }),
+    });
+    const signature = await window.ethereum.request({
+      method: "personal_sign",
+      params: [challenge.message, address],
+    });
+    await fetchJson("/api/me/wallets/verify", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challenge.challenge_id, signature }),
+    });
+  } else {
+    if (!address) throw new Error("Paste the public wallet address for this non-EVM chain.");
+    await fetchJson("/api/me/wallets", {
+      method: "POST",
+      body: JSON.stringify({ chain, provider, address, label }),
+    });
+  }
+  await refreshDashboardAfterMutation("Wallet connected in read-only mode.");
 }
 
 function loadDashboard(force = false) {
@@ -593,10 +672,10 @@ function renderSocial(payload) {
   const traders = social.top_traders || [];
   const sState = socialState(payload);
   return `
-    ${pageHeader("Expert Bots", "Explore one creator profile at a time", "Each bot is a BITprivat research model built from public evidence. Proxy returns are not verified trading performance.", `<button class="button secondary" type="button" data-social-method>How scoring works</button><a class="button" href="/legacy-dashboard#social-trader-section">Advanced discovery</a>`)}
+    ${pageHeader("Expert Bots", "Explore one creator profile at a time", "Each bot is a BITprivat research model built from public evidence. Proxy returns are not verified trading performance.", `<button class="button secondary" type="button" data-social-method>How scoring works</button><a class="button" href="/connections">Connect sources</a>`)}
     <section class="inline-notice" style="margin-bottom:16px"><span class="state-dot ${sState === "live" ? "live" : "warning"}"></span><p><strong>${sState === "live" ? "YouTube discovery configured." : "Research/demo discovery is active."}</strong> Creator videos are thesis evidence, not proof of fills. Market-validated outcomes must replace proxy performance before commercial claims.</p></section>
     <section class="metric-grid"><article class="metric-card"><span>Creator profiles</span><strong>${number(traders.length)}</strong><small>Indexed research bots</small></article><article class="metric-card"><span>Paper allocation</span><strong>${money(social.allocated_usd || 0)}</strong><small>Never presented as live capital</small></article><article class="metric-card"><span>Available paper limit</span><strong>${money(social.unallocated_usd || social.portfolio_limit_usd || 0)}</strong><small>User-controlled simulation limit</small></article><article class="metric-card"><span>Discovery mode</span><strong>${escapeHtml(social.provider_mode || "demo")}</strong><small>Provider truth shown above</small></article></section>
-    <section class="card-grid">${traders.map(renderTraderCard).join("") || `<div class="empty-state"><div><h2>No creator profiles found</h2><p>Configure YouTube discovery or open the operator console to run a research scan.</p></div></div>`}</section>`;
+    <section class="card-grid">${traders.map(renderTraderCard).join("") || `<div class="empty-state"><div><h2>No creator profiles found</h2><p>Connect creator intelligence sources to run a research scan.</p></div></div>`}</section>`;
 }
 
 function renderTraderCard(trader) {
@@ -646,14 +725,14 @@ function renderPortfolio(payload) {
 function renderConnections(payload) {
   const p = payload.provider_status || {};
   const connectors = [
-    { name: "Market prices", source: p.market_provider_source, mode: p.market_provider_mode, ready: p.market_provider_ready, live: marketState(payload) === "live", detail: p.market_provider_warning },
-    { name: "Creator discovery", source: p.social_discovery_provider_source, mode: p.social_discovery_provider_mode, ready: p.social_discovery_ready, live: socialState(payload) === "live", detail: p.social_discovery_warning },
+    { name: "Exchange market APIs", source: p.market_provider_source, mode: p.market_provider_mode, ready: p.market_provider_ready, live: marketState(payload) === "live", detail: p.market_provider_warning || "Binance, Hyperliquid, and CoinGecko-style free market feeds power the MVP when configured." },
+    { name: "Prediction market APIs", source: "Polymarket / Kalshi public surfaces", mode: "public", ready: true, live: true, detail: "Public event-market surfaces support research and paper strategies without live execution." },
+    { name: "Creator intelligence", source: p.social_discovery_provider_source, mode: p.social_discovery_provider_mode, ready: p.social_discovery_ready, live: socialState(payload) === "live", detail: p.social_discovery_warning },
     { name: "Macro data", source: p.macro_provider_source, mode: p.macro_provider_mode, ready: p.macro_provider_ready, live: p.macro_provider_live_capable && p.macro_provider_configured, detail: p.macro_provider_warning },
-    { name: "Wallet intelligence", source: p.wallet_provider_source, mode: p.wallet_provider_mode, ready: p.wallet_provider_ready, live: p.wallet_provider_live_capable && p.wallet_provider_configured, detail: p.wallet_provider_warning },
-    { name: "Shared database", source: p.database_target || p.database_backend, mode: p.database_backend, ready: p.database_backend === "postgresql", live: p.database_backend === "postgresql", detail: p.database_backend === "postgresql" ? "Web and workers can share durable state." : "SQLite is temporary and does not safely share state across services." },
+    { name: "Wallet and stablecoin rails", source: p.wallet_provider_source || "Read-only wallet connection", mode: p.wallet_provider_mode, ready: p.wallet_provider_ready, live: p.wallet_provider_live_capable && p.wallet_provider_configured, detail: p.wallet_provider_warning || "Track read-only wallet addresses and USDC/USDT rails on Base, Arbitrum, Polygon, Optimism, Ethereum, Solana, and Bitcoin." },
   ];
   return `
-    ${pageHeader("Connections", "Know exactly what is connected", "A green state means configured and ready. Demo, partial, and blocked states stay visible instead of silently falling back.", `<a class="button secondary" href="/status">System status</a><a class="button" href="/legacy-dashboard#connectors-section">Operator controls</a>`)}
+    ${pageHeader("Connections", "Free APIs, exchanges, wallets, and intelligence feeds", "Connect only what you already have. Demo-safe fallbacks remain visible, and credentials stay in secret stores.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
     <section class="card-grid">${connectors.map((connector) => `
       <article class="provider-card"><div class="card-topline"><span class="card-icon">${escapeHtml(initials(connector.name))}</span>${statusChip(connector.live ? "Live" : connector.ready ? "Demo/ready" : "Needs setup", connector.live ? "ready" : connector.ready ? "demo" : "blocked")}</div><h3>${escapeHtml(connector.name)}</h3><p>${escapeHtml(connector.detail || "No provider warning reported.")}</p><div class="detail-list"><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div></div><div class="card-footer"><small>${connector.live ? "Provider-backed" : "Not production-complete"}</small><button class="text-link" type="button" data-connection-detail="${escapeHtml(connector.name)}">Details</button></div></article>`).join("")}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Credentials stay out of this interface.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
@@ -671,7 +750,7 @@ function renderSettings(payload) {
     ${pageHeader("Settings", "Make BITprivat fit how you think", "Language, appearance, experience level, number formatting, and safety confirmations remain consistent on every page.")}
     <section class="content-grid two">
       <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Display</h2><p>Saved on this browser immediately.</p></div></div><div class="setting-row"><span class="setting-copy"><strong>Dark appearance</strong><span>Use a low-light interface across all product pages.</span></span><label class="toggle"><input type="checkbox" data-setting-theme ${state.theme === "dark" ? "checked" : ""}><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Professional details</strong><span>Show source schemas, technical metrics, and advanced controls.</span></span><label class="toggle"><input type="checkbox" data-setting-experience ${state.experience === "pro" ? "checked" : ""}><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Language</strong><span>English is default; Romanian is available across the shared shell.</span></span><select class="chip-button" data-setting-language><option value="en" ${state.language === "en" ? "selected" : ""}>English</option><option value="ro" ${state.language === "ro" ? "selected" : ""}>Romana</option></select></div></article>
-      <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Safety</h2><p>Live execution controls remain locked until approved.</p></div></div><div class="setting-row"><span class="setting-copy"><strong>Confirm every order</strong><span>Always show estimated fees, slippage, and impact before submission.</span></span><label class="toggle"><input type="checkbox" checked disabled><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Paper-first mode</strong><span>Orders use simulated capital unless a future live workflow passes all gates.</span></span><label class="toggle"><input type="checkbox" checked disabled><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Account security</strong><span>${session.authenticated ? "Manage MFA and onboarding in the account console." : "Sign in before changing personal security settings."}</span></span><a class="button secondary small" href="/legacy-dashboard#account-section">Open account</a></div></article>
+      <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Safety</h2><p>Live execution controls remain locked until approved.</p></div></div><div class="setting-row"><span class="setting-copy"><strong>Confirm every order</strong><span>Always show estimated fees, slippage, and impact before submission.</span></span><label class="toggle"><input type="checkbox" checked disabled><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Paper-first mode</strong><span>Orders use simulated capital unless a future live workflow passes all gates.</span></span><label class="toggle"><input type="checkbox" checked disabled><i></i></label></div><div class="setting-row"><span class="setting-copy"><strong>Account security</strong><span>${session.authenticated ? "Manage account and connected wallets here." : "Create a free account before changing personal security settings."}</span></span><button class="button secondary small" type="button" data-open-account>Open account</button></div></article>
     </section>
     <section class="panel" style="margin-top:14px"><div class="panel-head"><div class="panel-title"><h2>Product truth</h2><p>These labels cannot be disabled.</p></div></div><div class="setting-row"><span class="setting-copy"><strong>Data source and freshness</strong><span>Every material value should state where it came from and when it was observed.</span></span>${statusChip("Required", "ready")}</div><div class="setting-row"><span class="setting-copy"><strong>Demo, proxy, paper, and live labels</strong><span>Simulation and creator proxy results remain visibly separated from verified outcomes.</span></span>${statusChip("Required", "ready")}</div></section>`;
 }
@@ -820,7 +899,7 @@ function openOrderPreview(asset = "BTC") {
       kicker: "Personal workspace required",
       title: "Sign in before previewing an order",
       body: `<section class="drawer-section"><p>Order previews use your personal paper balance, exposure, and risk limits. The shared demo workspace is intentionally read-only.</p></section><div class="inline-notice"><span class="state-dot warning"></span><p>No order was created. Sign in or register, then return to Practice to calculate fees, slippage, and risk checks.</p></div>`,
-      footer: `<button class="button secondary" type="button" data-close-drawer>Not now</button><a class="button" href="/legacy-dashboard#account-section">Sign in or register</a>`,
+      footer: `<button class="button secondary" type="button" data-close-drawer>Not now</button><button class="button" type="button" data-open-account>Sign in or register</button>`,
     });
     return;
   }
@@ -885,7 +964,7 @@ function openConnectionDetail(name) {
     kicker: "Connection detail",
     title: name,
     body: `<section class="drawer-section"><p>Provider health, secrets, data rights, and production readiness are independent checks. A configured API is not automatically approved for commercial live execution.</p></section><section class="drawer-section"><h3>Related readiness items</h3><div class="compact-list">${relevant.length ? relevant.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(item.label || item.name || item.key)}</strong><span>${escapeHtml(item.detail || item.summary || item.state)}</span></span>${statusChip(item.state || "partial", item.state || "partial")}</div>`).join("") : emptyCompact("No detailed readiness record matched this connection.")}</div></section>`,
-    footer: `<a class="button secondary" href="/status">Open status</a><a class="button" href="/legacy-dashboard#connectors-section">Operator controls</a>`,
+    footer: `<a class="button secondary" href="/status">Open status</a><a class="button" href="/connections">Connections</a>`,
   });
 }
 
@@ -906,11 +985,12 @@ function openLesson(lessonId) {
 function openAccount() {
   const session = state.dashboard?.auth_session || {};
   const profile = state.dashboard?.user_profile || {};
+  const wallets = profile.wallet_connections || [];
   openDrawer({
-    kicker: session.authenticated ? "Personal workspace" : "Demo workspace",
-    title: session.user?.display_name || profile.display_name || "BITprivat account",
-    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Demo access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Research")}</strong></div><div><span>MFA</span><strong>${session.mfa_enabled ? "Enabled" : "Not enabled"}</strong></div><div><span>Onboarding</span><strong>${escapeHtml(session.onboarding?.stage || "Not started")}</strong></div></div></section><div class="inline-notice"><span class="state-dot warning"></span><p>Personal strategies and durable preferences require an authenticated workspace and shared production database.</p></div>`,
-    footer: `<a class="button" href="/legacy-dashboard#account-section">Manage account</a>`,
+    kicker: session.authenticated ? "Personal workspace" : "Free MVP workspace",
+    title: session.user?.display_name || profile.display_name || "Create account and connect wallet",
+    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Demo access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Free research")}</strong></div><div><span>Wallets</span><strong>${wallets.length} connected</strong></div><div><span>Trading mode</span><strong>Paper-first</strong></div></div></section><div class="inline-notice"><span class="state-dot warning"></span><p>Accounts unlock durable preferences, paper strategies, alerts, and read-only wallet tracking. Live execution stays locked until risk, legal, and provider gates are complete.</p></div>${session.authenticated ? "" : `<section class="drawer-section"><h3>Create free account</h3><form class="stack-form" id="platform-register-form"><label><span>Name</span><input name="display_name" type="text" autocomplete="name" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label><button class="button" type="submit">Create account</button></form></section><section class="drawer-section"><h3>Sign in</h3><form class="stack-form" id="platform-login-form"><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label><button class="button secondary" type="submit">Sign in</button></form></section>`}<section class="drawer-section"><h3>Connect read-only wallet</h3><form class="stack-form" id="platform-wallet-form"><label><span>Chain</span><select name="chain"><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="polygon">Polygon</option><option value="optimism">Optimism</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option><option value="bitcoin">Bitcoin</option></select></label><label><span>Provider</span><select name="provider"><option value="metamask">MetaMask</option><option value="walletconnect">WalletConnect</option><option value="coinbase">Coinbase Wallet</option><option value="phantom">Phantom</option><option value="ledger">Ledger</option></select></label><label><span>Address</span><input name="address" type="text" maxlength="128" placeholder="Auto-filled for browser EVM wallets"></label><label><span>Label</span><input name="label" type="text" maxlength="64" placeholder="Main USDC wallet"></label><button class="button" type="submit">Connect wallet</button></form><div class="card-meta"><span>USDC</span><span>USDT</span><span>Base</span><span>Arbitrum</span><span>Polygon</span><span>Optimism</span></div><p class="muted-copy">Read-only wallet tracking only. No private keys, no custody, and no stablecoin transfer button in this MVP.</p></section><section class="drawer-section"><h3>Connected wallets</h3>${wallets.length ? `<div class="compact-list">${wallets.map((wallet) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || wallet.provider)}</strong><span>${escapeHtml(wallet.chain)} · ${escapeHtml(wallet.address)}</span></span></div>`).join("")}</div>` : `<p class="muted-copy">No wallets connected yet.</p>`}</section>`,
+    footer: `<a class="button secondary" href="/connections">API connections</a><button class="button" type="button" data-close-drawer>Close</button>`,
   });
 }
 
@@ -1029,7 +1109,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-open-lesson], [data-close-drawer], [data-retry-page], [data-data-filter]");
+ const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-open-lesson], [data-open-account], [data-close-drawer], [data-retry-page], [data-data-filter]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -1042,8 +1122,9 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-social-method")) openMethodology();
     if (target.hasAttribute("data-open-license")) openLicenseGuide();
     if (target.dataset.connectionDetail) openConnectionDetail(target.dataset.connectionDetail);
-    if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
-    if (target.hasAttribute("data-close-drawer")) closeDrawer();
+ if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
+ if (target.hasAttribute("data-open-account")) openAccount();
+ if (target.hasAttribute("data-close-drawer")) closeDrawer();
     if (target.hasAttribute("data-retry-page")) renderCurrentPage(true);
     if (target.dataset.dataFilter) {
       state.dataFilter = target.dataset.dataFilter;
@@ -1051,7 +1132,7 @@ function bindGlobalEvents() {
     }
   });
 
-  document.addEventListener("submit", (event) => {
+  document.addEventListener("submit", async (event) => {
     if (event.target.id === "idea-form") {
       event.preventDefault();
       saveIdea(event.target);
@@ -1059,6 +1140,22 @@ function bindGlobalEvents() {
     if (event.target.id === "order-preview-form") {
       event.preventDefault();
       submitOrderPreview(event.target);
+    }
+    try {
+      if (event.target.id === "platform-register-form") {
+        event.preventDefault();
+        await registerPlatformUser(event.target);
+      }
+      if (event.target.id === "platform-login-form") {
+        event.preventDefault();
+        await loginPlatformUser(event.target);
+      }
+      if (event.target.id === "platform-wallet-form") {
+        event.preventDefault();
+        await connectPlatformWallet(event.target);
+      }
+    } catch (error) {
+      showToast(error.message || "Account action failed.");
     }
   });
 

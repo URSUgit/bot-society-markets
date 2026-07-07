@@ -1581,8 +1581,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(STATIC_DIR / "platform.html")
 
     @app.get("/legacy-dashboard")
-    def legacy_dashboard() -> FileResponse:
-        return FileResponse(STATIC_DIR / "dashboard.html")
+    def legacy_dashboard() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     @app.get("/simulation")
     def simulation_page() -> FileResponse:

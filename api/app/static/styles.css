@@ -1960,6 +1960,10 @@ form:has(:disabled) {
   display: none;
 }
 
+body.dashboard-body .dashboard-main [hidden] {
+  display: none !important;
+}
+
 .connector-diagnostic-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

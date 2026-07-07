@@ -1,6 +1,5 @@
 import {
   APP_JS,
-  DASHBOARD_HTML,
   HYPERLIQUID_TOKENS_CSS,
   INDEX_HTML,
   LIGHTWEIGHT_CHARTS_JS,
@@ -120,7 +119,7 @@ function appAssetFallback(pathname) {
     return assetResponse(PLATFORM_HTML, "text/html; charset=utf-8");
   }
   if (pathname === "/legacy-dashboard" || pathname === "/legacy-dashboard/") {
-    return assetResponse(DASHBOARD_HTML, "text/html; charset=utf-8");
+    return assetResponse(PLATFORM_HTML, "text/html; charset=utf-8");
   }
   if (pathname === "/simulation" || pathname === "/simulation/" || pathname === "/lab") {
     return assetResponse(SIMULATION_HTML, "text/html; charset=utf-8");

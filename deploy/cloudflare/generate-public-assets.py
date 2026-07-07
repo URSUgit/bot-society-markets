@@ -13,7 +13,6 @@ OUTPUT = ROOT / "deploy" / "cloudflare" / "edge-router" / "src" / "public-assets
 ASSETS = [
     ("INDEX_HTML", STATIC_DIR / "index.html"),
     ("PLATFORM_HTML", STATIC_DIR / "platform.html"),
-    ("DASHBOARD_HTML", STATIC_DIR / "dashboard.html"),
     ("SIMULATION_HTML", STATIC_DIR / "simulation.html"),
     ("STATUS_HTML", STATIC_DIR / "status.html"),
     ("TERMS_HTML", STATIC_DIR / "terms.html"),
