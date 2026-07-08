@@ -138,6 +138,36 @@ class SignalView(BaseModel):
     observed_at: str
 
 
+class NewsSentimentAssetScore(BaseModel):
+    asset: str
+    score: float = Field(ge=-1, le=1)
+    average_relevance: float = Field(ge=0, le=1)
+    headline_count: int = Field(ge=0)
+    positive_count: int = Field(ge=0)
+    negative_count: int = Field(ge=0)
+    neutral_count: int = Field(ge=0)
+    top_headlines: list[str] = Field(default_factory=list)
+
+
+class NewsSentimentSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    llm_enabled: bool = False
+    summary: str
+    assets: list[NewsSentimentAssetScore] = Field(default_factory=list)
+
+
+class DailyMarketSummaryDelivery(BaseModel):
+    generated_at: str
+    user_slug: str
+    title: str
+    message: str
+    llm_generated: bool = False
+    delivered_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    skipped_reason: str | None = None
+
+
 class BotSummary(BaseModel):
     slug: str
     name: str

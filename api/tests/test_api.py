@@ -2753,6 +2753,179 @@ def test_exchange_feed_snapshot_samples_binance_public_prices(monkeypatch) -> No
         assert "/api/v3/ticker/24hr" in requests[0]
 
 
+def test_nim_news_classification_enriches_and_caches_headlines() -> None:
+    class FakeNimResponse:
+        model = "meta/llama-3.3-70b-instruct"
+        content = '{"ticker":"BTC","sentiment":0.72,"relevance":0.91,"category":"flows"}'
+
+        def json(self):
+            return json.loads(self.content)
+
+    with build_client(Settings()) as client:
+        service = client.app.state.bot_society_service
+        repository = BotSocietyRepository(service.database)
+        calls = 0
+
+        def fake_try_ask(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return FakeNimResponse()
+
+        service.nim_client.api_key = "test-key"
+        service.nim_client.try_ask = fake_try_ask
+        signal = {
+            "external_id": "rss-test-btc",
+            "asset": "BTC",
+            "source": "Example RSS",
+            "provider_name": "rss-news-provider",
+            "source_type": "news",
+            "author_handle": None,
+            "engagement_score": None,
+            "channel": "news",
+            "title": "Bitcoin ETF inflows accelerate again",
+            "summary": "ETF desks reported stronger inflows.",
+            "sentiment": 0.1,
+            "relevance": 0.5,
+            "url": "https://example.com/btc-etf",
+            "observed_at": "2026-07-08T10:00:00Z",
+            "ingest_batch_id": "rss-test",
+        }
+
+        first = service._enrich_news_signals_with_nim(repository, [dict(signal)], ["BTC"])[0]
+        second = service._enrich_news_signals_with_nim(repository, [dict(signal)], ["BTC"])[0]
+
+        assert calls == 1
+        assert first["sentiment"] == 0.72
+        assert first["relevance"] == 0.91
+        assert first["provider_name"] == "rss-news-provider+nvidia-nim"
+        assert second["sentiment"] == 0.72
+        assert "NIM category: flows" in second["summary"]
+
+
+def test_news_sentiment_endpoint_aggregates_recent_news_signals() -> None:
+    with build_client(Settings()) as client:
+        service = client.app.state.bot_society_service
+        repository = BotSocietyRepository(service.database)
+        repository.upsert_signals(
+            [
+                {
+                    "external_id": "news-btc-positive",
+                    "asset": "BTC",
+                    "source": "RSS",
+                    "provider_name": "rss-news-provider+nvidia-nim",
+                    "source_type": "news",
+                    "author_handle": None,
+                    "engagement_score": None,
+                    "channel": "news",
+                    "title": "Bitcoin liquidity improves",
+                    "summary": "Liquidity improved.",
+                    "sentiment": 0.7,
+                    "relevance": 0.8,
+                    "url": "https://example.com/positive",
+                    "observed_at": "2026-07-08T11:00:00Z",
+                    "ingest_batch_id": "test",
+                },
+                {
+                    "external_id": "news-btc-negative",
+                    "asset": "BTC",
+                    "source": "RSS",
+                    "provider_name": "rss-news-provider",
+                    "source_type": "news",
+                    "author_handle": None,
+                    "engagement_score": None,
+                    "channel": "news",
+                    "title": "Bitcoin leverage cools",
+                    "summary": "Leverage cooled.",
+                    "sentiment": -0.2,
+                    "relevance": 0.6,
+                    "url": "https://example.com/negative",
+                    "observed_at": "2026-07-08T11:05:00Z",
+                    "ingest_batch_id": "test",
+                },
+            ]
+        )
+
+        response = client.get("/api/news/sentiment")
+        assert response.status_code == 200
+        payload = response.json()
+        btc = next(item for item in payload["assets"] if item["asset"] == "BTC")
+        assert btc["headline_count"] >= 2
+        assert btc["positive_count"] >= 1
+        assert btc["negative_count"] >= 1
+        assert btc["score"] > 0
+        assert payload["summary"].startswith("News sentiment")
+
+
+def test_daily_market_summary_dispatches_to_existing_webhook_channel() -> None:
+    class FakeSummaryResponse:
+        content = "Daily market summary\n- BTC steady.\n- ETH mixed.\n- Risk remains elevated."
+
+    settings = Settings()
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Summary User",
+                "email": "summary@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        channel_response = client.post(
+            "/api/me/notification-channels",
+            json={"channel_type": "webhook", "target": "https://example.com/telegram-webhook"},
+        )
+        assert channel_response.status_code == 200
+        service = client.app.state.bot_society_service
+        service.nim_client.api_key = "test-key"
+        service.nim_client.try_ask = lambda *args, **kwargs: FakeSummaryResponse()
+
+        with patch("api.app.notifications.NotificationDispatcher.dispatch", return_value=(True, None)) as dispatch:
+            response = client.post("/api/me/notifications/daily-market-summary")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["llm_generated"] is True
+        assert payload["delivered_count"] == 1
+        assert payload["failed_count"] == 0
+        dispatch.assert_called_once()
+        outbound = dispatch.call_args.args[1]
+        assert outbound["kind"] == "daily_market_summary"
+        assert outbound["source"] == "nvidia-nim"
+
+
+def test_daily_market_summary_skips_nim_without_active_channels() -> None:
+    with build_client(Settings()) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "No Channel User",
+                "email": "no-channel@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        service = client.app.state.bot_society_service
+        calls = 0
+
+        def fake_try_ask(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return None
+
+        service.nim_client.api_key = "test-key"
+        service.nim_client.try_ask = fake_try_ask
+
+        response = client.post("/api/me/notifications/daily-market-summary")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["llm_generated"] is False
+        assert payload["delivered_count"] == 0
+        assert payload["skipped_reason"] == "No active notification channels are configured."
+        assert calls == 0
+
+
 def test_auto_market_provider_metadata() -> None:
     settings = Settings(
         market_provider_mode="auto",

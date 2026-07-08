@@ -24,6 +24,7 @@ from .database import (
     paper_positions_table,
     pipeline_runs_table,
     predictions_table,
+    signal_classifications_table,
     signals_table,
     social_discovery_runs_table,
     social_trader_allocations_table,
@@ -117,6 +118,31 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
+
+    def get_signal_classification(self, headline_hash: str) -> dict[str, Any] | None:
+        stmt = select(signal_classifications_table).where(
+            signal_classifications_table.c.headline_hash == headline_hash
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_signal_classification(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(signal_classifications_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[signal_classifications_table.c.headline_hash],
+            set_={
+                "ticker": stmt.excluded.ticker,
+                "sentiment": stmt.excluded.sentiment,
+                "relevance": stmt.excluded.relevance,
+                "category": stmt.excluded.category,
+                "model": stmt.excluded.model,
+                "provider": stmt.excluded.provider,
+                "raw_response": stmt.excluded.raw_response,
+                "created_at": stmt.excluded.created_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
 
     def refresh_signal_quality_scores(self) -> int:
         stmt = select(signals_table)

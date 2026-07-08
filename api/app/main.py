@@ -45,6 +45,7 @@ from .models import (
     ConnectorDiagnosticsEnvelope,
     CycleResult,
     DashboardSnapshot,
+    DailyMarketSummaryDelivery,
     EdgeSnapshot,
     ExchangeFeedSnapshot,
     FeatureReadinessEnvelope,
@@ -55,6 +56,7 @@ from .models import (
     LandingSnapshot,
     LaunchReadinessEnvelope,
     MacroSnapshot,
+    NewsSentimentSnapshot,
     NotificationChannel,
     NotificationChannelCreate,
     NotificationHealthSnapshot,
@@ -535,6 +537,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/wallet-intelligence", response_model=WalletIntelligenceSnapshot)
     def wallet_intelligence(request: Request) -> WalletIntelligenceSnapshot:
         return get_service(request).get_wallet_intelligence()
+
+    @app.get("/api/v1/news/sentiment", response_model=NewsSentimentSnapshot)
+    @app.get("/api/news/sentiment", response_model=NewsSentimentSnapshot)
+    def news_sentiment(request: Request) -> NewsSentimentSnapshot:
+        return get_service(request).get_news_sentiment_snapshot()
 
     @app.get("/api/v1/edge", response_model=EdgeSnapshot)
     @app.get("/api/edge", response_model=EdgeSnapshot)
@@ -1099,6 +1106,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/me/notification-health", response_model=NotificationHealthSnapshot)
     def notification_health(request: Request) -> NotificationHealthSnapshot:
         return get_service(request).get_notification_health(current_user_slug(request) or active_settings.default_user_slug)
+
+    @app.post("/api/v1/me/notifications/daily-market-summary", response_model=DailyMarketSummaryDelivery)
+    @app.post("/api/me/notifications/daily-market-summary", response_model=DailyMarketSummaryDelivery)
+    def send_daily_market_summary(request: Request) -> DailyMarketSummaryDelivery:
+        user_slug = authenticated_user_slug(request)
+        result = get_service(request).send_daily_market_summary(user_slug)
+        audit_event(
+            request,
+            action="notifications.daily_market_summary",
+            resource_type="notification",
+            resource_id=user_slug,
+            actor_user_slug=user_slug,
+            after_state={
+                "delivered_count": result.delivered_count,
+                "failed_count": result.failed_count,
+                "llm_generated": result.llm_generated,
+            },
+        )
+        return result
 
     @app.get("/api/v1/paper-trading", response_model=PaperTradingSnapshot)
     @app.get("/api/v1/paper-trading/positions", response_model=PaperTradingSnapshot)

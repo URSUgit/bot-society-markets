@@ -97,6 +97,22 @@ signals_table = Table(
     Column("ingest_batch_id", String(255), nullable=False),
 )
 
+signal_classifications_table = Table(
+    "signal_classifications",
+    metadata,
+    Column("headline_hash", String(64), primary_key=True),
+    Column("title", String(255), nullable=False),
+    Column("url", Text, nullable=False),
+    Column("ticker", String(16), nullable=False),
+    Column("sentiment", Float, nullable=False),
+    Column("relevance", Float, nullable=False),
+    Column("category", String(64), nullable=False),
+    Column("model", String(120), nullable=False),
+    Column("provider", String(64), nullable=False),
+    Column("raw_response", Text, nullable=False),
+    Column("created_at", String(64), nullable=False),
+)
+
 predictions_table = Table(
     "predictions",
     metadata,

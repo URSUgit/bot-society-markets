@@ -65,6 +65,7 @@ from .models import (
     ConnectorDiagnosticResult,
     CycleResult,
     DashboardSnapshot,
+    DailyMarketSummaryDelivery,
     EdgeOpportunityView,
     EdgeSnapshot,
     ExchangeFeedSnapshot,
@@ -86,6 +87,8 @@ from .models import (
     MacroObservationPoint,
     MacroSeriesSnapshot,
     MacroSnapshot,
+    NewsSentimentAssetScore,
+    NewsSentimentSnapshot,
     NotificationChannel,
     NotificationChannelHealth,
     NotificationChannelCreate,
@@ -183,6 +186,7 @@ from .models import (
     WatchlistItem,
 )
 from .notifications import NotificationDispatcher
+from .nvidia_nim import NvidiaNimClient
 from .orchestration import PredictionOrchestrator
 from .providers import (
     AutoMarketProvider,
@@ -364,6 +368,7 @@ class BotSocietyService:
             tag_id=self.settings.polymarket_tag_id,
             event_limit=self.settings.polymarket_event_limit,
         )
+        self.nim_client = NvidiaNimClient(timeout_seconds=self.settings.outbound_timeout_seconds)
         self.venue_signal_providers = self._build_venue_signal_providers()
         self.orchestrator = PredictionOrchestrator()
         self.market_provider_fallback = False
@@ -2924,6 +2929,130 @@ class BotSocietyService:
         )
         self.exchange_feed_cache = (datetime.now(timezone.utc), snapshot)
         return snapshot
+
+    def get_news_sentiment_snapshot(self, *, limit: int = 100) -> NewsSentimentSnapshot:
+        repository = BotSocietyRepository(self.database)
+        signals = [
+            signal
+            for signal in repository.list_recent_signals(limit=limit)
+            if str(signal.get("source_type") or "") == "news"
+        ]
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for signal in signals:
+            grouped[str(signal["asset"]).upper()].append(signal)
+
+        asset_scores: list[NewsSentimentAssetScore] = []
+        for asset, rows in sorted(grouped.items()):
+            weighted_sum = 0.0
+            weight_total = 0.0
+            positive = negative = neutral = 0
+            for row in rows:
+                sentiment = clamp(float(row.get("sentiment") or 0.0), -1.0, 1.0)
+                relevance = clamp(float(row.get("relevance") or 0.0), 0.0, 1.0)
+                quality = clamp(float(row.get("source_quality_score") or 0.7), 0.0, 1.0)
+                weight = max(0.05, relevance * quality)
+                weighted_sum += sentiment * weight
+                weight_total += weight
+                if sentiment >= 0.15:
+                    positive += 1
+                elif sentiment <= -0.15:
+                    negative += 1
+                else:
+                    neutral += 1
+            asset_scores.append(
+                NewsSentimentAssetScore(
+                    asset=asset,
+                    score=round(weighted_sum / weight_total, 4) if weight_total else 0.0,
+                    average_relevance=round(mean(float(row.get("relevance") or 0.0) for row in rows), 4),
+                    headline_count=len(rows),
+                    positive_count=positive,
+                    negative_count=negative,
+                    neutral_count=neutral,
+                    top_headlines=[str(row.get("title") or "") for row in rows[:3] if row.get("title")],
+                )
+            )
+
+        if asset_scores:
+            lead = max(asset_scores, key=lambda item: abs(item.score))
+            summary = (
+                f"News sentiment is strongest on {lead.asset} at {lead.score:+.2f} "
+                f"across {lead.headline_count} recent headline(s)."
+            )
+        else:
+            summary = "No recent news sentiment is available from configured real feeds."
+        return NewsSentimentSnapshot(
+            generated_at=self._now(),
+            source="rss-news-provider+nvidia-nim" if self.nim_client.api_key else "rss-news-provider",
+            llm_enabled=bool(self.nim_client.api_key),
+            summary=summary,
+            assets=asset_scores,
+        )
+
+    def send_daily_market_summary(self, user_slug: str) -> DailyMarketSummaryDelivery:
+        repository = BotSocietyRepository(self.database)
+        channels = [channel for channel in repository.list_notification_channels(user_slug) if channel.get("is_active")]
+        sentiment = self.get_news_sentiment_snapshot(limit=120)
+        assets = self.get_assets()[:6]
+        title = "BITprivat daily market summary"
+        fallback_message = self._fallback_daily_market_summary(sentiment, assets)
+        if not channels:
+            return DailyMarketSummaryDelivery(
+                generated_at=self._now(),
+                user_slug=user_slug,
+                title=title,
+                message=fallback_message,
+                llm_generated=False,
+                delivered_count=0,
+                failed_count=0,
+                skipped_reason="No active notification channels are configured.",
+            )
+        response = self.nim_client.try_ask(
+            self._daily_summary_prompt(sentiment, assets),
+            task_type="finance",
+            system_prompt=(
+                "You write concise daily market summaries for a paper-first trading intelligence platform. "
+                "No investment advice. Mention data limitations and risk."
+            ),
+            temperature=0.2,
+            max_tokens=450,
+        )
+        message = response.content.strip() if response and response.content.strip() else fallback_message
+        llm_generated = bool(response and response.content.strip())
+
+        delivered = failed = 0
+        generated_at = self._now()
+        for channel in channels:
+            ok, error = self.dispatcher.dispatch(
+                channel,
+                {
+                    "title": title,
+                    "message": message,
+                    "generated_at": generated_at,
+                    "source": "nvidia-nim" if llm_generated else "local-fallback",
+                    "kind": "daily_market_summary",
+                },
+            )
+            if ok:
+                delivered += 1
+            else:
+                failed += 1
+            repository.update_notification_channel_delivery(
+                user_slug,
+                int(channel["id"]),
+                delivered_at=generated_at if ok else None,
+                error=error,
+            )
+
+        return DailyMarketSummaryDelivery(
+            generated_at=generated_at,
+            user_slug=user_slug,
+            title=title,
+            message=message,
+            llm_generated=llm_generated,
+            delivered_count=delivered,
+            failed_count=failed,
+            skipped_reason=None,
+        )
 
     def get_asset_history(self, asset: str) -> AssetHistoryEnvelope:
         repository = BotSocietyRepository(self.database)
@@ -8276,6 +8405,158 @@ class BotSocietyService:
 
         return diagnostics
 
+    def _enrich_news_signals_with_nim(
+        self,
+        repository: BotSocietyRepository,
+        signals: list[dict],
+        tracked_assets: list[str],
+    ) -> list[dict]:
+        if not signals or not self.nim_client.api_key:
+            return signals
+
+        enriched: list[dict] = []
+        for signal in signals:
+            if str(signal.get("source_type") or "") != "news":
+                enriched.append(signal)
+                continue
+            headline_hash = self._headline_hash(signal)
+            cached = repository.get_signal_classification(headline_hash)
+            classification = cached or self._classify_news_signal(signal, tracked_assets)
+            if classification:
+                if not cached:
+                    repository.upsert_signal_classification(
+                        {
+                            "headline_hash": headline_hash,
+                            "title": str(signal.get("title") or "")[:255],
+                            "url": str(signal.get("url") or ""),
+                            "ticker": str(classification["ticker"]).upper()[:16],
+                            "sentiment": float(classification["sentiment"]),
+                            "relevance": float(classification["relevance"]),
+                            "category": str(classification["category"])[:64],
+                            "model": str(classification["model"])[:120],
+                            "provider": "nvidia-nim",
+                            "raw_response": json.dumps(classification["raw"], separators=(",", ":"))[:4000],
+                            "created_at": self._now(),
+                        }
+                    )
+                if str(classification["ticker"]).upper() == str(signal.get("asset") or "").upper():
+                    signal = {
+                        **signal,
+                        "sentiment": clamp(float(classification["sentiment"]), -1.0, 1.0),
+                        "relevance": clamp(float(classification["relevance"]), 0.0, 1.0),
+                        "provider_name": "rss-news-provider+nvidia-nim",
+                        "summary": self._append_classification_category(
+                            str(signal.get("summary") or ""),
+                            str(classification["category"]),
+                        ),
+                    }
+            enriched.append(signal)
+        return enriched
+
+    def _classify_news_signal(self, signal: dict, tracked_assets: list[str]) -> dict[str, object] | None:
+        prompt = dedent(
+            f"""
+            Classify this trading news headline for one tracked ticker.
+            Tracked tickers: {", ".join(tracked_assets)}
+
+            Return strict JSON only:
+            {{"ticker":"BTC","sentiment":0.0,"relevance":0.0,"category":"macro|regulation|earnings|flows|technical|risk|other"}}
+
+            Headline: {signal.get("title") or ""}
+            Summary: {signal.get("summary") or ""}
+            Source: {signal.get("source") or ""}
+            URL: {signal.get("url") or ""}
+            """
+        ).strip()
+        response = self.nim_client.try_ask(
+            prompt,
+            task_type="classification",
+            system_prompt="You classify financial news for a trading research system. Return valid JSON only.",
+            temperature=0.0,
+            max_tokens=180,
+            json_mode=True,
+        )
+        if response is None:
+            return None
+        try:
+            payload = response.json()
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        ticker = str(payload.get("ticker") or signal.get("asset") or "").upper()
+        if ticker not in {asset.upper() for asset in tracked_assets}:
+            return None
+        return {
+            "ticker": ticker,
+            "sentiment": clamp(float(payload.get("sentiment") or 0.0), -1.0, 1.0),
+            "relevance": clamp(float(payload.get("relevance") or 0.0), 0.0, 1.0),
+            "category": str(payload.get("category") or "other").strip().lower() or "other",
+            "model": response.model,
+            "raw": payload,
+        }
+
+    @staticmethod
+    def _headline_hash(signal: dict) -> str:
+        identity = "|".join(
+            [
+                str(signal.get("source") or ""),
+                str(signal.get("url") or ""),
+                str(signal.get("title") or ""),
+            ]
+        )
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _append_classification_category(summary: str, category: str) -> str:
+        suffix = f" NIM category: {category}."
+        return (summary[: max(0, 360 - len(suffix))] + suffix).strip()
+
+    @staticmethod
+    def _daily_summary_prompt(sentiment: NewsSentimentSnapshot, assets: list[AssetSnapshot]) -> str:
+        asset_lines = "\n".join(
+            f"- {asset.asset}: price={asset.price:.4f}, 24h={asset.change_24h:+.2%}, volume={asset.volume_24h:.0f}, source={asset.source}"
+            for asset in assets
+        )
+        sentiment_lines = "\n".join(
+            f"- {item.asset}: sentiment={item.score:+.2f}, relevance={item.average_relevance:.2f}, headlines={item.headline_count}"
+            for item in sentiment.assets[:6]
+        )
+        return dedent(
+            f"""
+            Create a concise daily market summary for Telegram/webhook alerts.
+            Use only the provided data. Do not invent prices, trades, or recommendations.
+
+            Market data:
+            {asset_lines or "- No market data available"}
+
+            News sentiment:
+            {sentiment_lines or "- No news sentiment available"}
+
+            Format:
+            1 short headline line.
+            3-5 bullet points.
+            1 risk note.
+            """
+        ).strip()
+
+    @staticmethod
+    def _fallback_daily_market_summary(sentiment: NewsSentimentSnapshot, assets: list[AssetSnapshot]) -> str:
+        market_line = (
+            ", ".join(f"{asset.asset} {asset.change_24h:+.2%}" for asset in assets[:4])
+            if assets
+            else "No market data available"
+        )
+        sentiment_line = (
+            ", ".join(f"{item.asset} sentiment {item.score:+.2f}" for item in sentiment.assets[:4])
+            if sentiment.assets
+            else "No recent news sentiment available"
+        )
+        return (
+            "Daily market summary\n"
+            f"- Market snapshot: {market_line}.\n"
+            f"- News layer: {sentiment_line}.\n"
+            "- Trading remains paper-first; this is research context, not investment advice."
+        )
+
     def run_pipeline_cycle(self, *, refresh_social_discovery: bool = True) -> CycleResult:
         repository = BotSocietyRepository(self.database)
         latest_snapshots = repository.list_latest_market_snapshots()
@@ -8311,6 +8592,8 @@ class BotSocietyService:
             signal_batch = self._generate_signal_batch(market_batch, cycle_index)
             if not signal_batch:
                 raise ValueError("signal providers returned zero signals")
+            tracked_assets = [str(snapshot["asset"]).upper() for snapshot in market_batch]
+            signal_batch = self._enrich_news_signals_with_nim(repository, signal_batch, tracked_assets)
             self.signal_provider_fallback = False
             self.signal_provider_source = self._compose_signal_provider_source()
             live_signal_active = self._signal_live_active()
