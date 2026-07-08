@@ -101,6 +101,7 @@ from .models import (
     UserProfile,
     UserPreferences,
     UserPreferencesUpdateRequest,
+    UserWalletBalanceSnapshot,
     UserWalletConnectChallenge,
     UserWalletConnection,
     UserWalletConnectRequest,
@@ -830,6 +831,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def me_wallet_connections(request: Request) -> list[UserWalletConnection]:
         user_slug = current_user_slug(request) or active_settings.default_user_slug
         return get_service(request).list_user_wallet_connections(user_slug)
+
+    @app.get("/api/v1/me/wallets/balances", response_model=UserWalletBalanceSnapshot)
+    @app.get("/api/me/wallets/balances", response_model=UserWalletBalanceSnapshot)
+    def me_wallet_balances(request: Request) -> UserWalletBalanceSnapshot:
+        user_slug = authenticated_user_slug(request)
+        return get_service(request).get_user_wallet_balance_snapshot(user_slug)
 
     @app.post("/api/v1/me/wallets/challenge", response_model=UserWalletConnectChallenge)
     @app.post("/api/me/wallets/challenge", response_model=UserWalletConnectChallenge)

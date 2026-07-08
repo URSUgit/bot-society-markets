@@ -1541,6 +1541,104 @@ def test_auth_wallet_connection_flow() -> None:
         assert len(disconnect_response.json()["wallet_connections"]) == 1
 
 
+def _connect_verified_base_wallet(client) -> None:
+    hardhat_private_key = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+    signer_account = Account.from_key(hardhat_private_key)
+    challenge_response = client.post(
+        "/api/me/wallets/challenge",
+        json={
+            "chain": "base",
+            "provider": "metamask",
+            "address": signer_account.address,
+            "label": "Base USDC",
+        },
+    )
+    assert challenge_response.status_code == 200
+    challenge = challenge_response.json()
+    signature = Account.sign_message(
+        encode_defunct(text=challenge["message"]),
+        hardhat_private_key,
+    ).signature.hex()
+    verify_response = client.post(
+        "/api/me/wallets/verify",
+        json={"challenge_id": challenge["challenge_id"], "signature": signature},
+    )
+    assert verify_response.status_code == 200
+
+
+def test_wallet_balances_require_real_rpc_configuration() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Balance Setup User",
+                "email": "balance-setup@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        _connect_verified_base_wallet(client)
+
+        balance_response = client.get("/api/me/wallets/balances")
+        assert balance_response.status_code == 200
+        payload = balance_response.json()
+        assert payload["status"] == "setup_required"
+        assert payload["provider_configured"] is False
+        assert payload["live"] is False
+        assert payload["balances"] == []
+        assert payload["issues"][0]["status"] == "setup_required"
+        assert "BSM_BASE_RPC_URL" in payload["issues"][0]["message"]
+
+
+def test_wallet_balances_parse_mocked_erc20_rpc(monkeypatch) -> None:
+    class FakeRpcResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return json.dumps({"jsonrpc": "2.0", "id": 1, "result": hex(123456789)}).encode("utf-8")
+
+    calls: list[dict] = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(json.loads(request.data.decode("utf-8")))
+        return FakeRpcResponse()
+
+    monkeypatch.setattr("api.app.services.urlopen", fake_urlopen)
+    settings = Settings(wallet_balance_rpc_urls={"base": "https://base-rpc.example/v1/test-key"})
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Balance Live User",
+                "email": "balance-live@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        _connect_verified_base_wallet(client)
+
+        balance_response = client.get("/api/me/wallets/balances")
+        assert balance_response.status_code == 200
+        payload = balance_response.json()
+        assert payload["status"] == "ready"
+        assert payload["provider_configured"] is True
+        assert payload["live"] is True
+        assert payload["wallets_checked"] == 1
+        assert payload["issues"] == []
+        symbols = {balance["token_symbol"] for balance in payload["balances"]}
+        assert symbols == {"USDC", "EURC"}
+        usdc = next(balance for balance in payload["balances"] if balance["token_symbol"] == "USDC")
+        assert usdc["raw_balance"] == "123456789"
+        assert usdc["balance"] == 123.456789
+        assert usdc["rpc_source"] == "base-rpc.example"
+        assert calls[0]["method"] == "eth_call"
+        assert calls[0]["params"][0]["data"].startswith("0x70a08231")
+
+
 def test_auth_onboarding_profile_flow() -> None:
     with build_client() as client:
         register_response = client.post(

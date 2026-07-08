@@ -9,6 +9,9 @@ import secrets
 from textwrap import dedent
 from datetime import datetime, timedelta, timezone
 from statistics import mean, median, pstdev
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request as UrlRequest, urlopen
 import zipfile
 
 from eth_account import Account
@@ -164,9 +167,12 @@ from .models import (
     UserPreferencesUpdateRequest,
     UserProfile,
     UserSecuritySnapshot,
+    UserWalletBalanceIssue,
+    UserWalletBalanceSnapshot,
     UserWalletConnectChallenge,
     UserWalletConnection,
     UserWalletConnectRequest,
+    UserWalletStablecoinBalance,
     UserWalletVerifyRequest,
     VenuePulseItem,
     WalletIntelligenceSnapshot,
@@ -241,6 +247,42 @@ WALLET_STABLECOINS_BY_CHAIN = {
     "solana": ["USDC", "USDT"],
     "bitcoin": [],
 }
+EVM_STABLECOIN_CONTRACTS = {
+    "ethereum": {
+        "USDC": ("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", 6),
+        "USDT": ("0xdac17f958d2ee523a2206206994597c13d831ec7", 6),
+        "DAI": ("0x6b175474e89094c44da98b954eedeac495271d0f", 18),
+    },
+    "arbitrum": {
+        "USDC": ("0xaf88d065e77c8cc2239327c5edb3a432268e5831", 6),
+        "USDT": ("0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", 6),
+        "DAI": ("0xda10009cbd5d07dd0cecc66161fc93d7c9000da1", 18),
+    },
+    "base": {
+        "USDC": ("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", 6),
+        "EURC": ("0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42", 6),
+    },
+    "polygon": {
+        "USDC": ("0x3c499c542cef5e3811e1192ce70d8cc03d5c3359", 6),
+        "USDT": ("0xc2132d05d31c914a87c6611c10748aeb04b58e8f", 6),
+        "DAI": ("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063", 18),
+    },
+    "optimism": {
+        "USDC": ("0x0b2c639c533813f4aa9d7837caf62653d097ff85", 6),
+        "USDT": ("0x94b008aa00579c1307b0ef2c499ad98a8ce58e58", 6),
+        "DAI": ("0xda10009cbd5d07dd0cecc66161fc93d7c9000da1", 18),
+    },
+    "bsc": {
+        "USDT": ("0x55d398326f99059ff775485246999027b3197955", 18),
+        "USDC": ("0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", 18),
+        "BUSD": ("0xe9e7cea3dedca5984780bafc599bd69add087d56", 18),
+    },
+    "avalanche": {
+        "USDC": ("0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e", 6),
+        "USDT": ("0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7", 6),
+    },
+}
+ERC20_BALANCE_OF_SELECTOR = "70a08231"
 WALLET_CONNECT_CHALLENGE_TTL_SECONDS = 10 * 60
 TRADER_INTELLIGENCE_PROMPTS = [
     {
@@ -4348,6 +4390,164 @@ class BotSocietyService:
     def list_user_wallet_connections(self, user_slug: str) -> list[UserWalletConnection]:
         repository = BotSocietyRepository(self.database)
         return [self._to_user_wallet_connection(row) for row in repository.list_user_wallet_connections(user_slug)]
+
+    def get_user_wallet_balance_snapshot(self, user_slug: str) -> UserWalletBalanceSnapshot:
+        repository = BotSocietyRepository(self.database)
+        wallets = [
+            self._to_user_wallet_connection(row)
+            for row in repository.list_user_wallet_connections(user_slug)
+        ]
+        active_wallets = [wallet for wallet in wallets if wallet.is_active]
+        checked_at = self._now()
+        rpc_urls = self.settings.wallet_balance_rpc_urls
+        issues: list[UserWalletBalanceIssue] = []
+        balances: list[UserWalletStablecoinBalance] = []
+        wallets_checked = 0
+
+        if not active_wallets:
+            return UserWalletBalanceSnapshot(
+                user_slug=user_slug,
+                provider_configured=bool(rpc_urls),
+                live=False,
+                status="no_wallets",
+                message="Connect a read-only wallet before scanning stablecoin balances.",
+                checked_at=checked_at,
+                wallets_connected=0,
+                wallets_checked=0,
+            )
+
+        for wallet in active_wallets:
+            network_label = wallet.network_label or WALLET_NETWORK_LABELS.get(wallet.chain, wallet.chain.title())
+            token_contracts = EVM_STABLECOIN_CONTRACTS.get(wallet.chain)
+            if wallet.chain not in EVM_WALLET_CHAINS or not token_contracts:
+                issues.append(
+                    UserWalletBalanceIssue(
+                        wallet_id=wallet.id,
+                        address=wallet.address,
+                        chain=wallet.chain,
+                        network_label=network_label,
+                        status="unsupported_chain",
+                        message=f"{network_label} balance scanning needs a dedicated provider before it can show real stablecoin balances.",
+                    )
+                )
+                continue
+
+            rpc_url = rpc_urls.get(wallet.chain)
+            if not rpc_url:
+                issues.append(
+                    UserWalletBalanceIssue(
+                        wallet_id=wallet.id,
+                        address=wallet.address,
+                        chain=wallet.chain,
+                        network_label=network_label,
+                        status="setup_required",
+                        message=f"Set BSM_{wallet.chain.upper()}_RPC_URL to scan {network_label} stablecoin balances.",
+                    )
+                )
+                continue
+
+            wallets_checked += 1
+            for symbol, (contract_address, decimals) in token_contracts.items():
+                try:
+                    raw_balance = self._read_erc20_balance(
+                        rpc_url=rpc_url,
+                        contract_address=contract_address,
+                        wallet_address=wallet.address,
+                    )
+                except ValueError as exc:
+                    issues.append(
+                        UserWalletBalanceIssue(
+                            wallet_id=wallet.id,
+                            address=wallet.address,
+                            chain=wallet.chain,
+                            network_label=network_label,
+                            status="rpc_error",
+                            message=f"{symbol} balance read failed on {network_label}: {exc}",
+                        )
+                    )
+                    continue
+                balances.append(
+                    UserWalletStablecoinBalance(
+                        wallet_id=wallet.id,
+                        address=wallet.address,
+                        chain=wallet.chain,
+                        network_label=network_label,
+                        token_symbol=symbol,
+                        token_contract=contract_address,
+                        decimals=decimals,
+                        raw_balance=str(raw_balance),
+                        balance=raw_balance / float(10 ** decimals),
+                        rpc_source=self._rpc_source_label(rpc_url),
+                        checked_at=checked_at,
+                    )
+                )
+
+        provider_configured = any(wallet.chain in rpc_urls for wallet in active_wallets)
+        if balances and not issues:
+            status = "ready"
+            message = "Stablecoin balances were read from configured on-chain RPC providers."
+        elif balances:
+            status = "partial"
+            message = "Some stablecoin balances were read; review wallet issues for missing chains or failed RPC calls."
+        elif not provider_configured:
+            status = "setup_required"
+            message = "Configure at least one chain RPC URL to scan real stablecoin balances."
+        else:
+            status = "blocked"
+            message = "Wallet balance providers are configured, but no stablecoin balance could be read."
+
+        return UserWalletBalanceSnapshot(
+            user_slug=user_slug,
+            provider_configured=provider_configured,
+            live=bool(balances),
+            status=status,
+            message=message,
+            checked_at=checked_at,
+            wallets_connected=len(active_wallets),
+            wallets_checked=wallets_checked,
+            balances=balances,
+            issues=issues,
+        )
+
+    def _read_erc20_balance(self, *, rpc_url: str, contract_address: str, wallet_address: str) -> int:
+        address = self._normalize_wallet_address(wallet_address, chain="ethereum")
+        data = f"0x{ERC20_BALANCE_OF_SELECTOR}{address.removeprefix('0x').rjust(64, '0')}"
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_call",
+            "params": [{"to": contract_address, "data": data}, "latest"],
+        }
+        request = UrlRequest(
+            rpc_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.settings.wallet_balance_timeout_seconds) as response:
+                response_payload = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            raise ValueError("RPC provider did not return a valid JSON-RPC response") from exc
+        if not isinstance(response_payload, dict):
+            raise ValueError("RPC provider returned an invalid JSON-RPC payload")
+        if response_payload.get("error"):
+            error = response_payload["error"]
+            if isinstance(error, dict):
+                raise ValueError(str(error.get("message") or "JSON-RPC error"))
+            raise ValueError("JSON-RPC error")
+        result = response_payload.get("result")
+        if not isinstance(result, str) or not result.startswith("0x"):
+            raise ValueError("RPC provider returned an invalid balance value")
+        try:
+            return int(result, 16)
+        except ValueError as exc:
+            raise ValueError("RPC provider returned a non-hex balance value") from exc
+
+    @staticmethod
+    def _rpc_source_label(rpc_url: str) -> str:
+        parsed = urlparse(rpc_url)
+        return parsed.hostname or "configured-rpc"
 
     def create_wallet_connect_challenge(
         self,

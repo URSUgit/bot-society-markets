@@ -197,6 +197,8 @@ const state = {
   strategiesLoaded: false,
   backtests: [],
   backtestsLoaded: false,
+  walletBalances: null,
+  walletBalancesLoaded: false,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -406,10 +408,42 @@ function shortAddress(address) {
 
 function renderWalletCompact(wallet) {
   const coins = walletStablecoins(wallet);
-  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || walletDisplayName(wallet))}</strong><span>${escapeHtml(walletDisplayName(wallet))} · ${escapeHtml(shortAddress(wallet.address))}</span><small>${escapeHtml(wallet.read_only ? "Read-only" : "Active")} · ${escapeHtml(wallet.verified ? "Signed verification" : "Manual public address")} · ${coins.length ? escapeHtml(coins.join(", ")) : "No stablecoin rail"}</small></span>${statusChip(wallet.onchain_ready ? "Ready" : "Tracked", wallet.onchain_ready ? "ready" : "partial")}</div>`;
+  const snapshot = walletBalanceSnapshot();
+  const balances = (snapshot?.balances || []).filter((item) => Number(item.wallet_id) === Number(wallet.id));
+  const issue = (snapshot?.issues || []).find((item) => Number(item.wallet_id) === Number(wallet.id));
+  const balanceCopy = balances.length ? balances.map((item) => `${number(item.balance, item.decimals > 6 ? 4 : 2)} ${item.token_symbol}`).join(" · ") : issue?.message || (snapshot ? snapshot.message : coins.length ? coins.join(", ") : "No stablecoin rail");
+  const balanceState = balances.length ? ["Real balances", "ready"] : issue ? ["Setup", "blocked"] : [wallet.onchain_ready ? "Ready" : "Tracked", wallet.onchain_ready ? "ready" : "partial"];
+  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || walletDisplayName(wallet))}</strong><span>${escapeHtml(walletDisplayName(wallet))} · ${escapeHtml(shortAddress(wallet.address))}</span><small>${escapeHtml(wallet.read_only ? "Read-only" : "Active")} · ${escapeHtml(wallet.verified ? "Signed verification" : "Manual public address")} · ${escapeHtml(balanceCopy)}</small></span>${statusChip(balanceState[0], balanceState[1])}</div>`;
+}
+
+function walletBalanceSnapshot() {
+  return state.walletBalances || null;
+}
+
+function walletBalanceVariant(snapshot) {
+  if (!snapshot) return "blocked";
+  if (snapshot.status === "ready") return "ready";
+  if (snapshot.status === "partial") return "partial";
+  return "blocked";
+}
+
+function renderWalletBalanceList(snapshot) {
+  if (!snapshot) {
+    return `<div class="empty-state"><div><h3>Balance scan unavailable</h3><p>Create an account and connect a read-only wallet to scan stablecoin balances.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`;
+  }
+  const balances = Array.isArray(snapshot.balances) ? snapshot.balances : [];
+  const issues = Array.isArray(snapshot.issues) ? snapshot.issues : [];
+  if (balances.length) {
+    return `<div class="compact-list">${balances.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(number(item.balance, item.decimals > 6 ? 4 : 2))} ${escapeHtml(item.token_symbol)}</strong><span>${escapeHtml(item.network_label)} · ${escapeHtml(shortAddress(item.address))}</span><small>${escapeHtml(item.rpc_source || "configured-rpc")} · ${escapeHtml(item.token_contract)}</small></span>${statusChip("Real", "ready")}</div>`).join("")}${issues.slice(0, 3).map((issue) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(issue.network_label)}</strong><span>${escapeHtml(issue.message)}</span></span>${statusChip("Setup", "blocked")}</div>`).join("")}</div>`;
+  }
+  return `<div class="empty-state"><div><h3>${escapeHtml(snapshot.status === "setup_required" ? "RPC provider needed" : "No balance data")}</h3><p>${escapeHtml(snapshot.message)}</p>${issues.length ? `<small>${escapeHtml(issues[0].message)}</small>` : ""}</div></div>`;
 }
 
 function loadDashboard(force = false) {
+  if (force) {
+    state.walletBalances = null;
+    state.walletBalancesLoaded = false;
+  }
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
   state.dashboardPromise = fetchJson(`/api/dashboard${force ? `?v=${Date.now()}` : ""}`)
@@ -446,6 +480,18 @@ async function loadBacktests(force = false) {
   state.backtests = await fetchJson("/api/strategies/backtests?limit=20");
   state.backtestsLoaded = true;
   return state.backtests;
+}
+
+async function loadWalletBalances(force = false) {
+  if (!state.dashboard?.auth_session?.authenticated) {
+    state.walletBalances = null;
+    state.walletBalancesLoaded = false;
+    return null;
+  }
+  if (state.walletBalancesLoaded && !force) return state.walletBalances;
+  state.walletBalances = await fetchJson("/api/me/wallets/balances");
+  state.walletBalancesLoaded = true;
+  return state.walletBalances;
 }
 
 function defaultStrategyConfigForIdea(idea) {
@@ -901,6 +947,9 @@ async function renderCurrentPage(force = false) {
     if (payload.auth_session?.authenticated && ["strategies", "results"].includes(state.page)) {
       await loadBacktests(force);
     }
+    if (payload.auth_session?.authenticated && ["portfolio", "connections"].includes(state.page)) {
+      await loadWalletBalances(force);
+    }
     const renderers = {
       home: renderHome,
       data: renderData,
@@ -1182,17 +1231,27 @@ function openLesson(lessonId) {
   openDrawer({ kicker: lesson.duration, title: lesson.title, body: `<section class="drawer-section"><p>${escapeHtml(content)}</p></section><div class="inline-notice"><span class="state-dot warning"></span><p>This educational content is general information, not personal investment advice.</p></div>`, footer: `<button class="button" type="button" data-close-drawer>Finish lesson</button>` });
 }
 
-function openAccount() {
+async function openAccount() {
+  if (state.dashboard?.auth_session?.authenticated) {
+    try {
+      await loadWalletBalances(true);
+    } catch (error) {
+      showToast(error.message || "Unable to load wallet balances.");
+    }
+  }
   const session = state.dashboard?.auth_session || {};
   const profile = state.dashboard?.user_profile || {};
   const wallets = profile.wallet_connections || [];
   const onboarding = profile.onboarding || session.onboarding || {};
   const nextActions = onboarding.next_actions || [];
   const walletReady = Boolean(onboarding.onchain_onboarding_ready);
+  const balanceSnapshot = walletBalanceSnapshot();
+  const balanceReady = Boolean(balanceSnapshot?.live);
   const riskAccepted = Boolean(onboarding.risk_disclosure_accepted_at);
   const stepRows = [
     ["Account", session.authenticated ? "Ready" : "Needed", session.authenticated ? "ready" : "blocked"],
     ["Read-only wallet", walletReady ? "Ready" : wallets.length ? "Tracked" : "Needed", walletReady ? "ready" : wallets.length ? "partial" : "blocked"],
+    ["Stablecoin balances", balanceReady ? "Real data" : balanceSnapshot?.provider_configured ? "Blocked" : "Setup needed", balanceReady ? "ready" : "blocked"],
     ["Risk disclosure", riskAccepted ? "Accepted" : "Needed", riskAccepted ? "ready" : "blocked"],
     ["Trading mode", "Paper-first", "paper"],
   ];

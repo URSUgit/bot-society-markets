@@ -1836,6 +1836,43 @@ class UserWalletConnection(BaseModel):
     updated_at: str
 
 
+class UserWalletStablecoinBalance(BaseModel):
+    wallet_id: int
+    address: str
+    chain: str
+    network_label: str
+    token_symbol: str
+    token_contract: str
+    decimals: int = Field(ge=0)
+    raw_balance: str
+    balance: float = Field(ge=0)
+    rpc_source: str
+    checked_at: str
+
+
+class UserWalletBalanceIssue(BaseModel):
+    wallet_id: int | None = None
+    address: str | None = None
+    chain: str
+    network_label: str
+    status: str
+    message: str
+
+
+class UserWalletBalanceSnapshot(BaseModel):
+    user_slug: str
+    read_only: bool = True
+    provider_configured: bool = False
+    live: bool = False
+    status: str
+    message: str
+    checked_at: str
+    wallets_connected: int = Field(ge=0)
+    wallets_checked: int = Field(ge=0)
+    balances: list[UserWalletStablecoinBalance] = Field(default_factory=list)
+    issues: list[UserWalletBalanceIssue] = Field(default_factory=list)
+
+
 class UserWalletConnectRequest(BaseModel):
     address: str = Field(min_length=4, max_length=128)
     chain: str = Field(min_length=2, max_length=32)

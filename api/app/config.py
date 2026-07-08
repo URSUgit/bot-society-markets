@@ -130,6 +130,8 @@ class Settings:
     polymarket_event_limit: int = 30
     tracked_wallets: tuple[str, ...] = ()
     wallet_trade_limit: int = 25
+    wallet_balance_rpc_urls: dict[str, str] = field(default_factory=dict)
+    wallet_balance_timeout_seconds: int = 8
     kalshi_category: str = "Crypto"
     kalshi_series_limit: int = 12
     kalshi_markets_per_series: int = 4
@@ -324,6 +326,19 @@ def get_settings() -> Settings:
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
     tracked_wallets = _split_csv_env(os.getenv("BSM_TRACKED_WALLETS", ""))
+    wallet_balance_rpc_urls = {
+        chain: url
+        for chain, url in {
+            "ethereum": os.getenv("BSM_ETHEREUM_RPC_URL") or os.getenv("BSM_EVM_RPC_URL"),
+            "arbitrum": os.getenv("BSM_ARBITRUM_RPC_URL"),
+            "base": os.getenv("BSM_BASE_RPC_URL"),
+            "polygon": os.getenv("BSM_POLYGON_RPC_URL"),
+            "optimism": os.getenv("BSM_OPTIMISM_RPC_URL"),
+            "bsc": os.getenv("BSM_BSC_RPC_URL"),
+            "avalanche": os.getenv("BSM_AVALANCHE_RPC_URL"),
+        }.items()
+        if url
+    }
     rss_feed_urls = _split_csv_env(os.getenv("BSM_RSS_FEED_URLS", ""))
     reddit_subreddits = _split_csv_env(os.getenv("BSM_REDDIT_SUBREDDITS", "CryptoCurrency,Bitcoin,ethtrader,solana"))
     youtube_discovery_queries = _split_csv_env(
@@ -387,6 +402,8 @@ def get_settings() -> Settings:
         fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,
         fred_series_ids=fred_series_ids or ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS"),
         tracked_wallets=tracked_wallets,
+        wallet_balance_rpc_urls=wallet_balance_rpc_urls,
+        wallet_balance_timeout_seconds=max(2, min(30, int(os.getenv("BSM_WALLET_BALANCE_TIMEOUT_SECONDS", "8")))),
         hyperliquid_dex=os.getenv("BSM_HYPERLIQUID_DEX", ""),
         rss_feed_urls=rss_feed_urls,
         reddit_client_id=os.getenv("BSM_REDDIT_CLIENT_ID") or None,
