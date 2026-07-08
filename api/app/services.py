@@ -5048,7 +5048,7 @@ class BotSocietyService:
             ),
             self._connector_item(
                 connector_id="stripe-billing-rail",
-                label="Stripe Billing Rail",
+                label="Stripe Billing Rail (later)",
                 category="Revenue",
                 mode=self.settings.fiat_billing_provider,
                 source="Stripe Checkout, Billing, Portal, and webhooks",
@@ -5056,10 +5056,10 @@ class BotSocietyService:
                 live_capable=stripe_configured,
                 ready=stripe_ready,
                 fallback_active=stripe_configured and not stripe_ready,
-                activation_phase="Fiat card onboarding",
+                activation_phase="Later card billing",
                 owner="Commercial Ops",
                 risk_level="medium",
-                target_surface="Paid SaaS onboarding, subscription state, and entitlement gates",
+                target_surface="future paid SaaS onboarding, subscription state, and entitlement gates",
                 env_keys=[
                     "BSM_FIAT_BILLING_PROVIDER",
                     "BSM_STRIPE_PUBLISHABLE_KEY",
@@ -5068,14 +5068,14 @@ class BotSocietyService:
                     "BSM_STRIPE_BASIC_PRICE_ID",
                 ],
                 next_actions=[
-                    "Keep card entry inside hosted Stripe Checkout and Customer Portal.",
-                    "Set Stripe webhook secrets before enabling paid plan transitions.",
+                    "Keep Stripe parked until card billing is explicitly added after the on-chain MVP.",
+                    "Do not enable paid plan transitions until webhook secrets, tax handling, and entitlement gates are reviewed.",
                 ],
                 app_url="https://dashboard.stripe.com/",
             ),
             self._connector_item(
                 connector_id="coinbase-onramp-rail",
-                label="Coinbase Onramp Rail",
+                label="Coinbase Onramp Rail (later)",
                 category="Crypto Payments",
                 mode="coinbase_onramp" if coinbase_onramp_configured else "planned",
                 source="Coinbase Onramp with Coinbase Commerce or MoonPay as optional backup rails",
@@ -5083,10 +5083,10 @@ class BotSocietyService:
                 live_capable=True,
                 ready=coinbase_onramp_ready,
                 fallback_active=coinbase_onramp_configured and not coinbase_onramp_ready,
-                activation_phase="Crypto funding onboarding",
+                activation_phase="Later hosted onramp",
                 owner="Commercial Ops",
                 risk_level="high",
-                target_surface="Hosted wallet funding and optional crypto-denominated account credits",
+                target_surface="future hosted wallet funding and optional crypto-denominated account credits",
                 env_keys=[
                     "BSM_COINBASE_ONRAMP_API_KEY",
                     "BSM_COINBASE_ONRAMP_APP_ID",
@@ -5094,8 +5094,8 @@ class BotSocietyService:
                     "BSM_MOONPAY_API_KEY",
                 ],
                 next_actions=[
-                    "Keep KYC and payment collection inside the hosted onramp provider.",
-                    "Ledger completions as credits only after webhook verification is in place.",
+                    "Keep funding off the MVP path; current onboarding is read-only wallet verification.",
+                    "Ledger completions as credits only after webhook verification, compliance review, and support workflows are in place.",
                 ],
                 app_url="https://www.coinbase.com/onramp",
             ),
@@ -5151,7 +5151,7 @@ class BotSocietyService:
             generated_at=self._now(),
             summary=(
                 "The connector command layer shows which market, macro, venue, and wallet integrations are production-ready, "
-                "which ones are still demo-safe, and which ones still need credentials or cutover work."
+                "which ones are research-only, and which ones still need real credentials or cutover work."
             ),
             live_or_ready_count=live_or_ready_count,
             connectors=connectors,
@@ -6098,7 +6098,7 @@ class BotSocietyService:
             state = "attention"
 
         posture = "Fallback guardrails are active." if fallback_active else ("Credentials are configured." if configured else "Credentials are still missing.")
-        readiness_note = "Live-capable connector." if live_capable else "Demo-safe or manually promoted connector."
+        readiness_note = "Live-capable connector." if live_capable else "Research-only connector."
         summary = f"{normalized_source} feeds {target_surface}. {posture} {readiness_note}"
         readiness_score = self._connector_readiness_score(
             configured=configured,

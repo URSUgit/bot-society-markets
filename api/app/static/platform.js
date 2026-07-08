@@ -723,7 +723,7 @@ function renderPaper(payload) {
   const venues = payload.paper_venues?.venues || [];
   const exposurePct = summary.equity ? clamp(summary.open_exposure / summary.equity * 100, 0, 100) : 0;
   return `
-    ${pageHeader("Practice account", "Test decisions with simulated money", "Paper trading helps expose bad rules and execution assumptions. It does not predict live performance.", `<button class="button secondary" type="button" data-reset-paper disabled>Reset account</button><button class="button" type="button" data-preview-order>Preview a paper order</button>`)}
+    ${pageHeader("Practice account", "Test decisions with simulated money", "Paper trading helps expose bad rules and execution assumptions. It does not predict live performance.", `<button class="button" type="button" data-preview-order>Preview a paper order</button>`)}
     <section class="metric-grid"><article class="metric-card"><span>Paper equity</span><strong>${money(summary.equity || summary.starting_balance)}</strong><small>Simulated account value</small></article><article class="metric-card"><span>Available cash</span><strong>${money(summary.cash_balance)}</strong><small>Before estimated fees</small></article><article class="metric-card"><span>Unrealized P&L</span><strong class="${Number(summary.unrealized_pnl) >= 0 ? "positive" : "negative"}">${money(summary.unrealized_pnl)}</strong><small>Open paper positions only</small></article><article class="metric-card"><span>Total return</span><strong class="${Number(summary.total_return) >= 0 ? "positive" : "negative"}">${percent(summary.total_return || 0)}</strong><small>Simulation, not real return</small></article></section>
     <section class="content-grid asymmetric">
       <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Open paper positions</h2><p>Size, entry, current value, and simulated P&L.</p></div>${statusChip(`${summary.open_positions || 0} open`, "paper")}</div>${paper.positions?.length ? `<div class="position-list">${paper.positions.map(renderPosition).join("")}</div>` : `<div class="empty-state"><div><span class="card-icon">0</span><h3>No open paper positions</h3><p>Preview a simulated order to see fees, slippage, and risk checks before placing it.</p><button class="button small" type="button" data-preview-order>Preview order</button></div></div>`}</article>
@@ -737,6 +737,23 @@ function renderPaper(payload) {
 function renderPosition(position) {
   const pnl = position.unrealized_pnl || position.realized_pnl || 0;
   return `<div class="position-row"><span class="activity-icon">${escapeHtml(position.asset || "?")}</span><span class="compact-copy"><strong>${escapeHtml(position.asset)} - ${escapeHtml(position.side || "position")}</strong><span>Entry ${money(position.entry_price || position.average_entry_price, "USD", 2)} - size ${number(position.quantity, 4)}</span></span><strong class="number ${Number(pnl) >= 0 ? "positive" : "negative"}">${money(pnl)}</strong></div>`;
+}
+
+function isMvpConnector(connector) {
+  const blockedCategories = new Set(["Revenue", "Crypto Payments", "Distribution", "Infrastructure", "Brokerage"]);
+  return connector && !blockedCategories.has(connector.category);
+}
+
+function connectorStateVariant(connector) {
+  if (connector.state === "live" || connector.state === "ready") return "ready";
+  if (connector.state === "planned") return "planned";
+  return "blocked";
+}
+
+function renderConnectorCard(connector) {
+  const stateLabel = connector.state === "live" ? "Live" : connector.state === "ready" ? "Ready" : connector.state === "planned" ? "Planned" : "Needs setup";
+  const readiness = Math.round(Number(connector.readiness_score || 0) * 100);
+  return `<article class="provider-card"><div class="card-topline"><span class="card-icon">${escapeHtml(initials(connector.label))}</span>${statusChip(stateLabel, connectorStateVariant(connector))}</div><h3>${escapeHtml(connector.label)}</h3><p>${escapeHtml(connector.summary || connector.target_surface || "Connector status is not available.")}</p><div class="detail-list"><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Readiness</span><strong>${number(readiness, 0)}%</strong></div><div><span>Category</span><strong>${escapeHtml(connector.category || "Data")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div></div><div class="card-meta">${(connector.env_keys || []).slice(0, 4).map((key) => `<span>${escapeHtml(key)}</span>`).join("") || `<span>No browser secret needed</span>`}</div><div class="card-footer"><small>${escapeHtml(connector.activation_phase || "Connector")}</small><button class="text-link" type="button" data-connector-diagnostic="${escapeHtml(connector.id)}">Diagnostics</button>${connector.app_url ? `<a class="text-link" href="${escapeHtml(connector.app_url)}" target="_blank" rel="noreferrer">Docs</a>` : ""}</div></article>`;
 }
 
 function renderPortfolio(payload) {
@@ -754,19 +771,16 @@ function renderConnections(payload) {
   const p = payload.provider_status || {};
   const wallets = payload.user_profile?.wallet_connections || [];
   const readyWallets = wallets.filter((wallet) => wallet.onchain_ready);
-  const connectors = [
-    { name: "Exchange market APIs", source: p.market_provider_source, mode: p.market_provider_mode, ready: p.market_provider_ready, live: marketState(payload) === "live", detail: p.market_provider_warning || "Binance, Hyperliquid, and CoinGecko-style free market feeds power the MVP when configured." },
-    { name: "Prediction market APIs", source: "Polymarket / Kalshi public surfaces", mode: "public", ready: true, live: true, detail: "Public event-market surfaces support research and paper strategies without live execution." },
-    { name: "Creator intelligence", source: p.social_discovery_provider_source, mode: p.social_discovery_provider_mode, ready: p.social_discovery_ready, live: socialState(payload) === "live", detail: p.social_discovery_warning },
-    { name: "Macro data", source: p.macro_provider_source, mode: p.macro_provider_mode, ready: p.macro_provider_ready, live: p.macro_provider_live_capable && p.macro_provider_configured, detail: p.macro_provider_warning },
-    { name: "Wallet and stablecoin rails", source: p.wallet_provider_source || "Read-only wallet connection", mode: p.wallet_provider_mode, ready: p.wallet_provider_ready, live: p.wallet_provider_live_capable && p.wallet_provider_configured, detail: p.wallet_provider_warning || "Track read-only wallet addresses and USDC/USDT rails on Base, Arbitrum, Polygon, Optimism, Ethereum, Solana, and Bitcoin." },
-  ];
+  const connectorControl = payload.connector_control || {};
+  const connectors = (connectorControl.connectors || []).filter(isMvpConnector);
+  const readyConnectors = connectors.filter((connector) => connector.state === "live" || connector.state === "ready");
+  const needsSetup = connectors.filter((connector) => connector.state !== "live" && connector.state !== "ready");
   return `
     ${pageHeader("Connections", "Free APIs, exchanges, wallets, and intelligence feeds", "Connect only what you already have. Missing providers stay blocked until real credentials are configured, and credentials stay in secret stores.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
+    <section class="metric-grid"><article class="metric-card"><span>Provider connectors</span><strong>${number(connectors.length)}</strong><small>Free/public MVP surfaces</small></article><article class="metric-card"><span>Live or ready</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Needs setup</span><strong>${number(needsSetup.length)}</strong><small>Requires real credentials or config</small></article><article class="metric-card"><span>Market mode</span><strong>${escapeHtml(p.market_provider_mode || "setup")}</strong><small>${escapeHtml(p.market_provider_source || "No source")}</small></article></section>
     <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>On-chain onboarding</h2><p>${readyWallets.length ? "Wallet-gated workspace is active with stablecoin-capable read-only connections." : "Connect a public wallet address to activate the MVP onboarding path."}</p></div>${statusChip(readyWallets.length ? "Active" : "Needed", readyWallets.length ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Use Base, Arbitrum, Polygon, Optimism, Ethereum, or Solana for stablecoin rail tracking.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</section>
-    <section class="card-grid">${connectors.map((connector) => `
-      <article class="provider-card"><div class="card-topline"><span class="card-icon">${escapeHtml(initials(connector.name))}</span>${statusChip(connector.live ? "Live" : connector.ready ? "Ready" : "Needs setup", connector.live || connector.ready ? "ready" : "blocked")}</div><h3>${escapeHtml(connector.name)}</h3><p>${escapeHtml(connector.detail || "No provider warning reported.")}</p><div class="detail-list"><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div></div><div class="card-footer"><small>${connector.live ? "Provider-backed" : "Connect real credentials"}</small><button class="text-link" type="button" data-connection-detail="${escapeHtml(connector.name)}">Details</button></div></article>`).join("")}</section>
-    <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Credentials stay out of this interface.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
+    <section class="card-grid">${connectors.map(renderConnectorCard).join("") || `<div class="empty-state"><div><h3>No MVP connectors found</h3><p>Provider configuration is unavailable. Check system status.</p><a class="button small" href="/status">Open status</a></div></div>`}</section>
+    <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Cards, onramps, broker execution, and infrastructure controls are hidden from this MVP page.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
 }
 
 function renderLearn() {
@@ -847,7 +861,7 @@ function openDataset(datasetId) {
     kicker: dataset.question,
     title: dataset.name,
     body: `<section class="drawer-section"><p>${escapeHtml(dataset.description)}</p></section><section class="drawer-section"><h3>Coverage and use</h3><div class="detail-list"><div><span>Assets</span><strong>${escapeHtml(dataset.assets)}</strong></div><div><span>Coverage</span><strong>${escapeHtml(dataset.coverage)}</strong></div><div><span>Current source</span><strong>${escapeHtml(runtime.source)}</strong></div><div><span>License posture</span><strong>${escapeHtml(dataset.license)}</strong></div></div></section><section class="drawer-section"><h3>Permitted product uses</h3><div class="card-meta">${dataset.uses.map((use) => `<span>${escapeHtml(use)}</span>`).join("")}</div></section><div class="inline-notice"><span class="state-dot ${runtime.state === "live" ? "live" : "warning"}"></span><p><strong>${escapeHtml(runtime.label)} state.</strong> Availability does not override provider terms or create redistribution rights.</p></div>`,
-    footer: dataset.id === "user-upload" ? `<button class="button" type="button" disabled>Upload planned</button>` : `<a class="button secondary" href="/ideas">Use in an idea</a><button class="button" type="button" data-close-drawer>Close preview</button>`,
+    footer: dataset.id === "user-upload" ? `<button class="button" type="button" data-close-drawer>Close preview</button>` : `<a class="button secondary" href="/ideas">Use in an idea</a><button class="button" type="button" data-close-drawer>Close preview</button>`,
   });
 }
 
@@ -989,14 +1003,45 @@ function openLicenseGuide() {
 }
 
 function openConnectionDetail(name) {
-  const featureItems = state.dashboard?.feature_readiness?.items || [];
-  const relevant = featureItems.filter((item) => JSON.stringify(item).toLowerCase().includes(name.toLowerCase().split(" ")[0])).slice(0, 4);
+  const connector = (state.dashboard?.connector_control?.connectors || []).find((item) => item.label === name || item.id === name);
   openDrawer({
     kicker: "Connection detail",
-    title: name,
-    body: `<section class="drawer-section"><p>Provider health, secrets, data rights, and production readiness are independent checks. A configured API is not automatically approved for commercial live execution.</p></section><section class="drawer-section"><h3>Related readiness items</h3><div class="compact-list">${relevant.length ? relevant.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(item.label || item.name || item.key)}</strong><span>${escapeHtml(item.detail || item.summary || item.state)}</span></span>${statusChip(item.state || "partial", item.state || "partial")}</div>`).join("") : emptyCompact("No detailed readiness record matched this connection.")}</div></section>`,
-    footer: `<a class="button secondary" href="/status">Open status</a><a class="button" href="/connections">Connections</a>`,
+    title: connector?.label || name,
+    body: connector ? `<section class="drawer-section"><p>${escapeHtml(connector.summary || connector.target_surface || "")}</p></section><section class="drawer-section"><h3>Connector state</h3><div class="detail-list"><div><span>State</span><strong>${escapeHtml(connector.state)}</strong></div><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div><div><span>Owner</span><strong>${escapeHtml(connector.owner || "Platform")}</strong></div></div></section>` : `<section class="drawer-section"><p>Provider health, secrets, data rights, and production readiness are independent checks. A configured API is not automatically approved for commercial live execution.</p></section>`,
+    footer: connector ? `<button class="button secondary" type="button" data-connector-diagnostic="${escapeHtml(connector.id)}">Run diagnostics</button><a class="button" href="/connections">Connections</a>` : `<a class="button secondary" href="/status">Open status</a><a class="button" href="/connections">Connections</a>`,
   });
+}
+
+function diagnosticVariant(status) {
+  if (status === "pass") return "ready";
+  if (status === "warn") return "partial";
+  return "blocked";
+}
+
+async function openConnectorDiagnostic(connectorId) {
+  openDrawer({
+    kicker: "Connector diagnostics",
+    title: "Checking connector",
+    body: `<section class="drawer-section"><p>Loading provider configuration and readiness checks.</p></section>`,
+    footer: `<button class="button" type="button" data-close-drawer>Close</button>`,
+  });
+  try {
+    const payload = await fetchJson(`/api/system/connectors/${encodeURIComponent(connectorId)}/diagnostics`);
+    const diagnostic = payload.connector_diagnostic || {};
+    openDrawer({
+      kicker: "Connector diagnostics",
+      title: diagnostic.label || connectorId,
+      body: `<section class="drawer-section"><div class="detail-list"><div><span>Overall</span><strong>${escapeHtml(diagnostic.overall_status || "unknown")}</strong></div><div><span>Ready to activate</span><strong>${diagnostic.ready_to_activate ? "Yes" : "No"}</strong></div><div><span>Safe to promote</span><strong>${diagnostic.safe_to_promote ? "Yes" : "No"}</strong></div></div></section><section class="drawer-section"><h3>Checks</h3><div class="compact-list">${(diagnostic.checks || []).map((check) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(check.label || check.key)}</strong><span>${escapeHtml(check.detail || "")}</span></span>${statusChip(check.status || "blocked", diagnosticVariant(check.status))}</div>`).join("") || emptyCompact("No diagnostic checks were returned.")}</div></section>${diagnostic.blockers?.length ? `<section class="drawer-section"><h3>Blockers</h3><div class="compact-list">${diagnostic.blockers.map((blocker) => `<div class="compact-item"><span class="compact-copy"><strong>Blocked</strong><span>${escapeHtml(blocker)}</span></span>${statusChip("Blocked", "blocked")}</div>`).join("")}</div></section>` : ""}<section class="drawer-section"><h3>Next actions</h3><div class="compact-list">${(diagnostic.next_actions || []).map((action) => `<div class="compact-item"><span class="compact-copy"><strong>Action</strong><span>${escapeHtml(action)}</span></span></div>`).join("") || emptyCompact("No next action reported.")}</div></section>`,
+      footer: `<a class="button secondary" href="/connections">Connections</a><button class="button" type="button" data-close-drawer>Close</button>`,
+    });
+  } catch (error) {
+    openDrawer({
+      kicker: "Connector diagnostics",
+      title: "Diagnostics failed",
+      body: `<section class="drawer-section"><p>${escapeHtml(error.message || "Unable to load connector diagnostics.")}</p></section>`,
+      footer: `<button class="button" type="button" data-close-drawer>Close</button>`,
+    });
+  }
 }
 
 function openLesson(lessonId) {
@@ -1150,7 +1195,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
- const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
+ const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -1163,6 +1208,9 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-social-method")) openMethodology();
     if (target.hasAttribute("data-open-license")) openLicenseGuide();
     if (target.dataset.connectionDetail) openConnectionDetail(target.dataset.connectionDetail);
+    if (target.dataset.connectorDiagnostic) {
+      openConnectorDiagnostic(target.dataset.connectorDiagnostic);
+    }
  if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
     if (target.hasAttribute("data-open-account")) openAccount();
     if (target.hasAttribute("data-accept-risk")) {

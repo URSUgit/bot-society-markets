@@ -419,7 +419,7 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert diagnostic_response.status_code == 200
         diagnostic_payload = diagnostic_response.json()["connector_diagnostic"]
         assert diagnostic_payload["connector_id"] == "stripe-billing-rail"
-        assert diagnostic_payload["label"] == "Stripe Billing Rail"
+        assert diagnostic_payload["label"] == "Stripe Billing Rail (later)"
         assert diagnostic_payload["overall_status"] in {"pass", "warn", "fail", "blocked"}
         assert isinstance(diagnostic_payload["ready_to_activate"], bool)
         assert isinstance(diagnostic_payload["safe_to_promote"], bool)

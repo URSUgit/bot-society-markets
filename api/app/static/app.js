@@ -1722,7 +1722,7 @@ function renderConnectorControl(connectorControl) {
 
   const mvpConnectors = (connectorControl.connectors || []).filter((connector) => MVP_CONNECTOR_IDS.has(connector.id));
   const readyCount = mvpConnectors.filter((connector) => ["live", "ready"].includes(connector.state)).length;
-  summary.textContent = `${readyCount}/${mvpConnectors.length} free MVP connectors are live or ready. Add only the API keys you already have; demo-safe fallbacks stay available.`;
+  summary.textContent = `${readyCount}/${mvpConnectors.length} free MVP connectors are live or ready. Add only the API keys you already have; blocked providers stay inactive until real credentials are configured.`;
   badge.textContent = `${readyCount}/${mvpConnectors.length} ready`;
   badge.dataset.variant = readyCount >= 4 ? "positive" : "warning";
 
@@ -5310,7 +5310,7 @@ function buildActivityItems(snapshot) {
       label: "Market monitor",
       title: `${snapshot.provider_status.market_provider_source} is tracking ${snapshot.assets.length} assets`,
       detail: `${snapshot.summary.tracked_assets} tracked assets across ${snapshot.provider_status.environment_name} environment`,
-      meta: snapshot.provider_status.market_provider_live_capable ? "live-capable" : "demo-safe",
+      meta: snapshot.provider_status.market_provider_live_capable ? "live-capable" : "research-only",
       tone: "teal",
     },
     {
@@ -5649,7 +5649,7 @@ function renderProviderStatus(providerStatus, targetId = "provider-card") {
     ? providerStatus.venue_signal_providers.map((provider) => `
         <li>
           <strong>${provider.mode}</strong> · ${provider.source}
-          <span class="panel-note">${provider.ready ? "ready" : "attention"} · ${provider.live_capable ? "live" : "demo-safe"}</span>
+          <span class="panel-note">${provider.ready ? "ready" : "attention"} · ${provider.live_capable ? "live" : "research-only"}</span>
           ${provider.warning ? `<div class="error-text">${provider.warning}</div>` : ""}
         </li>
       `).join("")
