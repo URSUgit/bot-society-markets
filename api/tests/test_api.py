@@ -1486,6 +1486,12 @@ def test_auth_wallet_connection_flow() -> None:
         assert verify_payload["wallet_connections"][0]["chain"] == "ethereum"
         assert verify_payload["wallet_connections"][0]["provider"] == "walletconnect"
         assert verify_payload["wallet_connections"][0]["label"] == "Main wallet"
+        assert verify_payload["wallet_connections"][0]["read_only"] is True
+        assert verify_payload["wallet_connections"][0]["verified"] is True
+        assert verify_payload["wallet_connections"][0]["onchain_ready"] is True
+        assert "USDC" in verify_payload["wallet_connections"][0]["stablecoin_symbols"]
+        assert verify_payload["onboarding"]["wallet_connected"] is True
+        assert verify_payload["onboarding"]["onchain_onboarding_ready"] is True
 
         list_response = client.get("/api/me/wallets")
         assert list_response.status_code == 200
@@ -1524,7 +1530,11 @@ def test_auth_wallet_connection_flow() -> None:
             },
         )
         assert non_evm_connect.status_code == 200
-        assert len(non_evm_connect.json()["wallet_connections"]) == 2
+        non_evm_wallets = non_evm_connect.json()["wallet_connections"]
+        solana_wallet = next(wallet for wallet in non_evm_wallets if wallet["chain"] == "solana")
+        assert len(non_evm_wallets) == 2
+        assert solana_wallet["verified"] is False
+        assert solana_wallet["onchain_ready"] is True
 
         disconnect_response = client.delete(f"/api/me/wallets/{wallet_id}")
         assert disconnect_response.status_code == 200
@@ -1549,6 +1559,10 @@ def test_auth_onboarding_profile_flow() -> None:
         onboarding = onboarding_response.json()
         assert onboarding["stage"] == "identity"
         assert onboarding["completed"] is False
+        assert onboarding["wallet_required"] is True
+        assert onboarding["wallet_connected"] is False
+        assert onboarding["onchain_onboarding_ready"] is False
+        assert "Connect a read-only wallet" in onboarding["next_actions"][0]
 
         update_response = client.put(
             "/api/auth/onboarding",
@@ -1577,6 +1591,7 @@ def test_auth_onboarding_profile_flow() -> None:
         assert dashboard_response.status_code == 200
         dashboard = dashboard_response.json()
         assert dashboard["user_profile"]["onboarding"]["stage"] == "kyc"
+        assert dashboard["auth_session"]["onboarding"]["wallet_connected"] is False
         assert dashboard["user_profile"]["security"]["mfa_enabled"] is False
 
         complete_response = client.put(
@@ -1765,6 +1780,27 @@ def test_stripe_billing_snapshot_checkout_and_portal_flow() -> None:
             portal_response = client.post("/api/me/billing/portal-session", json={"return_path": "/dashboard"})
         assert portal_response.status_code == 200
         assert portal_response.json()["url"].startswith("https://billing.stripe.com/")
+
+
+def test_default_billing_snapshot_parks_card_checkout_for_onchain_onboarding() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Onchain Billing User",
+                "email": "onchain-billing@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        billing_response = client.get("/api/me/billing")
+        assert billing_response.status_code == 200
+        billing_payload = billing_response.json()
+        assert billing_payload["checkout_ready"] is False
+        assert "On-chain onboarding is active" in billing_payload["summary"]
+        assert "Stripe checkout are parked" in billing_payload["summary"]
+        assert "intentionally disabled" in billing_payload["warnings"][0]
 
 
 def test_stripe_webhook_upgrades_workspace_and_deduplicates_events() -> None:

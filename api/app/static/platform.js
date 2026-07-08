@@ -378,6 +378,32 @@ async function connectPlatformWallet(form) {
   await refreshDashboardAfterMutation("Wallet connected in read-only mode.");
 }
 
+async function acceptRiskDisclosure() {
+  await fetchJson("/api/auth/onboarding", {
+    method: "PUT",
+    body: JSON.stringify({ accept_risk_disclosure: true, stage: "risk" }),
+  });
+  await refreshDashboardAfterMutation("Risk disclosure accepted. Paper-first workspace remains active.");
+}
+
+function walletStablecoins(wallet) {
+  return Array.isArray(wallet?.stablecoin_symbols) ? wallet.stablecoin_symbols : [];
+}
+
+function walletDisplayName(wallet) {
+  return wallet?.network_label || wallet?.chain || "Wallet";
+}
+
+function shortAddress(address) {
+  const value = String(address || "");
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function renderWalletCompact(wallet) {
+  const coins = walletStablecoins(wallet);
+  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || walletDisplayName(wallet))}</strong><span>${escapeHtml(walletDisplayName(wallet))} · ${escapeHtml(shortAddress(wallet.address))}</span><small>${escapeHtml(wallet.read_only ? "Read-only" : "Active")} · ${escapeHtml(wallet.verified ? "Signed verification" : "Manual public address")} · ${coins.length ? escapeHtml(coins.join(", ")) : "No stablecoin rail"}</small></span>${statusChip(wallet.onchain_ready ? "Ready" : "Tracked", wallet.onchain_ready ? "ready" : "partial")}</div>`;
+}
+
 function loadDashboard(force = false) {
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
@@ -716,14 +742,18 @@ function renderPosition(position) {
 function renderPortfolio(payload) {
   const summary = payload.paper_trading?.summary || {};
   const allocations = payload.social_trading?.allocations || [];
+  const wallets = payload.user_profile?.wallet_connections || [];
+  const onchainReady = wallets.some((wallet) => wallet.onchain_ready);
   return `
-    ${pageHeader("Portfolio", "See where simulated money is allocated", "This view currently reflects the internal paper ledger. Connected live accounts remain gated.", `<a class="button secondary" href="/social-traders">Expert bots</a><a class="button" href="/paper">Practice account</a>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Total paper equity</span><strong>${money(summary.equity || summary.starting_balance)}</strong><small>Simulated, not custodied</small></article><article class="metric-card"><span>Cash</span><strong>${money(summary.cash_balance)}</strong><small>Available paper buying power</small></article><article class="metric-card"><span>Realized P&L</span><strong class="${Number(summary.realized_pnl) >= 0 ? "positive" : "negative"}">${money(summary.realized_pnl)}</strong><small>Closed paper positions</small></article><article class="metric-card"><span>Win rate</span><strong>${percent(summary.win_rate || 0)}</strong><small>${summary.closed_positions || 0} closed position(s)</small></article></section>
-    <section class="content-grid two"><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Asset positions</h2><p>Current paper exposure by asset.</p></div></div>${payload.paper_trading?.positions?.length ? `<div class="position-list">${payload.paper_trading.positions.map(renderPosition).join("")}</div>` : `<div class="empty-state"><div><h3>No allocation yet</h3><p>Your paper account is fully in cash.</p><a class="button small" href="/paper">Open practice account</a></div></div>`}</article><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Expert-bot allocations</h2><p>Delegated research budgets remain paper-only.</p></div></div>${allocations.length ? `<div class="compact-list">${allocations.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(item.trader_name || item.trader_slug)}</strong><span>${escapeHtml(item.mode || "signals")}</span></span><strong class="number">${money(item.allocation_limit_usd || item.delegated_usd)}</strong></div>`).join("")}</div>` : `<div class="empty-state"><div><h3>No expert bot allocation</h3><p>Explore a creator profile and choose signals or managed-paper research.</p><a class="button small" href="/social-traders">Explore bots</a></div></div>`}</article></section>`;
+    ${pageHeader("Portfolio", "Paper capital plus read-only wallets", "Paper positions are simulated. Connected wallets are public addresses used for onboarding and stablecoin rail tracking only.", `<a class="button secondary" href="/social-traders">Expert bots</a><a class="button" href="/paper">Practice account</a>`)}
+    <section class="metric-grid"><article class="metric-card"><span>Total paper equity</span><strong>${money(summary.equity || summary.starting_balance)}</strong><small>Simulated, not custodied</small></article><article class="metric-card"><span>Cash</span><strong>${money(summary.cash_balance)}</strong><small>Available paper buying power</small></article><article class="metric-card"><span>Read-only wallets</span><strong>${number(wallets.length)}</strong><small>${onchainReady ? "On-chain onboarding active" : "Connect a stablecoin-capable wallet"}</small></article><article class="metric-card"><span>Win rate</span><strong>${percent(summary.win_rate || 0)}</strong><small>${summary.closed_positions || 0} closed position(s)</small></article></section>
+    <section class="content-grid two"><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Asset positions</h2><p>Current paper exposure by asset.</p></div></div>${payload.paper_trading?.positions?.length ? `<div class="position-list">${payload.paper_trading.positions.map(renderPosition).join("")}</div>` : `<div class="empty-state"><div><h3>No allocation yet</h3><p>Your paper account is fully in cash.</p><a class="button small" href="/paper">Open practice account</a></div></div>`}</article><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Connected wallets</h2><p>Public wallet addresses for stablecoin rail tracking. No custody or transfers.</p></div>${statusChip(onchainReady ? "Ready" : "Connect", onchainReady ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Connect a read-only wallet to activate on-chain onboarding.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</article><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Expert-bot allocations</h2><p>Delegated research budgets remain paper-only.</p></div></div>${allocations.length ? `<div class="compact-list">${allocations.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(item.trader_name || item.trader_slug)}</strong><span>${escapeHtml(item.mode || "signals")}</span></span><strong class="number">${money(item.allocation_limit_usd || item.delegated_usd)}</strong></div>`).join("")}</div>` : `<div class="empty-state"><div><h3>No expert bot allocation</h3><p>Explore a creator profile and choose signals or managed-paper research.</p><a class="button small" href="/social-traders">Explore bots</a></div></div>`}</article></section>`;
 }
 
 function renderConnections(payload) {
   const p = payload.provider_status || {};
+  const wallets = payload.user_profile?.wallet_connections || [];
+  const readyWallets = wallets.filter((wallet) => wallet.onchain_ready);
   const connectors = [
     { name: "Exchange market APIs", source: p.market_provider_source, mode: p.market_provider_mode, ready: p.market_provider_ready, live: marketState(payload) === "live", detail: p.market_provider_warning || "Binance, Hyperliquid, and CoinGecko-style free market feeds power the MVP when configured." },
     { name: "Prediction market APIs", source: "Polymarket / Kalshi public surfaces", mode: "public", ready: true, live: true, detail: "Public event-market surfaces support research and paper strategies without live execution." },
@@ -733,6 +763,7 @@ function renderConnections(payload) {
   ];
   return `
     ${pageHeader("Connections", "Free APIs, exchanges, wallets, and intelligence feeds", "Connect only what you already have. Missing providers stay blocked until real credentials are configured, and credentials stay in secret stores.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
+    <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>On-chain onboarding</h2><p>${readyWallets.length ? "Wallet-gated workspace is active with stablecoin-capable read-only connections." : "Connect a public wallet address to activate the MVP onboarding path."}</p></div>${statusChip(readyWallets.length ? "Active" : "Needed", readyWallets.length ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Use Base, Arbitrum, Polygon, Optimism, Ethereum, or Solana for stablecoin rail tracking.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</section>
     <section class="card-grid">${connectors.map((connector) => `
       <article class="provider-card"><div class="card-topline"><span class="card-icon">${escapeHtml(initials(connector.name))}</span>${statusChip(connector.live ? "Live" : connector.ready ? "Ready" : "Needs setup", connector.live || connector.ready ? "ready" : "blocked")}</div><h3>${escapeHtml(connector.name)}</h3><p>${escapeHtml(connector.detail || "No provider warning reported.")}</p><div class="detail-list"><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div></div><div class="card-footer"><small>${connector.live ? "Provider-backed" : "Connect real credentials"}</small><button class="text-link" type="button" data-connection-detail="${escapeHtml(connector.name)}">Details</button></div></article>`).join("")}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Credentials stay out of this interface.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
@@ -986,10 +1017,20 @@ function openAccount() {
   const session = state.dashboard?.auth_session || {};
   const profile = state.dashboard?.user_profile || {};
   const wallets = profile.wallet_connections || [];
+  const onboarding = profile.onboarding || session.onboarding || {};
+  const nextActions = onboarding.next_actions || [];
+  const walletReady = Boolean(onboarding.onchain_onboarding_ready);
+  const riskAccepted = Boolean(onboarding.risk_disclosure_accepted_at);
+  const stepRows = [
+    ["Account", session.authenticated ? "Ready" : "Needed", session.authenticated ? "ready" : "blocked"],
+    ["Read-only wallet", walletReady ? "Ready" : wallets.length ? "Tracked" : "Needed", walletReady ? "ready" : wallets.length ? "partial" : "blocked"],
+    ["Risk disclosure", riskAccepted ? "Accepted" : "Needed", riskAccepted ? "ready" : "blocked"],
+    ["Trading mode", "Paper-first", "paper"],
+  ];
   openDrawer({
-    kicker: session.authenticated ? "Personal workspace" : "Free MVP workspace",
+    kicker: session.authenticated ? "On-chain workspace" : "On-chain onboarding",
     title: session.user?.display_name || profile.display_name || "Create account and connect wallet",
-    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Guest access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Free research")}</strong></div><div><span>Wallets</span><strong>${wallets.length} connected</strong></div><div><span>Trading mode</span><strong>Paper-first</strong></div></div></section><div class="inline-notice"><span class="state-dot warning"></span><p>Accounts unlock durable preferences, paper strategies, alerts, and read-only wallet tracking. Live execution stays locked until risk, legal, and provider gates are complete.</p></div>${session.authenticated ? "" : `<section class="drawer-section"><h3>Create free account</h3><form class="stack-form" id="platform-register-form"><label><span>Name</span><input name="display_name" type="text" autocomplete="name" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label><button class="button" type="submit">Create account</button></form></section><section class="drawer-section"><h3>Sign in</h3><form class="stack-form" id="platform-login-form"><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label><button class="button secondary" type="submit">Sign in</button></form></section>`}<section class="drawer-section"><h3>Connect read-only wallet</h3><form class="stack-form" id="platform-wallet-form"><label><span>Chain</span><select name="chain"><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="polygon">Polygon</option><option value="optimism">Optimism</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option><option value="bitcoin">Bitcoin</option></select></label><label><span>Provider</span><select name="provider"><option value="metamask">MetaMask</option><option value="walletconnect">WalletConnect</option><option value="coinbase">Coinbase Wallet</option><option value="phantom">Phantom</option><option value="ledger">Ledger</option></select></label><label><span>Address</span><input name="address" type="text" maxlength="128" placeholder="Auto-filled for browser EVM wallets"></label><label><span>Label</span><input name="label" type="text" maxlength="64" placeholder="Main USDC wallet"></label><button class="button" type="submit">Connect wallet</button></form><div class="card-meta"><span>USDC</span><span>USDT</span><span>Base</span><span>Arbitrum</span><span>Polygon</span><span>Optimism</span></div><p class="muted-copy">Read-only wallet tracking only. No private keys, no custody, and no stablecoin transfer button in this MVP.</p></section><section class="drawer-section"><h3>Connected wallets</h3>${wallets.length ? `<div class="compact-list">${wallets.map((wallet) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || wallet.provider)}</strong><span>${escapeHtml(wallet.chain)} · ${escapeHtml(wallet.address)}</span></span></div>`).join("")}</div>` : `<p class="muted-copy">No wallets connected yet.</p>`}</section>`,
+    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Guest access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Research")}</strong></div><div><span>Wallets</span><strong>${wallets.length} connected</strong></div><div><span>Cards</span><strong>Later release</strong></div></div></section><section class="drawer-section"><h3>MVP onboarding</h3><div class="compact-list">${stepRows.map((step) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(step[0])}</strong><span>${escapeHtml(step[1])}</span></span>${statusChip(step[1], step[2])}</div>`).join("")}</div>${nextActions.length ? `<div class="inline-notice" style="margin-top:12px"><span class="state-dot warning"></span><p>${escapeHtml(nextActions[0])}</p></div>` : ""}</section>${session.authenticated ? "" : `<section class="drawer-section"><h3>Create account</h3><form class="stack-form" id="platform-register-form"><label><span>Name</span><input name="display_name" type="text" autocomplete="name" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label><button class="button" type="submit">Create account</button></form></section><section class="drawer-section"><h3>Sign in</h3><form class="stack-form" id="platform-login-form"><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label><button class="button secondary" type="submit">Sign in</button></form></section>`}<section class="drawer-section"><h3>Connect read-only wallet</h3><form class="stack-form" id="platform-wallet-form"><label><span>Chain</span><select name="chain"><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="polygon">Polygon</option><option value="optimism">Optimism</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option><option value="bitcoin">Bitcoin</option></select></label><label><span>Provider</span><select name="provider"><option value="metamask">MetaMask</option><option value="walletconnect">WalletConnect</option><option value="coinbase">Coinbase Wallet</option><option value="phantom">Phantom</option><option value="ledger">Ledger</option></select></label><label><span>Address</span><input name="address" type="text" maxlength="128" placeholder="Auto-filled for browser EVM wallets"></label><label><span>Label</span><input name="label" type="text" maxlength="64" placeholder="Main USDC wallet"></label><button class="button" type="submit">Connect wallet</button></form><div class="card-meta"><span>USDC</span><span>USDT</span><span>EURC</span><span>Base</span><span>Arbitrum</span><span>Solana</span></div><p class="muted-copy">Read-only wallet tracking only. No private keys, no custody, no stablecoin transfer button, and no card checkout in this MVP.</p></section>${session.authenticated && !riskAccepted ? `<section class="drawer-section"><h3>Risk disclosure</h3><p class="muted-copy">Paper trading, signal research, and wallet tracking are informational tools. They are not investment advice, live execution, custody, or guaranteed returns.</p><button class="button" type="button" data-accept-risk>Accept risk disclosure</button></section>` : ""}<section class="drawer-section"><h3>Connected wallets</h3>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<p class="muted-copy">No wallets connected yet.</p>`}</section>`,
     footer: `<a class="button secondary" href="/connections">API connections</a><button class="button" type="button" data-close-drawer>Close</button>`,
   });
 }
@@ -1109,7 +1150,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
- const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-open-lesson], [data-open-account], [data-close-drawer], [data-retry-page], [data-data-filter]");
+ const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -1123,7 +1164,10 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-open-license")) openLicenseGuide();
     if (target.dataset.connectionDetail) openConnectionDetail(target.dataset.connectionDetail);
  if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
- if (target.hasAttribute("data-open-account")) openAccount();
+    if (target.hasAttribute("data-open-account")) openAccount();
+    if (target.hasAttribute("data-accept-risk")) {
+      acceptRiskDisclosure().catch((error) => showToast(error.message || "Unable to update onboarding."));
+    }
  if (target.hasAttribute("data-close-drawer")) closeDrawer();
     if (target.hasAttribute("data-retry-page")) renderCurrentPage(true);
     if (target.dataset.dataFilter) {

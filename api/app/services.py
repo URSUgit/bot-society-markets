@@ -219,6 +219,28 @@ EVM_WALLET_CHAINS = {
     "bsc",
     "avalanche",
 }
+WALLET_NETWORK_LABELS = {
+    "ethereum": "Ethereum",
+    "arbitrum": "Arbitrum One",
+    "base": "Base",
+    "polygon": "Polygon PoS",
+    "optimism": "Optimism",
+    "bsc": "BNB Smart Chain",
+    "avalanche": "Avalanche C-Chain",
+    "solana": "Solana",
+    "bitcoin": "Bitcoin",
+}
+WALLET_STABLECOINS_BY_CHAIN = {
+    "ethereum": ["USDC", "USDT", "DAI"],
+    "arbitrum": ["USDC", "USDT", "DAI"],
+    "base": ["USDC", "EURC"],
+    "polygon": ["USDC", "USDT", "DAI"],
+    "optimism": ["USDC", "USDT", "DAI"],
+    "bsc": ["USDT", "USDC", "BUSD"],
+    "avalanche": ["USDC", "USDT"],
+    "solana": ["USDC", "USDT"],
+    "bitcoin": [],
+}
 WALLET_CONNECT_CHALLENGE_TTL_SECONDS = 10 * 60
 TRADER_INTELLIGENCE_PROMPTS = [
     {
@@ -379,7 +401,11 @@ class BotSocietyService:
         if not user:
             return AuthSessionSnapshot(authenticated=False, user=None)
         auth_profile = self._load_or_create_auth_profile(repository, str(user["slug"]))
-        return self._build_session_snapshot(user, auth_profile)
+        wallet_connections = [
+            self._to_user_wallet_connection(row)
+            for row in repository.list_user_wallet_connections(str(user["slug"]))
+        ]
+        return self._build_session_snapshot(user, auth_profile, wallet_connections=wallet_connections)
 
     def register_user(self, payload: AuthRegisterRequest) -> tuple[AuthSessionSnapshot, str]:
         repository = BotSocietyRepository(self.database)
@@ -574,7 +600,11 @@ class BotSocietyService:
     def get_auth_onboarding(self, user_slug: str) -> AuthOnboardingSnapshot:
         repository = BotSocietyRepository(self.database)
         auth_profile = self._load_or_create_auth_profile(repository, user_slug)
-        return self._to_onboarding_snapshot(auth_profile)
+        wallet_connections = [
+            self._to_user_wallet_connection(row)
+            for row in repository.list_user_wallet_connections(user_slug)
+        ]
+        return self._to_onboarding_snapshot(auth_profile, wallet_connections=wallet_connections)
 
     def get_user_preferences(self, user_slug: str) -> UserPreferences:
         repository = BotSocietyRepository(self.database)
@@ -667,7 +697,11 @@ class BotSocietyService:
             }
         )
         updated_profile = self._load_or_create_auth_profile(repository, user_slug)
-        return self._to_onboarding_snapshot(updated_profile)
+        wallet_connections = [
+            self._to_user_wallet_connection(row)
+            for row in repository.list_user_wallet_connections(user_slug)
+        ]
+        return self._to_onboarding_snapshot(updated_profile, wallet_connections=wallet_connections)
 
     def record_audit_event(
         self,
@@ -2469,7 +2503,7 @@ class BotSocietyService:
 
         warnings: list[str] = []
         if provider != "stripe":
-            warnings.append("Fiat billing provider is not configured yet.")
+            warnings.append("Card billing is intentionally disabled for the on-chain onboarding MVP.")
         else:
             if not self.settings.stripe_publishable_key:
                 warnings.append("Stripe publishable key is missing.")
@@ -2486,17 +2520,18 @@ class BotSocietyService:
         if not plan_key and subscription and subscription.get("price_id"):
             plan_key = self._plan_key_for_price_id(str(subscription["price_id"]))
 
-        summary = (
-            "Sign in with a personal workspace to launch Stripe Checkout and manage a paid plan."
-            if not can_manage_workspace
-            else self._billing_summary_text(
+        if not can_manage_workspace:
+            summary = "Create or sign in to a personal workspace, then connect a read-only wallet for on-chain onboarding."
+        elif provider != "stripe":
+            summary = "On-chain onboarding is active for this MVP. Card billing and Stripe checkout are parked for a later release."
+        else:
+            summary = self._billing_summary_text(
                 configured=provider == "stripe" and bool(self.settings.stripe_secret_key) and bool(self.settings.stripe_publishable_key),
                 configured_plan_count=configured_plan_count,
                 active_subscription=active_subscription,
                 plan_key=plan_key,
                 subscription_status=subscription_status,
             )
-        )
 
         return BillingSnapshot(
             provider=provider,
@@ -4156,7 +4191,7 @@ class BotSocietyService:
             wallet_connections=wallet_connections,
             unread_alert_count=alert_inbox.unread_count,
             security=self._to_security_snapshot(auth_profile),
-            onboarding=self._to_onboarding_snapshot(auth_profile),
+            onboarding=self._to_onboarding_snapshot(auth_profile, wallet_connections=wallet_connections),
         )
 
     def get_notification_health(self, user_slug: str) -> NotificationHealthSnapshot:
@@ -6968,7 +7003,15 @@ class BotSocietyService:
         if user_slug != self.settings.default_user_slug:
             user_row = repository.get_user(user_slug)
             auth_profile = self._load_or_create_auth_profile(repository, user_slug)
-            auth_session = self._build_session_snapshot(user_row, auth_profile) if user_row else AuthSessionSnapshot(authenticated=False, user=None)
+            auth_session = (
+                self._build_session_snapshot(
+                    user_row,
+                    auth_profile,
+                    wallet_connections=user_profile.wallet_connections,
+                )
+                if user_row
+                else AuthSessionSnapshot(authenticated=False, user=None)
+            )
         else:
             auth_session = AuthSessionSnapshot(authenticated=False, user=None)
         snapshot = DashboardSnapshot(
@@ -10477,27 +10520,27 @@ class BotSocietyService:
             BillingPlanView(
                 key="basic",
                 label="Starter",
-                headline="Retail subscription for personal research workspaces.",
+                headline="Wallet-gated research workspace for the MVP launch.",
                 price_id=self.settings.stripe_basic_price_id,
                 configured=bool(self.settings.stripe_basic_price_id),
                 recommended=not bool(self.settings.stripe_pro_price_id),
                 features=[
                     "Private workspace with watchlists, alerts, and signal inbox",
-                    "Hosted Stripe checkout with no raw card handling on your servers",
-                    "Ready for SaaS activation on the live dashboard",
+                    "On-chain onboarding through a connected read-only wallet",
+                    "Paper-first trading tools with real provider data when configured",
                 ],
             ),
             BillingPlanView(
                 key="pro",
                 label="Pro",
-                headline="Deeper analytics, priority support, and heavier research usage.",
+                headline="Deeper analytics and heavier research usage after MVP validation.",
                 price_id=self.settings.stripe_pro_price_id,
                 configured=bool(self.settings.stripe_pro_price_id),
                 recommended=True,
                 features=[
                     "Designed for advanced retail traders and small teams",
                     "Best fit for premium Strategy Lab and connector entitlements",
-                    "Clean upgrade path from Starter without rebuilding billing",
+                    "Keeps a clean upgrade path for future card or invoice billing",
                 ],
             ),
             BillingPlanView(
@@ -10510,7 +10553,7 @@ class BotSocietyService:
                 features=[
                     "Supports enterprise onboarding and procurement workflows",
                     "Fits managed environments, SSO, and custom integrations later",
-                    "Keeps the product ready for higher-trust commercial sales",
+                    "Keeps the product ready for higher-trust commercial sales without enabling live execution",
                 ],
             ),
         ]
@@ -10995,13 +11038,20 @@ class BotSocietyService:
 
     @staticmethod
     def _to_user_wallet_connection(row: dict[str, object]) -> UserWalletConnection:
+        chain = str(row["chain"])
+        verified = chain in EVM_WALLET_CHAINS
         return UserWalletConnection(
             id=int(row["id"]),
             address=str(row["address"]),
-            chain=str(row["chain"]),
+            chain=chain,
             provider=str(row.get("provider") or "walletconnect"),
             label=str(row["label"]) if row.get("label") else None,
             is_active=bool(row.get("is_active", True)),
+            network_label=WALLET_NETWORK_LABELS.get(chain, chain.title()),
+            stablecoin_symbols=WALLET_STABLECOINS_BY_CHAIN.get(chain, []),
+            read_only=True,
+            verified=verified,
+            onchain_ready=bool(row.get("is_active", True)) and bool(WALLET_STABLECOINS_BY_CHAIN.get(chain, [])),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
         )
@@ -11016,12 +11066,18 @@ class BotSocietyService:
             is_demo_user=bool(user.get("is_demo_user")),
         )
 
-    def _build_session_snapshot(self, user: dict, auth_profile: dict[str, object]) -> AuthSessionSnapshot:
+    def _build_session_snapshot(
+        self,
+        user: dict,
+        auth_profile: dict[str, object],
+        *,
+        wallet_connections: list[UserWalletConnection] | None = None,
+    ) -> AuthSessionSnapshot:
         return AuthSessionSnapshot(
             authenticated=True,
             user=self._to_user_identity(user),
             mfa_enabled=bool(auth_profile.get("mfa_enabled")),
-            onboarding=self._to_onboarding_snapshot(auth_profile),
+            onboarding=self._to_onboarding_snapshot(auth_profile, wallet_connections=wallet_connections),
         )
 
     def _default_auth_profile_payload(self, user_slug: str, *, now: str | None = None) -> dict[str, object]:
@@ -11064,18 +11120,55 @@ class BotSocietyService:
             last_login_at=auth_profile.get("last_login_at"),
         )
 
-    def _recommended_onboarding_step(self, auth_profile: dict[str, object]) -> str:
-        if bool(auth_profile.get("onboarding_completed")) or auth_profile.get("onboarding_stage") == "complete":
-            return "Onboarding complete. You can keep operating in paper mode or continue to billing and connectors."
-        if not auth_profile.get("risk_disclosure_accepted_at"):
-            return "Accept the risk disclosure to unlock suitability and KYC stages."
-        if auth_profile.get("suitability_score") is None:
-            return "Complete the suitability check to profile the risk configuration for this workspace."
-        if auth_profile.get("kyc_status") != "approved":
-            return "Start KYC verification and wait for approval before requesting any live execution privileges."
-        return "Finish profile preferences and confirm onboarding completion."
+    @staticmethod
+    def _wallet_onboarding_state(wallet_connections: list[UserWalletConnection] | None) -> dict[str, object]:
+        active_wallets = [wallet for wallet in wallet_connections or [] if wallet.is_active]
+        ready_wallets = [wallet for wallet in active_wallets if wallet.onchain_ready]
+        completed_at = min((wallet.created_at for wallet in ready_wallets), default=None)
+        return {
+            "wallet_connected": bool(active_wallets),
+            "connected_wallet_count": len(active_wallets),
+            "onchain_onboarding_ready": bool(ready_wallets),
+            "onchain_onboarding_completed_at": completed_at,
+        }
 
-    def _to_onboarding_snapshot(self, auth_profile: dict[str, object]) -> AuthOnboardingSnapshot:
+    @staticmethod
+    def _onboarding_next_actions(auth_profile: dict[str, object], wallet_state: dict[str, object]) -> list[str]:
+        actions: list[str] = []
+        if not wallet_state["wallet_connected"]:
+            actions.append("Connect a read-only wallet to activate on-chain onboarding.")
+        if not auth_profile.get("risk_disclosure_accepted_at"):
+            actions.append("Accept the risk disclosure before using strategy and paper-trading workflows.")
+        if auth_profile.get("suitability_score") is None:
+            actions.append("Complete the suitability check before requesting future live-execution access.")
+        if auth_profile.get("kyc_status") != "approved":
+            actions.append("KYC is not required for the current paper-first MVP, but remains required before live execution.")
+        return actions or ["On-chain onboarding is active. Keep using paper mode until live execution is approved."]
+
+    def _recommended_onboarding_step(
+        self,
+        auth_profile: dict[str, object],
+        wallet_connections: list[UserWalletConnection] | None = None,
+    ) -> str:
+        wallet_state = self._wallet_onboarding_state(wallet_connections)
+        if bool(auth_profile.get("onboarding_completed")) or auth_profile.get("onboarding_stage") == "complete":
+            return "Onboarding complete. Keep operating in paper mode while live execution remains gated."
+        if not wallet_state["wallet_connected"]:
+            return "Create an account and connect a read-only wallet to activate the on-chain workspace."
+        if not auth_profile.get("risk_disclosure_accepted_at"):
+            return "Accept the risk disclosure to unlock the paper-first trading workspace."
+        if auth_profile.get("suitability_score") is None:
+            return "Complete the suitability check before requesting future live-execution access."
+        if auth_profile.get("kyc_status") != "approved":
+            return "On-chain onboarding is active. KYC stays parked until live execution or regulated features are requested."
+        return "Confirm onboarding completion and continue with paper strategies, alerts, and real data connectors."
+
+    def _to_onboarding_snapshot(
+        self,
+        auth_profile: dict[str, object],
+        *,
+        wallet_connections: list[UserWalletConnection] | None = None,
+    ) -> AuthOnboardingSnapshot:
         stage = str(auth_profile.get("onboarding_stage") or "identity")
         if stage not in ONBOARDING_STAGE_SEQUENCE:
             stage = "identity"
@@ -11091,6 +11184,7 @@ class BotSocietyService:
         preferred_workspace_mode = str(auth_profile.get("preferred_workspace_mode") or "pro")
         if preferred_workspace_mode not in {"simple", "pro"}:
             preferred_workspace_mode = "pro"
+        wallet_state = self._wallet_onboarding_state(wallet_connections)
         return AuthOnboardingSnapshot(
             stage=stage,
             completed=bool(auth_profile.get("onboarding_completed")),
@@ -11104,7 +11198,13 @@ class BotSocietyService:
             preferred_workspace_mode=preferred_workspace_mode,
             timezone=str(auth_profile.get("timezone") or "UTC"),
             updated_at=auth_profile.get("updated_at"),
-            recommended_next_step=self._recommended_onboarding_step(auth_profile),
+            recommended_next_step=self._recommended_onboarding_step(auth_profile, wallet_connections),
+            wallet_required=True,
+            wallet_connected=bool(wallet_state["wallet_connected"]),
+            connected_wallet_count=int(wallet_state["connected_wallet_count"]),
+            onchain_onboarding_ready=bool(wallet_state["onchain_onboarding_ready"]),
+            onchain_onboarding_completed_at=wallet_state["onchain_onboarding_completed_at"],
+            next_actions=self._onboarding_next_actions(auth_profile, wallet_state),
         )
 
     @staticmethod

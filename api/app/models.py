@@ -1827,6 +1827,11 @@ class UserWalletConnection(BaseModel):
     provider: str
     label: str | None = None
     is_active: bool = True
+    network_label: str | None = None
+    stablecoin_symbols: list[str] = Field(default_factory=list)
+    read_only: bool = True
+    verified: bool = False
+    onchain_ready: bool = False
     created_at: str
     updated_at: str
 
@@ -1907,6 +1912,12 @@ class AuthOnboardingSnapshot(BaseModel):
     timezone: str = "UTC"
     updated_at: str | None = None
     recommended_next_step: str | None = None
+    wallet_required: bool = True
+    wallet_connected: bool = False
+    connected_wallet_count: int = Field(default=0, ge=0)
+    onchain_onboarding_ready: bool = False
+    onchain_onboarding_completed_at: str | None = None
+    next_actions: list[str] = Field(default_factory=list)
 
 
 class UserSecuritySnapshot(BaseModel):
