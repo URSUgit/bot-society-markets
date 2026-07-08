@@ -193,6 +193,9 @@ const state = {
   experience: localStorage.getItem("bp-experience") || "simple",
   ideas: readStoredList("bp-ideas"),
   strategyDraft: readStoredObject("bp-strategy-draft"),
+  strategies: [],
+  strategiesLoaded: false,
+  latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
 const root = document.getElementById("page-root");
@@ -417,6 +420,61 @@ function loadDashboard(force = false) {
       state.dashboardPromise = null;
     });
   return state.dashboardPromise;
+}
+
+async function loadStrategies(force = false) {
+  if (!state.dashboard?.auth_session?.authenticated) {
+    state.strategies = [];
+    state.strategiesLoaded = false;
+    return [];
+  }
+  if (state.strategiesLoaded && !force) return state.strategies;
+  state.strategies = await fetchJson("/api/strategies");
+  state.strategiesLoaded = true;
+  return state.strategies;
+}
+
+function defaultStrategyConfigForIdea(idea) {
+  return {
+    asset: "BTC",
+    lookback_years: 3,
+    history_source_mode: "auto",
+    strategy_id: "custom_creator",
+    starting_capital: 10000,
+    fee_bps: 10,
+    fast_window: 20,
+    slow_window: 50,
+    mean_window: 20,
+    breakout_window: 55,
+    custom_strategy_name: idea.title || "Research Idea",
+    creator_trend_weight: idea.evidence === "Creator evidence" ? 1.2 : 1.0,
+    creator_mean_reversion_weight: idea.evidence === "Prediction markets" ? 0.9 : 0.7,
+    creator_breakout_weight: 0.8,
+    creator_entry_score: 0.58,
+    creator_exit_score: 0.34,
+    creator_max_exposure: 1.0,
+    creator_pullback_entry_pct: 0.035,
+    creator_stop_loss_pct: 0.12,
+    creator_take_profit_pct: 0.35,
+  };
+}
+
+function strategyToIdea(strategy) {
+  const description = String(strategy.description || "");
+  const hypothesis = description.replace(/^Hypothesis:\s*/i, "").split("\n\nInvalidation:")[0] || "No hypothesis saved.";
+  const invalidation = description.includes("\n\nInvalidation:") ? description.split("\n\nInvalidation:").slice(1).join("\n\nInvalidation:").trim() : "";
+  return {
+    id: `strategy-${strategy.id}`,
+    strategyId: strategy.id,
+    title: strategy.name,
+    hypothesis,
+    invalidation,
+    market: strategy.config?.asset || "BTC",
+    evidence: strategy.config?.strategy_id || "custom_creator",
+    stage: "Saved",
+    createdAt: strategy.created_at,
+    updatedAt: strategy.updated_at,
+  };
 }
 
 function marketState(payload) {
@@ -650,29 +708,33 @@ function renderDatasetCard(dataset, runtime) {
 }
 
 function renderIdeas() {
-  const cards = state.ideas.length
-    ? state.ideas.map((idea) => `
+  const authenticated = Boolean(state.dashboard?.auth_session?.authenticated);
+  const ideas = authenticated ? state.strategies.map(strategyToIdea) : state.ideas;
+  const cards = ideas.length
+    ? ideas.map((idea) => `
         <article class="idea-card">
-          <div class="card-topline">${statusChip(idea.stage || "Idea", "planned")}<small class="number">${escapeHtml(relativeDate(idea.createdAt))}</small></div>
+          <div class="card-topline">${statusChip(idea.stage || "Idea", idea.strategyId ? "ready" : "planned")}<small class="number">${escapeHtml(relativeDate(idea.updatedAt || idea.createdAt))}</small></div>
           <h3>${escapeHtml(idea.title)}</h3>
           <p>${escapeHtml(idea.hypothesis)}</p>
           <div class="card-meta"><span>${escapeHtml(idea.market || "Crypto")}</span><span>${escapeHtml(idea.evidence || "Price")}</span></div>
-          <div class="card-footer"><small>Saved on this device</small><button class="text-link" type="button" data-promote-idea="${escapeHtml(idea.id)}">Build strategy</button></div>
+          <div class="card-footer"><small>${idea.strategyId ? "Saved to account" : "Local draft"}</small>${idea.strategyId ? `<button class="text-link" type="button" data-run-backtest="${escapeHtml(String(idea.strategyId))}">Run backtest</button>` : `<button class="text-link" type="button" data-promote-idea="${escapeHtml(idea.id)}">Build strategy</button>`}</div>
         </article>`).join("")
     : "";
   return `
     ${pageHeader("Research notebook", "Capture the idea before choosing the tools", "A useful strategy starts with a testable belief, not a collection of indicators.", `<button class="button" type="button" data-add-idea>+ New idea</button>`)}
     ${cards ? `<section class="card-grid">${cards}</section>` : `
-      <section class="empty-state"><div><span class="card-icon">?</span><h2>No ideas yet</h2><p>Write one sentence about what you believe may happen and why. BITprivat will help turn it into rules later.</p><button class="button" type="button" data-add-idea>Write your first idea</button></div></section>`}
+      <section class="empty-state"><div><span class="card-icon">?</span><h2>No ideas yet</h2><p>${authenticated ? "Save a research idea to create an account-backed strategy draft." : "Create an account to save durable research ideas."}</p><button class="button" type="button" ${authenticated ? "data-add-idea" : "data-open-account"}>${authenticated ? "Write your first idea" : "Create account"}</button></div></section>`}
     <section class="panel" style="margin-top:14px"><div class="panel-head"><div class="panel-title"><h2>A strong idea has three parts</h2><p>Keep it understandable enough to explain without a chart.</p></div></div><div class="quick-paths"><article class="path-card"><span class="card-icon">1</span><strong>Observation</strong><p>What pattern or behavior did you notice?</p></article><article class="path-card"><span class="card-icon">2</span><strong>Reason</strong><p>Why might this pattern continue or repeat?</p></article><article class="path-card"><span class="card-icon">3</span><strong>Failure condition</strong><p>What evidence would prove the idea wrong?</p></article></div></section>`;
 }
 
 function renderStrategies(payload) {
   const authenticated = Boolean(payload.auth_session?.authenticated);
   const draft = state.strategyDraft;
+  const savedStrategies = authenticated ? state.strategies : [];
   return `
     ${pageHeader("Strategy Builder", "Turn an idea into clear, testable rules", "Start from a guided template. Professional parameters remain available in Pro mode.", `<a class="button secondary" href="/ideas">Review ideas</a><a class="button" href="/simulation">Open Strategy Lab</a>`)}
     ${draft ? `<section class="inline-notice" style="margin-bottom:14px"><span class="state-dot live"></span><p><strong>Draft ready:</strong> ${escapeHtml(draft.title)}. Continue with a template, then open Strategy Lab for the historical test.</p></section>` : ""}
+    ${savedStrategies.length ? `<section class="panel" style="margin-bottom:14px"><div class="panel-head"><div class="panel-title"><h2>Saved strategy drafts</h2><p>Account-backed research ideas ready for historical testing.</p></div>${statusChip(`${savedStrategies.length} saved`, "ready")}</div><div class="compact-list">${savedStrategies.slice(0, 5).map((strategy) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(strategy.name)}</strong><span>${escapeHtml(strategy.config?.asset || "BTC")} · ${escapeHtml(strategy.config?.strategy_id || "custom_creator")} · updated ${escapeHtml(relativeDate(strategy.updated_at))}</span></span><button class="text-link" type="button" data-run-backtest="${escapeHtml(String(strategy.id))}">Run backtest</button></div>`).join("")}</div></section>` : ""}
     <section class="card-grid">${STRATEGY_TEMPLATES.map((template) => `
       <article class="strategy-card">
         <div class="strategy-head"><span class="card-icon">${escapeHtml(template.id.split("-").map((x) => x[0]).join("").toUpperCase())}</span>${statusChip(template.level, template.level === "Beginner" ? "ready" : "partial")}</div>
@@ -686,10 +748,13 @@ function renderStrategies(payload) {
 function renderResults(payload) {
   const authenticated = Boolean(payload.auth_session?.authenticated);
   const score = payload.summary?.average_bot_score || 0;
+  const latest = state.latestBacktest;
+  const latestSummary = latest?.summary || {};
+  const latestResult = latest?.result?.selected_result || null;
   return `
     ${pageHeader("Test results", "Understand performance without a statistics degree", "Return is only one part of a result. BITprivat puts the worst loss, consistency, fees, and data quality beside it.", `<a class="button" href="/simulation">Run a historical test</a>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Personal completed tests</span><strong>${authenticated ? "0" : "--"}</strong><small>${authenticated ? "No saved run in this workspace" : "Sign in to store private results"}</small></article><article class="metric-card"><span>Research-bot average score</span><strong>${number(score, 1)}</strong><small>Not a personal investment return</small></article><article class="metric-card"><span>Test engine</span><strong>V1</strong><small>Local MVP; LEAN integration planned</small></article><article class="metric-card"><span>Live promotion</span><strong>Locked</strong><small>Paper and validation gates required</small></article></section>
-    <section class="empty-state"><div><span class="card-icon">R</span><h2>Your first understandable report starts in Strategy Lab</h2><p>Choose an asset, period, entry rule, exit rule, and risk limit. The result will separate modeled performance from real-world proof.</p><a class="button" href="/simulation">Open Strategy Lab</a></div></section>
+    <section class="metric-grid"><article class="metric-card"><span>Saved strategies</span><strong>${authenticated ? number(state.strategies.length) : "--"}</strong><small>${authenticated ? "Account-backed drafts" : "Sign in to store private results"}</small></article><article class="metric-card"><span>Latest return</span><strong class="${Number(latestSummary.total_return || latestResult?.total_return || 0) >= 0 ? "positive" : "negative"}">${latest ? percent(latestSummary.total_return ?? latestResult?.total_return ?? 0) : "--"}</strong><small>${latest ? escapeHtml(latest.asset || "Backtest") : "No saved run in this browser"}</small></article><article class="metric-card"><span>Test engine</span><strong>V1</strong><small>Real/local history mode by config</small></article><article class="metric-card"><span>Live promotion</span><strong>Locked</strong><small>Paper and validation gates required</small></article></section>
+    ${latest ? `<section class="panel"><div class="panel-head"><div class="panel-title"><h2>${escapeHtml(latestSummary.strategy_name || "Latest strategy backtest")}</h2><p>${escapeHtml(latestSummary.selected_label || latest.strategy_key || "Saved strategy result")}</p></div>${statusChip(latest.status || "completed", latest.status === "failed" ? "blocked" : "ready")}</div><div class="detail-list"><div><span>Asset</span><strong>${escapeHtml(latest.asset)}</strong></div><div><span>Lookback</span><strong>${number(latest.lookback_years)} years</strong></div><div><span>History points</span><strong>${number(latestSummary.history_points || latest.result?.history_points || 0)}</strong></div><div><span>Data source</span><strong>${escapeHtml(latestSummary.data_source || latest.result?.data_source || "configured history")}</strong></div></div></section>` : `<section class="empty-state"><div><span class="card-icon">R</span><h2>Your first saved report starts from a strategy draft</h2><p>Create a research idea, save it to your account, then run a backend historical test.</p><a class="button" href="/ideas">Create idea</a></div></section>`}
     <section class="panel" style="margin-top:14px"><div class="panel-head"><div class="panel-title"><h2>Every future report will answer these questions</h2><p>Simple mode first, professional metrics one level deeper.</p></div></div><div class="quick-paths"><article class="path-card"><span class="card-icon">EUR</span><strong>What happened to EUR 1,000?</strong><p>Final value after modeled fees and slippage.</p></article><article class="path-card"><span class="card-icon">DD</span><strong>What was the worst fall?</strong><p>Maximum decline from a previous portfolio high.</p></article><article class="path-card"><span class="card-icon">VS</span><strong>Was it better than holding?</strong><p>Compare the strategy with a simple benchmark.</p></article></div></section>`;
 }
 
@@ -810,6 +875,9 @@ async function renderCurrentPage(force = false) {
   root.innerHTML = `<div class="page-skeleton" aria-label="Loading page"><div class="skeleton-line wide"></div><div class="skeleton-line"></div><div class="skeleton-grid"><i></i><i></i><i></i></div></div>`;
   try {
     const payload = await loadDashboard(force);
+    if (payload.auth_session?.authenticated && ["ideas", "strategies", "results"].includes(state.page)) {
+      await loadStrategies(force);
+    }
     const renderers = {
       home: renderHome,
       data: renderData,
@@ -885,7 +953,13 @@ function openNewIdea() {
   });
 }
 
-function saveIdea(form) {
+async function saveIdea(form) {
+  if (!state.dashboard?.auth_session?.authenticated) {
+    closeDrawer();
+    openAccount();
+    showToast("Create an account before saving research ideas.");
+    return;
+  }
   const formData = new FormData(form);
   const idea = {
     id: crypto.randomUUID ? crypto.randomUUID() : `idea-${Date.now()}`,
@@ -898,11 +972,22 @@ function saveIdea(form) {
     createdAt: new Date().toISOString(),
   };
   if (!idea.title || !idea.hypothesis) return;
-  state.ideas.unshift(idea);
-  localStorage.setItem("bp-ideas", JSON.stringify(state.ideas));
+  const description = `Hypothesis: ${idea.hypothesis}${idea.invalidation ? `\n\nInvalidation: ${idea.invalidation}` : ""}`;
+  const strategy = await fetchJson("/api/strategies", {
+    method: "POST",
+    body: JSON.stringify({
+      name: idea.title,
+      description,
+      config: defaultStrategyConfigForIdea(idea),
+    }),
+  });
+  state.strategyDraft = { ...strategyToIdea(strategy), promotedAt: new Date().toISOString() };
+  localStorage.setItem("bp-strategy-draft", JSON.stringify(state.strategyDraft));
+  state.strategiesLoaded = false;
+  await loadStrategies(true);
   closeDrawer();
-  toast("Idea saved", "It is stored on this device until the shared Research Idea API is implemented.");
-  root.innerHTML = renderIdeas();
+  toast("Idea saved", "Saved to your account as a strategy draft.");
+  await renderCurrentPage();
 }
 
 function promoteIdea(ideaId) {
@@ -911,6 +996,20 @@ function promoteIdea(ideaId) {
   state.strategyDraft = { ...idea, promotedAt: new Date().toISOString() };
   localStorage.setItem("bp-strategy-draft", JSON.stringify(state.strategyDraft));
   window.location.href = "/strategies";
+}
+
+async function runSavedStrategyBacktest(strategyId) {
+  const run = await fetchJson(`/api/strategies/${encodeURIComponent(strategyId)}/backtest`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  state.latestBacktest = run;
+  localStorage.setItem("bp-latest-backtest", JSON.stringify(run));
+  showToast("Backtest completed from saved strategy.");
+  window.history.pushState({}, "", "/results");
+  state.page = "results";
+  syncActiveNav();
+  await renderCurrentPage();
 }
 
 function openTemplate(templateId) {
@@ -1195,13 +1294,16 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
- const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
+ const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
     if (target.dataset.openAsset) openAsset(target.dataset.openAsset);
     if (target.hasAttribute("data-add-idea")) openNewIdea();
     if (target.dataset.promoteIdea) promoteIdea(target.dataset.promoteIdea);
+    if (target.dataset.runBacktest) {
+      runSavedStrategyBacktest(target.dataset.runBacktest).catch((error) => showToast(error.message || "Backtest failed."));
+    }
     if (target.dataset.openTemplate) openTemplate(target.dataset.openTemplate);
     if (target.dataset.openTrader) openTrader(target.dataset.openTrader);
     if (target.hasAttribute("data-preview-order")) openOrderPreview(target.dataset.asset || "BTC");
@@ -1225,15 +1327,15 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("submit", async (event) => {
-    if (event.target.id === "idea-form") {
-      event.preventDefault();
-      saveIdea(event.target);
-    }
-    if (event.target.id === "order-preview-form") {
-      event.preventDefault();
-      submitOrderPreview(event.target);
-    }
     try {
+      if (event.target.id === "idea-form") {
+        event.preventDefault();
+        await saveIdea(event.target);
+      }
+      if (event.target.id === "order-preview-form") {
+        event.preventDefault();
+        await submitOrderPreview(event.target);
+      }
       if (event.target.id === "platform-register-form") {
         event.preventDefault();
         await registerPlatformUser(event.target);
