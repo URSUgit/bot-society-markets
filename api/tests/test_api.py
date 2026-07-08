@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import hmac
 from io import BytesIO
@@ -27,6 +28,7 @@ from api.app.database import Database, engine_options_for_url, normalize_databas
 from api.app.db_ops import backup_sqlite_database, copy_database
 from api.app.financial_signal_extractor import FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
 from api.app.main import create_app
+from api.app.market_calendar import build_market_sessions_snapshot
 from api.app.repository import BotSocietyRepository
 from api.app.social_intelligence import DemoSocialDiscoveryProvider, YouTubeSocialDiscoveryProvider
 from api.app.worker import PipelineWorker
@@ -2751,6 +2753,31 @@ def test_exchange_feed_snapshot_samples_binance_public_prices(monkeypatch) -> No
         assert {price["asset"] for price in binance_feed["latest_prices"]} == {"BTC", "ETH"}
         assert binance_feed["latest_prices"][0]["source"] == "binance-spot-public-provider"
         assert "/api/v3/ticker/24hr" in requests[0]
+
+
+def test_market_sessions_endpoint_uses_holiday_aware_calendar() -> None:
+    with build_client(Settings()) as client:
+        response = client.get("/api/markets/sessions")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["source"] == "pandas_market_calendars"
+        assert payload["status"] == "live"
+        assert payload["holiday_aware"] is True
+        calendars = {session["calendar"] for session in payload["sessions"]}
+        assert {"NYSE", "JPX", "HKEX", "SSE"}.issubset(calendars)
+        assert all(session["countdown_target"] for session in payload["sessions"])
+        assert all(session["windows"] for session in payload["sessions"] if session["is_trading_day"])
+
+
+def test_market_sessions_snapshot_detects_open_nyse_session() -> None:
+    snapshot = build_market_sessions_snapshot(datetime(2026, 7, 8, 15, 0, tzinfo=timezone.utc))
+    nyse = next(session for session in snapshot.sessions if session.calendar == "NYSE")
+    assert snapshot.holiday_aware is True
+    assert nyse.status == "Open"
+    assert nyse.is_open is True
+    assert nyse.countdown_label == "Closes in"
+    assert nyse.market_open == "2026-07-08T13:30:00Z"
+    assert nyse.market_close == "2026-07-08T20:00:00Z"
 
 
 def test_nim_news_classification_enriches_and_caches_headlines() -> None:

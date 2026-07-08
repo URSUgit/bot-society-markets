@@ -87,6 +87,7 @@ from .models import (
     MacroObservationPoint,
     MacroSeriesSnapshot,
     MacroSnapshot,
+    MarketSessionsSnapshot,
     NewsSentimentAssetScore,
     NewsSentimentSnapshot,
     NotificationChannel,
@@ -185,6 +186,7 @@ from .models import (
     WalletProfileView,
     WatchlistItem,
 )
+from .market_calendar import build_market_sessions_snapshot
 from .notifications import NotificationDispatcher
 from .nvidia_nim import NvidiaNimClient
 from .orchestration import PredictionOrchestrator
@@ -386,6 +388,7 @@ class BotSocietyService:
         self.system_pulse_cache: tuple[datetime, SystemPulseSnapshot] | None = None
         self.assets_cache: tuple[datetime, list[AssetSnapshot]] | None = None
         self.exchange_feed_cache: tuple[datetime, ExchangeFeedSnapshot] | None = None
+        self.market_sessions_cache: tuple[datetime, MarketSessionsSnapshot] | None = None
         self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
         self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
         self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
@@ -2928,6 +2931,13 @@ class BotSocietyService:
             feeds=feeds,
         )
         self.exchange_feed_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def get_market_sessions_snapshot(self, *, force_refresh: bool = False) -> MarketSessionsSnapshot:
+        if not force_refresh and self._cache_is_fresh(self.market_sessions_cache, ttl_seconds=30):
+            return self.market_sessions_cache[1]
+        snapshot = build_market_sessions_snapshot()
+        self.market_sessions_cache = (datetime.now(timezone.utc), snapshot)
         return snapshot
 
     def get_news_sentiment_snapshot(self, *, limit: int = 100) -> NewsSentimentSnapshot:

@@ -56,6 +56,7 @@ from .models import (
     LandingSnapshot,
     LaunchReadinessEnvelope,
     MacroSnapshot,
+    MarketSessionsSnapshot,
     NewsSentimentSnapshot,
     NotificationChannel,
     NotificationChannelCreate,
@@ -522,6 +523,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/exchanges", response_model=ExchangeFeedSnapshot)
     def exchange_feeds(request: Request) -> ExchangeFeedSnapshot:
         return get_service(request).get_exchange_feed_snapshot()
+
+    @app.get("/api/v1/markets/sessions", response_model=MarketSessionsSnapshot)
+    @app.get("/api/markets/sessions", response_model=MarketSessionsSnapshot)
+    def market_sessions(request: Request) -> MarketSessionsSnapshot:
+        return get_service(request).get_market_sessions_snapshot()
 
     @app.get("/api/v1/assets/{asset}/history", response_model=AssetHistoryEnvelope)
     @app.get("/api/assets/{asset}/history", response_model=AssetHistoryEnvelope)

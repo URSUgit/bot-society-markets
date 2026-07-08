@@ -108,6 +108,45 @@ class ExchangeFeedSnapshot(BaseModel):
     feeds: list[ExchangeFeedStatus] = Field(default_factory=list)
 
 
+class MarketSessionWindow(BaseModel):
+    label: str
+    start: str
+    end: str
+    status: str
+
+
+class MarketSessionStatus(BaseModel):
+    id: str
+    region: str
+    label: str
+    exchange_code: str
+    calendar: str
+    city: str
+    timezone: str
+    status: str
+    phase: str
+    is_open: bool
+    is_trading_day: bool
+    next_open: str | None = None
+    next_close: str | None = None
+    countdown_target: str | None = None
+    countdown_label: str
+    local_time: str
+    market_open: str | None = None
+    market_close: str | None = None
+    windows: list[MarketSessionWindow] = Field(default_factory=list)
+    note: str
+
+
+class MarketSessionsSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    status: str
+    holiday_aware: bool
+    message: str
+    sessions: list[MarketSessionStatus] = Field(default_factory=list)
+
+
 class AssetHistoryPoint(BaseModel):
     time: str
     value: float

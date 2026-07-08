@@ -271,6 +271,8 @@ const state = {
   exchangeFeedsLoaded: false,
   newsSentiment: null,
   newsSentimentLoaded: false,
+  marketSessions: null,
+  marketSessionsLoaded: false,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -645,6 +647,8 @@ function loadDashboard(force = false) {
     state.exchangeFeedsLoaded = false;
     state.newsSentiment = null;
     state.newsSentimentLoaded = false;
+    state.marketSessions = null;
+    state.marketSessionsLoaded = false;
   }
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
@@ -712,6 +716,17 @@ async function loadNewsSentiment(force = false) {
   }
   state.newsSentimentLoaded = true;
   return state.newsSentiment;
+}
+
+async function loadMarketSessions(force = false) {
+  if (state.marketSessionsLoaded && !force) return state.marketSessions;
+  try {
+    state.marketSessions = await fetchJson("/api/markets/sessions");
+  } catch (_error) {
+    state.marketSessions = null;
+  }
+  state.marketSessionsLoaded = true;
+  return state.marketSessions;
 }
 
 function defaultStrategyConfigForIdea(idea) {
@@ -850,7 +865,49 @@ function renderError(error) {
 }
 
 function renderMarketSessionsPanel() {
-  const sessionCards = MARKET_SESSIONS.map((session) => {
+  const backendSessions = state.marketSessions?.sessions || [];
+  const sessionCards = backendSessions.length
+    ? backendSessions.map(renderBackendMarketSessionCard).join("")
+    : MARKET_SESSIONS.map(renderFallbackMarketSessionCard).join("");
+  const calendarLabel = state.marketSessions?.holiday_aware ? "Holiday-aware" : "Rule timers";
+  const calendarVariant = state.marketSessions?.holiday_aware ? "ready" : "partial";
+  const summary = state.marketSessions?.message || "Using local weekday rules until the backend calendar feed is available.";
+  return `
+    <section class="panel market-sessions-panel">
+      <div class="panel-head">
+        <div class="panel-title"><h2>Stock market sessions</h2><p>${escapeHtml(summary)}</p></div>
+        ${statusChip(calendarLabel, calendarVariant)}
+      </div>
+      <div class="session-grid">${sessionCards}</div>
+    </section>`;
+}
+
+function renderBackendMarketSessionCard(session) {
+  const target = session.countdown_target || session.next_close || session.next_open || "";
+  const targetMs = target ? new Date(target).getTime() - Date.now() : 0;
+  const variant = session.is_open ? "ready" : (session.status === "Break" ? "partial" : "blocked");
+  const windows = (session.windows || []).slice(0, 2).map((windowItem) => `${windowItem.label} ${formatClock(windowItem.start, session.timezone)}-${formatClock(windowItem.end, session.timezone)}`).join(" | ");
+  return `
+    <article class="session-card" data-calendar-session="${escapeHtml(session.id)}">
+      <div class="session-card-head">
+        <span class="card-icon">${escapeHtml(session.region)}</span>
+        <span class="status-chip ${escapeHtml(variant)}" data-session-state>${escapeHtml(session.status)}</span>
+      </div>
+      <h3>${escapeHtml(session.label)}</h3>
+      <div class="session-timer" data-session-countdown data-countdown-target="${escapeHtml(target)}">${escapeHtml(formatDuration(targetMs))}</div>
+      <div class="session-meta">
+        <span data-session-next>${escapeHtml(session.countdown_label)}</span>
+        <strong data-session-phase>${escapeHtml(session.phase)}</strong>
+      </div>
+      <div class="session-local">
+        <span>${escapeHtml(session.city)}</span>
+        <strong data-session-local data-session-timezone="${escapeHtml(session.timezone)}">${escapeHtml(formatSessionZoneTime(session.timezone))}</strong>
+      </div>
+      <small>${escapeHtml(windows || session.note || session.calendar)}</small>
+    </article>`;
+}
+
+function renderFallbackMarketSessionCard(session) {
     const stateNow = getSessionState(session);
     return `
       <article class="session-card" data-market-session="${escapeHtml(session.id)}">
@@ -870,18 +927,17 @@ function renderMarketSessionsPanel() {
         </div>
         <small>${escapeHtml(session.note)}</small>
       </article>`;
-  }).join("");
-  return `
-    <section class="panel market-sessions-panel">
-      <div class="panel-head">
-        <div class="panel-title"><h2>Stock market sessions</h2><p>Live timers for US and Asian equity sessions. Holidays require a dedicated market-calendar feed.</p></div>
-        ${statusChip("Live timers", "ready")}
-      </div>
-      <div class="session-grid">${sessionCards}</div>
-    </section>`;
 }
 
 function updateMarketSessionTimers() {
+  document.querySelectorAll("[data-countdown-target]").forEach((element) => {
+    const target = element.dataset.countdownTarget;
+    if (!target) return;
+    element.textContent = formatDuration(new Date(target).getTime() - Date.now());
+  });
+  document.querySelectorAll("[data-session-timezone]").forEach((element) => {
+    element.textContent = formatSessionZoneTime(element.dataset.sessionTimezone);
+  });
   document.querySelectorAll("[data-market-session]").forEach((card) => {
     const session = MARKET_SESSIONS.find((item) => item.id === card.dataset.marketSession);
     if (!session) return;
@@ -900,6 +956,25 @@ function updateMarketSessionTimers() {
     if (phaseElement) phaseElement.textContent = stateNow.phase;
     if (localElement) localElement.textContent = stateNow.localTime;
   });
+}
+
+function formatClock(value, timeZone) {
+  if (!value) return "n/a";
+  return new Intl.DateTimeFormat(locale(), {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatSessionZoneTime(timeZone) {
+  return new Intl.DateTimeFormat(locale(), {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date());
 }
 
 function renderHome(payload) {
@@ -1288,6 +1363,7 @@ async function renderCurrentPage(force = false) {
       await loadExchangeFeeds(force);
     }
     if (["home", "data"].includes(state.page)) {
+      await loadMarketSessions(force);
       await loadNewsSentiment(force);
     }
     const renderers = {
@@ -1773,6 +1849,7 @@ function bindGlobalEvents() {
     if (target.dataset.dataFilter) {
       state.dataFilter = target.dataset.dataFilter;
       root.innerHTML = renderData(state.dashboard);
+      updateMarketSessionTimers();
     }
   });
 
