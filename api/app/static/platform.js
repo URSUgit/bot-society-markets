@@ -83,6 +83,18 @@ const DATASETS = [
     uses: ["Charts", "Strategies", "Paper"],
   },
   {
+    id: "ai-news-sentiment",
+    name: "AI-classified news sentiment",
+    question: "What is news flow implying for tracked assets?",
+    description: "Recent public news headlines classified into asset relevance, sentiment, and category using the configured NVIDIA NIM provider when available.",
+    category: "market",
+    icon: "AI",
+    assets: "Tracked crypto symbols",
+    coverage: "Recent RSS news signals",
+    license: "Source-specific public news terms",
+    uses: ["Signals", "Strategies", "Alerts"],
+  },
+  {
     id: "prediction-markets",
     name: "Prediction-market intelligence",
     question: "What probabilities are markets assigning?",
@@ -183,6 +195,62 @@ const LESSONS = [
   { id: "risk", duration: "5 min", title: "Set a loss limit before an entry", description: "Build risk rules while decisions are calm, not after a market move." },
 ];
 
+const MARKET_SESSIONS = [
+  {
+    id: "us-equities",
+    region: "USA",
+    label: "NYSE / Nasdaq",
+    city: "New York",
+    timeZone: "America/New_York",
+    days: [1, 2, 3, 4, 5],
+    windows: [
+      { label: "Pre-market", start: "04:00", end: "09:30", variant: "partial" },
+      { label: "Regular", start: "09:30", end: "16:00", variant: "ready" },
+      { label: "After-hours", start: "16:00", end: "20:00", variant: "partial" },
+    ],
+    note: "Regular session 09:30-16:00 ET",
+  },
+  {
+    id: "tokyo-equities",
+    region: "Asia",
+    label: "Tokyo Stock Exchange",
+    city: "Tokyo",
+    timeZone: "Asia/Tokyo",
+    days: [1, 2, 3, 4, 5],
+    windows: [
+      { label: "Morning", start: "09:00", end: "11:30", variant: "ready" },
+      { label: "Afternoon", start: "12:30", end: "15:30", variant: "ready" },
+    ],
+    note: "Lunch break 11:30-12:30 JST",
+  },
+  {
+    id: "hong-kong-equities",
+    region: "Asia",
+    label: "Hong Kong Exchange",
+    city: "Hong Kong",
+    timeZone: "Asia/Hong_Kong",
+    days: [1, 2, 3, 4, 5],
+    windows: [
+      { label: "Morning", start: "09:30", end: "12:00", variant: "ready" },
+      { label: "Afternoon", start: "13:00", end: "16:00", variant: "ready" },
+    ],
+    note: "Lunch break 12:00-13:00 HKT",
+  },
+  {
+    id: "shanghai-equities",
+    region: "Asia",
+    label: "Shanghai Stock Exchange",
+    city: "Shanghai",
+    timeZone: "Asia/Shanghai",
+    days: [1, 2, 3, 4, 5],
+    windows: [
+      { label: "Morning", start: "09:30", end: "11:30", variant: "ready" },
+      { label: "Afternoon", start: "13:00", end: "15:00", variant: "ready" },
+    ],
+    note: "Lunch break 11:30-13:00 CST",
+  },
+];
+
 const state = {
   page: ROUTES[window.location.pathname] || "home",
   dashboard: null,
@@ -201,6 +269,8 @@ const state = {
   walletBalancesLoaded: false,
   exchangeFeeds: null,
   exchangeFeedsLoaded: false,
+  newsSentiment: null,
+  newsSentimentLoaded: false,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -281,6 +351,132 @@ function relativeDate(value) {
   if (Math.abs(hours) < 48) return `${Math.abs(hours)}h ago`;
   const days = Math.round(hours / 24);
   return `${Math.abs(days)}d ago`;
+}
+
+function timePartsInZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const weekday = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday] ?? 0;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+    weekday,
+  };
+}
+
+function parseSessionMinute(value) {
+  const [hour, minute] = String(value).split(":").map((part) => Number(part) || 0);
+  return hour * 60 + minute;
+}
+
+function addDaysToLocalParts(parts, days) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days, 12, 0, 0));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
+}
+
+function timeZoneOffsetMs(date, timeZone) {
+  const parts = timePartsInZone(date, timeZone);
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - date.getTime();
+}
+
+function zonedDateToUtc(localParts, timeZone, hour, minute, second = 0) {
+  const guess = Date.UTC(localParts.year, localParts.month - 1, localParts.day, hour, minute, second);
+  const firstOffset = timeZoneOffsetMs(new Date(guess), timeZone);
+  const firstUtc = guess - firstOffset;
+  const secondOffset = timeZoneOffsetMs(new Date(firstUtc), timeZone);
+  return new Date(guess - secondOffset);
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatSessionLocalTime(session, date = new Date()) {
+  return new Intl.DateTimeFormat(locale(), {
+    timeZone: session.timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function getSessionState(session, now = new Date()) {
+  const parts = timePartsInZone(now, session.timeZone);
+  const currentMinute = parts.hour * 60 + parts.minute + parts.second / 60;
+  const windows = session.windows.map((windowItem) => ({
+    ...windowItem,
+    startMinute: parseSessionMinute(windowItem.start),
+    endMinute: parseSessionMinute(windowItem.end),
+  }));
+  const isTradingDay = session.days.includes(parts.weekday);
+  const activeWindow = isTradingDay
+    ? windows.find((windowItem) => currentMinute >= windowItem.startMinute && currentMinute < windowItem.endMinute)
+    : null;
+  const localToday = { year: parts.year, month: parts.month, day: parts.day };
+  if (activeWindow) {
+    const [endHour, endMinute] = activeWindow.end.split(":").map(Number);
+    const closeAt = zonedDateToUtc(localToday, session.timeZone, endHour, endMinute);
+    return {
+      status: activeWindow.variant === "ready" ? "Open" : activeWindow.label,
+      phase: activeWindow.label,
+      variant: activeWindow.variant,
+      nextLabel: "Closes in",
+      countdownMs: closeAt.getTime() - now.getTime(),
+      localTime: formatSessionLocalTime(session, now),
+    };
+  }
+  const nextOpen = findNextSessionOpen(session, now, parts, windows);
+  const betweenWindows = isTradingDay && windows.some((windowItem, index) => {
+    const nextWindow = windows[index + 1];
+    return nextWindow && currentMinute >= windowItem.endMinute && currentMinute < nextWindow.startMinute;
+  });
+  return {
+    status: betweenWindows ? "Break" : "Closed",
+    phase: betweenWindows ? "Lunch break" : "Closed",
+    variant: betweenWindows ? "partial" : "blocked",
+    nextLabel: "Opens in",
+    countdownMs: nextOpen ? nextOpen.getTime() - now.getTime() : 0,
+    localTime: formatSessionLocalTime(session, now),
+  };
+}
+
+function findNextSessionOpen(session, now, parts, windows) {
+  for (let dayOffset = 0; dayOffset <= 8; dayOffset += 1) {
+    const localDate = addDaysToLocalParts(parts, dayOffset);
+    const dayProbe = new Date(Date.UTC(localDate.year, localDate.month - 1, localDate.day, 12, 0, 0));
+    const weekday = dayProbe.getUTCDay();
+    if (!session.days.includes(weekday)) continue;
+    for (const windowItem of windows) {
+      const [startHour, startMinute] = windowItem.start.split(":").map(Number);
+      const candidate = zonedDateToUtc(localDate, session.timeZone, startHour, startMinute);
+      if (candidate.getTime() > now.getTime()) return candidate;
+    }
+  }
+  return null;
 }
 
 function statusChip(label, stateName = "partial") {
@@ -447,6 +643,8 @@ function loadDashboard(force = false) {
     state.walletBalancesLoaded = false;
     state.exchangeFeeds = null;
     state.exchangeFeedsLoaded = false;
+    state.newsSentiment = null;
+    state.newsSentimentLoaded = false;
   }
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
@@ -503,6 +701,17 @@ async function loadExchangeFeeds(force = false) {
   state.exchangeFeeds = await fetchJson("/api/exchanges");
   state.exchangeFeedsLoaded = true;
   return state.exchangeFeeds;
+}
+
+async function loadNewsSentiment(force = false) {
+  if (state.newsSentimentLoaded && !force) return state.newsSentiment;
+  try {
+    state.newsSentiment = await fetchJson("/api/news/sentiment");
+  } catch (_error) {
+    state.newsSentiment = null;
+  }
+  state.newsSentimentLoaded = true;
+  return state.newsSentiment;
 }
 
 function defaultStrategyConfigForIdea(idea) {
@@ -640,6 +849,59 @@ function renderError(error) {
     </section>`;
 }
 
+function renderMarketSessionsPanel() {
+  const sessionCards = MARKET_SESSIONS.map((session) => {
+    const stateNow = getSessionState(session);
+    return `
+      <article class="session-card" data-market-session="${escapeHtml(session.id)}">
+        <div class="session-card-head">
+          <span class="card-icon">${escapeHtml(session.region)}</span>
+          <span class="status-chip ${escapeHtml(stateNow.variant)}" data-session-state>${escapeHtml(stateNow.status)}</span>
+        </div>
+        <h3>${escapeHtml(session.label)}</h3>
+        <div class="session-timer" data-session-countdown>${escapeHtml(formatDuration(stateNow.countdownMs))}</div>
+        <div class="session-meta">
+          <span data-session-next>${escapeHtml(stateNow.nextLabel)}</span>
+          <strong data-session-phase>${escapeHtml(stateNow.phase)}</strong>
+        </div>
+        <div class="session-local">
+          <span>${escapeHtml(session.city)}</span>
+          <strong data-session-local>${escapeHtml(stateNow.localTime)}</strong>
+        </div>
+        <small>${escapeHtml(session.note)}</small>
+      </article>`;
+  }).join("");
+  return `
+    <section class="panel market-sessions-panel">
+      <div class="panel-head">
+        <div class="panel-title"><h2>Stock market sessions</h2><p>Live timers for US and Asian equity sessions. Holidays require a dedicated market-calendar feed.</p></div>
+        ${statusChip("Live timers", "ready")}
+      </div>
+      <div class="session-grid">${sessionCards}</div>
+    </section>`;
+}
+
+function updateMarketSessionTimers() {
+  document.querySelectorAll("[data-market-session]").forEach((card) => {
+    const session = MARKET_SESSIONS.find((item) => item.id === card.dataset.marketSession);
+    if (!session) return;
+    const stateNow = getSessionState(session);
+    const stateElement = card.querySelector("[data-session-state]");
+    const countdownElement = card.querySelector("[data-session-countdown]");
+    const nextElement = card.querySelector("[data-session-next]");
+    const phaseElement = card.querySelector("[data-session-phase]");
+    const localElement = card.querySelector("[data-session-local]");
+    if (stateElement) {
+      stateElement.className = `status-chip ${stateNow.variant}`;
+      stateElement.textContent = stateNow.status;
+    }
+    if (countdownElement) countdownElement.textContent = formatDuration(stateNow.countdownMs);
+    if (nextElement) nextElement.textContent = stateNow.nextLabel;
+    if (phaseElement) phaseElement.textContent = stateNow.phase;
+    if (localElement) localElement.textContent = stateNow.localTime;
+  });
+}
+
 function renderHome(payload) {
   const summary = payload.summary || {};
   const paper = payload.paper_trading?.summary || {};
@@ -682,6 +944,8 @@ function renderHome(payload) {
       <article class="metric-card"><span>Research bots</span><strong>${number(summary.active_bots || 0)}</strong><small>Transparent scored bot profiles</small></article>
     </section>
 
+    ${renderMarketSessionsPanel()}
+
     <section class="content-grid asymmetric">
       <article class="panel">
         <div class="panel-head"><div class="panel-title"><h2>Market snapshot</h2><p>Direction, price, and data origin in one compact view.</p></div><a class="text-link" href="/data">View all data</a></div>
@@ -692,6 +956,8 @@ function renderHome(payload) {
         <div class="activity-list">${signals.slice(0, 5).map(renderSignalItem).join("") || emptyCompact("No recent evidence is available.")}</div>
       </article>
     </section>
+
+    ${renderNewsSentimentPanel({ compact: true })}
 
     <section class="panel" style="margin-top:14px">
       <div class="panel-head"><div class="panel-title"><h2>Choose your next step</h2><p>The platform stays simple until you ask for professional detail.</p></div></div>
@@ -726,6 +992,36 @@ function renderSignalItem(signal) {
     </div>`;
 }
 
+function sentimentCopy(score) {
+  const value = Number(score) || 0;
+  if (value > 0.15) return ["Bullish", "ready"];
+  if (value < -0.15) return ["Bearish", "blocked"];
+  return ["Neutral", "partial"];
+}
+
+function renderNewsSentimentPanel({ compact = false } = {}) {
+  const snapshot = state.newsSentiment;
+  const assets = snapshot?.assets || [];
+  if (!snapshot) {
+    return `<section class="panel" style="margin-top:${compact ? "14" : "0"}px"><div class="panel-head"><div class="panel-title"><h2>AI news sentiment</h2><p>Real news classification is not available from this browser session.</p></div>${statusChip("Unavailable", "blocked")}</div></section>`;
+  }
+  if (!assets.length) {
+    return `<section class="panel" style="margin-top:${compact ? "14" : "0"}px"><div class="panel-head"><div class="panel-title"><h2>AI news sentiment</h2><p>${escapeHtml(snapshot.summary || "No classified news headlines are available yet.")}</p></div>${statusChip(snapshot.llm_enabled ? "NIM ready" : "Waiting", snapshot.llm_enabled ? "ready" : "partial")}</div><div class="empty-state"><div><h3>No classified headlines</h3><p>Run the news pipeline with real RSS inputs and NVIDIA_API_KEY configured to classify fresh headlines.</p></div></div></section>`;
+  }
+  const cards = assets.slice(0, compact ? 3 : 8).map(renderNewsSentimentAsset).join("");
+  const action = state.dashboard?.auth_session?.authenticated
+    ? `<button class="button small" type="button" data-send-daily-summary>Send daily summary</button>`
+    : `<button class="button small" type="button" data-open-account>Create account</button>`;
+  return `<section class="panel" style="margin-top:${compact ? "14" : "0"}px"><div class="panel-head"><div class="panel-title"><h2>AI news sentiment</h2><p>${escapeHtml(snapshot.summary || "Aggregated from classified news headlines.")}</p></div><div class="page-actions">${statusChip(snapshot.llm_enabled ? "NVIDIA NIM" : "Rules only", snapshot.llm_enabled ? "ready" : "partial")}${action}</div></div><div class="card-grid">${cards}</div></section>`;
+}
+
+function renderNewsSentimentAsset(item) {
+  const [label, variant] = sentimentCopy(item.score);
+  const headlineMeta = `${number(item.headline_count || 0)} headline(s) - relevance ${percent(item.average_relevance || 0)}`;
+  const headlines = (item.top_headlines || []).slice(0, 2).map((headline) => `<li>${escapeHtml(headline)}</li>`).join("");
+  return `<article class="data-card"><div class="card-topline"><span class="card-icon">${escapeHtml(item.asset || "?")}</span>${statusChip(label, variant)}</div><h3>${escapeHtml(item.asset || "Asset")}</h3><p>${escapeHtml(headlineMeta)}</p><div class="detail-list"><div><span>Score</span><strong class="number ${Number(item.score) >= 0 ? "positive" : "negative"}">${number(item.score || 0, 2)}</strong></div><div><span>Positive</span><strong>${number(item.positive_count || 0)}</strong></div><div><span>Negative</span><strong>${number(item.negative_count || 0)}</strong></div><div><span>Neutral</span><strong>${number(item.neutral_count || 0)}</strong></div></div>${headlines ? `<ul class="launch-track-list">${headlines}</ul>` : ""}</article>`;
+}
+
 function emptyCompact(message) {
   return `<div class="compact-item"><span class="compact-copy"><span>${escapeHtml(message)}</span></span></div>`;
 }
@@ -735,6 +1031,15 @@ function datasetRuntime(dataset, payload) {
   if (dataset.id === "live-markets") {
     const stateName = marketState(payload);
   return { state: stateName, label: stateName === "live" ? "Live" : stateName === "setup" ? "Setup needed" : "Blocked", source: provider.market_provider_source || "Market provider" };
+  }
+  if (dataset.id === "ai-news-sentiment") {
+    const snapshot = state.newsSentiment;
+    if (!snapshot) return { state: "setup", label: "Waiting", source: "News sentiment endpoint" };
+    return {
+      state: snapshot.llm_enabled ? "live" : "partial",
+      label: snapshot.llm_enabled ? "NIM ready" : "Rules only",
+      source: snapshot.source || "rss-news-provider",
+    };
   }
   if (dataset.id === "creator-evidence") {
     const stateName = socialState(payload);
@@ -763,6 +1068,8 @@ function renderData(payload) {
   return `
     ${pageHeader("Data Library", "Find information by the question it answers", "Every dataset shows its source, freshness, limits, cost posture, and permitted use before you add it to a strategy.", `<button class="button secondary" type="button" data-open-license>How licensing works</button><a class="button" href="/ideas">Use data in an idea</a>`)}
     <div class="filter-bar" aria-label="Dataset filters">${filters.map(([id, label]) => `<button class="chip-button ${state.dataFilter === id ? "active" : ""}" type="button" data-data-filter="${id}">${label}</button>`).join("")}</div>
+    ${renderMarketSessionsPanel()}
+    ${renderNewsSentimentPanel()}
     <section class="card-grid">${visible.map((dataset) => renderDatasetCard(dataset, datasetRuntime(dataset, payload))).join("")}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Licensing is part of the product.</strong> BITprivat will not mirror or resell restricted third-party datasets. Paid and user-owned sources remain locked to their permitted research, charting, backtest, or live uses.</p></section>`;
 }
@@ -980,6 +1287,9 @@ async function renderCurrentPage(force = false) {
     if (state.page === "connections") {
       await loadExchangeFeeds(force);
     }
+    if (["home", "data"].includes(state.page)) {
+      await loadNewsSentiment(force);
+    }
     const renderers = {
       home: renderHome,
       data: renderData,
@@ -994,6 +1304,7 @@ async function renderCurrentPage(force = false) {
       settings: renderSettings,
     };
     root.innerHTML = renderers[state.page](payload);
+    updateMarketSessionTimers();
     root.focus({ preventScroll: true });
   } catch (error) {
     renderError(error);
@@ -1295,12 +1606,34 @@ async function openAccount() {
 
 function openNotifications() {
   const alerts = state.dashboard?.user_profile?.recent_alerts || [];
+  const summaryAction = state.dashboard?.auth_session?.authenticated
+    ? `<button class="button secondary" type="button" data-send-daily-summary>Send daily summary</button>`
+    : `<button class="button secondary" type="button" data-open-account>Create account</button>`;
   openDrawer({
     kicker: "Alerts",
     title: "Notifications",
     body: alerts.length ? `<div class="compact-list">${alerts.slice(0, 12).map((alert) => `<div class="compact-item"><span class="activity-icon">!</span><span class="compact-copy"><strong>${escapeHtml(alert.title || alert.alert_type || "BITprivat alert")}</strong><span>${escapeHtml(alert.message || alert.summary || "")}</span><small>${dateLabel(alert.created_at)}</small></span></div>`).join("")}</div>` : `<div class="empty-state"><div><h3>No notifications</h3><p>Important provider, strategy, paper-trading, and risk events will appear here.</p></div></div>`,
-    footer: `<a class="button secondary" href="/settings">Notification settings</a><button class="button" type="button" data-close-drawer>Close</button>`,
+    footer: `<a class="button secondary" href="/settings">Notification settings</a>${summaryAction}<button class="button" type="button" data-close-drawer>Close</button>`,
   });
+}
+
+async function sendDailyMarketSummary(button = null) {
+  if (!state.dashboard?.auth_session?.authenticated) {
+    openAccount();
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    const payload = await fetchJson("/api/me/notifications/daily-market-summary", { method: "POST" });
+    if (payload.skipped_reason) {
+      toast("Summary not sent", payload.skipped_reason);
+    } else {
+      toast("Daily summary sent", `Delivered to ${number(payload.delivered_count || 0)} channel(s); ${number(payload.failed_count || 0)} failed.`);
+    }
+    await loadDashboard(true);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function showProviderDetails() {
@@ -1408,7 +1741,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
- const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-close-drawer], [data-retry-page], [data-data-filter]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -1431,6 +1764,9 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-open-account")) openAccount();
     if (target.hasAttribute("data-accept-risk")) {
       acceptRiskDisclosure().catch((error) => showToast(error.message || "Unable to update onboarding."));
+    }
+    if (target.hasAttribute("data-send-daily-summary")) {
+      sendDailyMarketSummary(target).catch((error) => showToast(error.message || "Daily summary failed."));
     }
  if (target.hasAttribute("data-close-drawer")) closeDrawer();
     if (target.hasAttribute("data-retry-page")) renderCurrentPage(true);
@@ -1491,3 +1827,4 @@ applyPreferences();
 syncActiveNav();
 bindGlobalEvents();
 renderCurrentPage();
+window.setInterval(updateMarketSessionTimers, 1000);

@@ -947,6 +947,62 @@ body[data-theme="dark"] .moon-icon {
 .metric-card .positive { color: var(--profit); }
 .metric-card .negative { color: var(--loss); }
 
+.market-sessions-panel {
+  margin-bottom: 18px;
+}
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.session-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, var(--canvas-subtle));
+}
+
+.session-card-head,
+.session-meta,
+.session-local {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.session-card h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.session-timer {
+  font: 800 28px/1 var(--font-numeric);
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.session-meta span,
+.session-local span,
+.session-card small {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.session-meta strong,
+.session-local strong {
+  min-width: 0;
+  color: var(--ink-soft);
+  font: 700 11px/1.2 var(--font-numeric);
+  text-align: right;
+}
+
 .content-grid {
   display: grid;
   gap: 14px;
@@ -1979,6 +2035,22 @@ body[data-experience="pro"] .pro-grid {
   .asset-row { grid-template-columns: minmax(110px, 1fr) repeat(2, minmax(72px, 0.6fr)) 28px; }
   .asset-row .asset-volume { display: none; }
   .command-palette { top: 10px; max-height: calc(100vh - 20px); }
+}
+
+@media (max-width: 1180px) {
+  .session-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .session-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-timer {
+    font-size: 24px;
+  }
 }
 
 @media (max-width: 440px) {
