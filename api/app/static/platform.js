@@ -195,6 +195,8 @@ const state = {
   strategyDraft: readStoredObject("bp-strategy-draft"),
   strategies: [],
   strategiesLoaded: false,
+  backtests: [],
+  backtestsLoaded: false,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -432,6 +434,18 @@ async function loadStrategies(force = false) {
   state.strategies = await fetchJson("/api/strategies");
   state.strategiesLoaded = true;
   return state.strategies;
+}
+
+async function loadBacktests(force = false) {
+  if (!state.dashboard?.auth_session?.authenticated) {
+    state.backtests = [];
+    state.backtestsLoaded = false;
+    return [];
+  }
+  if (state.backtestsLoaded && !force) return state.backtests;
+  state.backtests = await fetchJson("/api/strategies/backtests?limit=20");
+  state.backtestsLoaded = true;
+  return state.backtests;
 }
 
 function defaultStrategyConfigForIdea(idea) {
@@ -731,10 +745,14 @@ function renderStrategies(payload) {
   const authenticated = Boolean(payload.auth_session?.authenticated);
   const draft = state.strategyDraft;
   const savedStrategies = authenticated ? state.strategies : [];
+  const backtestCounts = state.backtests.reduce((counts, run) => {
+    counts[run.strategy_id] = (counts[run.strategy_id] || 0) + 1;
+    return counts;
+  }, {});
   return `
     ${pageHeader("Strategy Builder", "Turn an idea into clear, testable rules", "Start from a guided template. Professional parameters remain available in Pro mode.", `<a class="button secondary" href="/ideas">Review ideas</a><a class="button" href="/simulation">Open Strategy Lab</a>`)}
     ${draft ? `<section class="inline-notice" style="margin-bottom:14px"><span class="state-dot live"></span><p><strong>Draft ready:</strong> ${escapeHtml(draft.title)}. Continue with a template, then open Strategy Lab for the historical test.</p></section>` : ""}
-    ${savedStrategies.length ? `<section class="panel" style="margin-bottom:14px"><div class="panel-head"><div class="panel-title"><h2>Saved strategy drafts</h2><p>Account-backed research ideas ready for historical testing.</p></div>${statusChip(`${savedStrategies.length} saved`, "ready")}</div><div class="compact-list">${savedStrategies.slice(0, 5).map((strategy) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(strategy.name)}</strong><span>${escapeHtml(strategy.config?.asset || "BTC")} · ${escapeHtml(strategy.config?.strategy_id || "custom_creator")} · updated ${escapeHtml(relativeDate(strategy.updated_at))}</span></span><button class="text-link" type="button" data-run-backtest="${escapeHtml(String(strategy.id))}">Run backtest</button></div>`).join("")}</div></section>` : ""}
+    ${savedStrategies.length ? `<section class="panel" style="margin-bottom:14px"><div class="panel-head"><div class="panel-title"><h2>Saved strategy drafts</h2><p>Account-backed research ideas ready for historical testing.</p></div>${statusChip(`${savedStrategies.length} saved`, "ready")}</div><div class="compact-list">${savedStrategies.slice(0, 5).map((strategy) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(strategy.name)}</strong><span>${escapeHtml(strategy.config?.asset || "BTC")} · ${escapeHtml(strategy.config?.strategy_id || "custom_creator")} · ${number(backtestCounts[strategy.id] || 0)} test(s)</span></span><button class="text-link" type="button" data-run-backtest="${escapeHtml(String(strategy.id))}">Run backtest</button></div>`).join("")}</div></section>` : ""}
     <section class="card-grid">${STRATEGY_TEMPLATES.map((template) => `
       <article class="strategy-card">
         <div class="strategy-head"><span class="card-icon">${escapeHtml(template.id.split("-").map((x) => x[0]).join("").toUpperCase())}</span>${statusChip(template.level, template.level === "Beginner" ? "ready" : "partial")}</div>
@@ -748,13 +766,15 @@ function renderStrategies(payload) {
 function renderResults(payload) {
   const authenticated = Boolean(payload.auth_session?.authenticated);
   const score = payload.summary?.average_bot_score || 0;
-  const latest = state.latestBacktest;
+  const backendRuns = authenticated ? state.backtests : [];
+  const latest = backendRuns[0] || (!authenticated ? state.latestBacktest : null);
   const latestSummary = latest?.summary || {};
   const latestResult = latest?.result?.selected_result || null;
   return `
     ${pageHeader("Test results", "Understand performance without a statistics degree", "Return is only one part of a result. BITprivat puts the worst loss, consistency, fees, and data quality beside it.", `<a class="button" href="/simulation">Run a historical test</a>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Saved strategies</span><strong>${authenticated ? number(state.strategies.length) : "--"}</strong><small>${authenticated ? "Account-backed drafts" : "Sign in to store private results"}</small></article><article class="metric-card"><span>Latest return</span><strong class="${Number(latestSummary.total_return || latestResult?.total_return || 0) >= 0 ? "positive" : "negative"}">${latest ? percent(latestSummary.total_return ?? latestResult?.total_return ?? 0) : "--"}</strong><small>${latest ? escapeHtml(latest.asset || "Backtest") : "No saved run in this browser"}</small></article><article class="metric-card"><span>Test engine</span><strong>V1</strong><small>Real/local history mode by config</small></article><article class="metric-card"><span>Live promotion</span><strong>Locked</strong><small>Paper and validation gates required</small></article></section>
+    <section class="metric-grid"><article class="metric-card"><span>Saved strategies</span><strong>${authenticated ? number(state.strategies.length) : "--"}</strong><small>${authenticated ? "Account-backed drafts" : "Sign in to store private results"}</small></article><article class="metric-card"><span>Saved tests</span><strong>${authenticated ? number(backendRuns.length) : "--"}</strong><small>${authenticated ? "Backend backtest history" : "Not stored for guests"}</small></article><article class="metric-card"><span>Latest return</span><strong class="${Number(latestSummary.total_return || latestResult?.total_return || 0) >= 0 ? "positive" : "negative"}">${latest ? percent(latestSummary.total_return ?? latestResult?.total_return ?? 0) : "--"}</strong><small>${latest ? escapeHtml(latest.asset || "Backtest") : "No saved run yet"}</small></article><article class="metric-card"><span>Live promotion</span><strong>Locked</strong><small>Paper and validation gates required</small></article></section>
     ${latest ? `<section class="panel"><div class="panel-head"><div class="panel-title"><h2>${escapeHtml(latestSummary.strategy_name || "Latest strategy backtest")}</h2><p>${escapeHtml(latestSummary.selected_label || latest.strategy_key || "Saved strategy result")}</p></div>${statusChip(latest.status || "completed", latest.status === "failed" ? "blocked" : "ready")}</div><div class="detail-list"><div><span>Asset</span><strong>${escapeHtml(latest.asset)}</strong></div><div><span>Lookback</span><strong>${number(latest.lookback_years)} years</strong></div><div><span>History points</span><strong>${number(latestSummary.history_points || latest.result?.history_points || 0)}</strong></div><div><span>Data source</span><strong>${escapeHtml(latestSummary.data_source || latest.result?.data_source || "configured history")}</strong></div></div></section>` : `<section class="empty-state"><div><span class="card-icon">R</span><h2>Your first saved report starts from a strategy draft</h2><p>Create a research idea, save it to your account, then run a backend historical test.</p><a class="button" href="/ideas">Create idea</a></div></section>`}
+    ${backendRuns.length ? `<section class="panel" style="margin-top:14px"><div class="panel-head"><div class="panel-title"><h2>Backtest history</h2><p>Stored server-side for this account.</p></div>${statusChip(`${backendRuns.length} run(s)`, "ready")}</div><div class="compact-list">${backendRuns.slice(0, 8).map((run) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(run.summary?.strategy_name || run.strategy_key || "Strategy run")}</strong><span>${escapeHtml(run.asset)} · ${number(run.lookback_years)}y · ${escapeHtml(run.summary?.data_source || run.result?.data_source || "configured history")}</span><small>${escapeHtml(relativeDate(run.completed_at || run.started_at))}</small></span><strong class="number ${Number(run.summary?.total_return || run.result?.selected_result?.total_return || 0) >= 0 ? "positive" : "negative"}">${percent(run.summary?.total_return ?? run.result?.selected_result?.total_return ?? 0)}</strong></div>`).join("")}</div></section>` : ""}
     <section class="panel" style="margin-top:14px"><div class="panel-head"><div class="panel-title"><h2>Every future report will answer these questions</h2><p>Simple mode first, professional metrics one level deeper.</p></div></div><div class="quick-paths"><article class="path-card"><span class="card-icon">EUR</span><strong>What happened to EUR 1,000?</strong><p>Final value after modeled fees and slippage.</p></article><article class="path-card"><span class="card-icon">DD</span><strong>What was the worst fall?</strong><p>Maximum decline from a previous portfolio high.</p></article><article class="path-card"><span class="card-icon">VS</span><strong>Was it better than holding?</strong><p>Compare the strategy with a simple benchmark.</p></article></div></section>`;
 }
 
@@ -877,6 +897,9 @@ async function renderCurrentPage(force = false) {
     const payload = await loadDashboard(force);
     if (payload.auth_session?.authenticated && ["ideas", "strategies", "results"].includes(state.page)) {
       await loadStrategies(force);
+    }
+    if (payload.auth_session?.authenticated && ["strategies", "results"].includes(state.page)) {
+      await loadBacktests(force);
     }
     const renderers = {
       home: renderHome,
@@ -1005,6 +1028,8 @@ async function runSavedStrategyBacktest(strategyId) {
   });
   state.latestBacktest = run;
   localStorage.setItem("bp-latest-backtest", JSON.stringify(run));
+  state.backtestsLoaded = false;
+  await loadBacktests(true);
   showToast("Backtest completed from saved strategy.");
   window.history.pushState({}, "", "/results");
   state.page = "results";
