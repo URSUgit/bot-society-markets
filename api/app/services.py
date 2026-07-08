@@ -67,6 +67,9 @@ from .models import (
     DashboardSnapshot,
     EdgeOpportunityView,
     EdgeSnapshot,
+    ExchangeFeedSnapshot,
+    ExchangeFeedStatus,
+    ExchangeMarketPrice,
     FollowedBot,
     ConnectorControlSnapshot,
     ConnectorStatusItem,
@@ -377,6 +380,7 @@ class BotSocietyService:
         self.provider_status_cache: tuple[datetime, ProviderStatus] | None = None
         self.system_pulse_cache: tuple[datetime, SystemPulseSnapshot] | None = None
         self.assets_cache: tuple[datetime, list[AssetSnapshot]] | None = None
+        self.exchange_feed_cache: tuple[datetime, ExchangeFeedSnapshot] | None = None
         self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
         self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
         self.dashboard_snapshot_cache: dict[str, tuple[datetime, DashboardSnapshot]] = {}
@@ -2805,6 +2809,121 @@ class BotSocietyService:
         assets = [self._to_asset_model(row) for row in rows]
         self.assets_cache = (datetime.now(timezone.utc), assets)
         return assets
+
+    def get_exchange_feed_snapshot(self, *, force_refresh: bool = False) -> ExchangeFeedSnapshot:
+        if not force_refresh and self._cache_is_fresh(self.exchange_feed_cache, ttl_seconds=120):
+            return self.exchange_feed_cache[1]
+
+        repository = BotSocietyRepository(self.database)
+        latest_snapshots = repository.list_latest_market_snapshots()
+        feeds: list[ExchangeFeedStatus] = []
+
+        binance_symbols = self._tracked_exchange_symbols(self.settings.binance_quote_asset)
+        binance_rows: list[dict] = []
+        binance_message = "Set BSM_MARKET_PROVIDER=auto or binance to sample Binance public spot prices."
+        binance_configured = self.settings.market_provider_mode in {"auto", "binance"}
+        if binance_configured:
+            try:
+                binance_rows = BinanceSpotMarketProvider(
+                    tracked_coin_ids=self.settings.tracked_coin_ids,
+                    quote_asset=self.settings.binance_quote_asset,
+                    base_url=self.settings.binance_api_base_url,
+                    timeout_seconds=min(6, self.settings.outbound_timeout_seconds),
+                ).generate(latest_snapshots, 0)
+                binance_message = (
+                    "Live Binance public spot prices sampled without account credentials."
+                    if binance_rows
+                    else "Binance public spot returned no rows for the configured symbols."
+                )
+            except Exception as exc:
+                binance_message = f"Binance public spot sample failed: {exc.__class__.__name__}."
+
+        feeds.append(
+            ExchangeFeedStatus(
+                id="binance-spot-public",
+                label="Binance Spot Public",
+                exchange="Binance",
+                market_type="spot",
+                provider="binance-spot-public-provider",
+                mode=self.settings.market_provider_mode,
+                quote_asset=self.settings.binance_quote_asset,
+                configured=binance_configured,
+                status="live" if binance_rows else ("ready" if binance_configured else "setup_required"),
+                symbols=binance_symbols,
+                sample_count=len(binance_rows),
+                latest_prices=self._exchange_prices_from_rows(binance_rows, self.settings.binance_quote_asset),
+                message=binance_message,
+                app_url="https://github.com/binance/binance-spot-api-docs",
+                next_actions=[
+                    "Keep this feed public/read-only; it does not require user API keys.",
+                    "Use BSM_TRACKED_COIN_IDS and BSM_BINANCE_QUOTE_ASSET to control sampled symbols.",
+                ],
+            )
+        )
+
+        coingecko_configured = self.settings.market_provider_mode in {"auto", "coingecko"}
+        feeds.append(
+            ExchangeFeedStatus(
+                id="coingecko-public-market",
+                label="CoinGecko Market Data",
+                exchange="CoinGecko",
+                market_type="spot-index",
+                provider="coingecko-market-provider",
+                mode=self.settings.market_provider_mode,
+                configured=coingecko_configured,
+                status="ready" if coingecko_configured else "setup_required",
+                symbols=[coin.upper() for coin in self.settings.tracked_coin_ids],
+                sample_count=0,
+                message=(
+                    "Ready as the public market fallback; attach BSM_COINGECKO_API_KEY for higher commercial limits."
+                    if coingecko_configured
+                    else "Set BSM_MARKET_PROVIDER=auto or coingecko to enable this public market fallback."
+                ),
+                app_url="https://www.coingecko.com/en/api",
+                next_actions=[
+                    "Use only permitted CoinGecko API data in commercial reporting.",
+                    "Add an API key before expanding the tracked asset universe.",
+                ],
+            )
+        )
+
+        hyperliquid_configured = self.settings.market_provider_mode in {"auto", "hyperliquid"}
+        feeds.append(
+            ExchangeFeedStatus(
+                id="hyperliquid-public-feed",
+                label="Hyperliquid Public Feed",
+                exchange="Hyperliquid",
+                market_type="perpetuals",
+                provider="hyperliquid-market-provider",
+                mode=self.settings.market_provider_mode,
+                configured=hyperliquid_configured,
+                status="ready" if hyperliquid_configured else "setup_required",
+                symbols=[CoinGeckoMarketProvider.SYMBOL_MAP.get(coin.lower(), coin.upper()) for coin in self.settings.tracked_coin_ids],
+                sample_count=0,
+                message=(
+                    "Configured for public derivatives context. Execution remains locked behind paper-first controls."
+                    if hyperliquid_configured
+                    else "Set BSM_MARKET_PROVIDER=auto or hyperliquid to enable derivatives context."
+                ),
+                app_url=self.settings.hyperliquid_testnet_app_url,
+                next_actions=[
+                    "Keep this feed informational until legal and execution controls are approved.",
+                    "Use testnet settings before any execution-adjacent work.",
+                ],
+            )
+        )
+
+        active_count = sum(1 for feed in feeds if feed.status == "live")
+        overall_status = "live" if active_count else ("ready" if any(feed.configured for feed in feeds) else "setup_required")
+        snapshot = ExchangeFeedSnapshot(
+            generated_at=self._now(),
+            status=overall_status,
+            real_data_only=True,
+            active_feed_count=active_count,
+            feeds=feeds,
+        )
+        self.exchange_feed_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_asset_history(self, asset: str) -> AssetHistoryEnvelope:
         repository = BotSocietyRepository(self.database)
@@ -9687,6 +9806,7 @@ class BotSocietyService:
         self.macro_snapshot_cache = None
         self.system_pulse_cache = None
         self.assets_cache = None
+        self.exchange_feed_cache = None
         self.leaderboard_cache.clear()
         self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
@@ -9857,6 +9977,37 @@ class BotSocietyService:
     @staticmethod
     def _to_asset_model(row: dict) -> AssetSnapshot:
         return AssetSnapshot(**row)
+
+    def _tracked_exchange_symbols(self, quote_asset: str) -> list[str]:
+        quote = (quote_asset or "USDT").upper()
+        symbols: list[str] = []
+        for coin_id in self.settings.tracked_coin_ids:
+            asset = CoinGeckoMarketProvider.SYMBOL_MAP.get(coin_id.lower(), coin_id.upper())
+            symbol = f"{asset}{quote}"
+            if symbol not in symbols:
+                symbols.append(symbol)
+        return symbols
+
+    @staticmethod
+    def _exchange_prices_from_rows(rows: list[dict], quote_asset: str | None) -> list[ExchangeMarketPrice]:
+        quote = (quote_asset or "").upper()
+        prices: list[ExchangeMarketPrice] = []
+        for row in rows:
+            asset = str(row.get("asset") or "").upper()
+            if not asset:
+                continue
+            prices.append(
+                ExchangeMarketPrice(
+                    asset=asset,
+                    symbol=f"{asset}{quote}" if quote else asset,
+                    price=float(row.get("price") or 0.0),
+                    change_24h=float(row.get("change_24h") or 0.0),
+                    volume_24h=float(row.get("volume_24h") or 0.0),
+                    as_of=str(row.get("as_of") or ""),
+                    source=str(row.get("source") or "exchange-provider"),
+                )
+            )
+        return prices
 
     def _social_trader_payload(self, trader: DiscoveredSocialTrader, *, now: str) -> dict[str, object]:
         return {

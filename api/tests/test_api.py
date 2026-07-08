@@ -2680,6 +2680,79 @@ def test_fast_public_market_rows_prefers_binance_live_feed(monkeypatch) -> None:
         assert status.market_fallback_active is False
 
 
+def test_exchange_feed_snapshot_does_not_fabricate_demo_prices() -> None:
+    settings = Settings(
+        market_provider_mode="demo",
+        tracked_coin_ids=("bitcoin", "ethereum"),
+    )
+    with build_client(settings) as client:
+        response = client.get("/api/exchanges")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "setup_required"
+        assert payload["active_feed_count"] == 0
+        binance_feed = next(feed for feed in payload["feeds"] if feed["id"] == "binance-spot-public")
+        assert binance_feed["status"] == "setup_required"
+        assert binance_feed["sample_count"] == 0
+        assert binance_feed["latest_prices"] == []
+
+
+def test_exchange_feed_snapshot_samples_binance_public_prices(monkeypatch) -> None:
+    payload = [
+        {
+            "symbol": "BTCUSDT",
+            "lastPrice": "101234.50",
+            "priceChangePercent": "2.500",
+            "quoteVolume": "5200000000",
+            "closeTime": 1778149000000,
+        },
+        {
+            "symbol": "ETHUSDT",
+            "lastPrice": "4200.25",
+            "priceChangePercent": "-1.200",
+            "quoteVolume": "1900000000",
+            "closeTime": 1778149000000,
+        },
+    ]
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode("utf-8")
+
+    requests: list[str] = []
+
+    def fake_urlopen(request, timeout: int):
+        requests.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+
+    settings = Settings(
+        market_provider_mode="binance",
+        tracked_coin_ids=("bitcoin", "ethereum"),
+        binance_quote_asset="USDT",
+    )
+    with build_client(settings) as client:
+        response = client.get("/api/exchanges")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "live"
+        assert payload["active_feed_count"] == 1
+        binance_feed = next(feed for feed in payload["feeds"] if feed["id"] == "binance-spot-public")
+        assert binance_feed["status"] == "live"
+        assert binance_feed["symbols"] == ["BTCUSDT", "ETHUSDT"]
+        assert binance_feed["sample_count"] == 2
+        assert {price["asset"] for price in binance_feed["latest_prices"]} == {"BTC", "ETH"}
+        assert binance_feed["latest_prices"][0]["source"] == "binance-spot-public-provider"
+        assert "/api/v3/ticker/24hr" in requests[0]
+
+
 def test_auto_market_provider_metadata() -> None:
     settings = Settings(
         market_provider_mode="auto",

@@ -71,6 +71,43 @@ class AssetSnapshot(BaseModel):
     source: str
 
 
+class ExchangeMarketPrice(BaseModel):
+    asset: str
+    symbol: str
+    price: float
+    change_24h: float
+    volume_24h: float
+    as_of: str
+    source: str
+
+
+class ExchangeFeedStatus(BaseModel):
+    id: str
+    label: str
+    exchange: str
+    market_type: str
+    provider: str
+    mode: str
+    quote_asset: str | None = None
+    configured: bool = False
+    live_capable: bool = True
+    status: str
+    symbols: list[str] = Field(default_factory=list)
+    sample_count: int = Field(ge=0)
+    latest_prices: list[ExchangeMarketPrice] = Field(default_factory=list)
+    message: str
+    app_url: str | None = None
+    next_actions: list[str] = Field(default_factory=list)
+
+
+class ExchangeFeedSnapshot(BaseModel):
+    generated_at: str
+    status: str
+    real_data_only: bool = True
+    active_feed_count: int = Field(ge=0)
+    feeds: list[ExchangeFeedStatus] = Field(default_factory=list)
+
+
 class AssetHistoryPoint(BaseModel):
     time: str
     value: float

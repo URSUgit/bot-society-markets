@@ -199,6 +199,8 @@ const state = {
   backtestsLoaded: false,
   walletBalances: null,
   walletBalancesLoaded: false,
+  exchangeFeeds: null,
+  exchangeFeedsLoaded: false,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -443,6 +445,8 @@ function loadDashboard(force = false) {
   if (force) {
     state.walletBalances = null;
     state.walletBalancesLoaded = false;
+    state.exchangeFeeds = null;
+    state.exchangeFeedsLoaded = false;
   }
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
@@ -492,6 +496,13 @@ async function loadWalletBalances(force = false) {
   state.walletBalances = await fetchJson("/api/me/wallets/balances");
   state.walletBalancesLoaded = true;
   return state.walletBalances;
+}
+
+async function loadExchangeFeeds(force = false) {
+  if (state.exchangeFeedsLoaded && !force) return state.exchangeFeeds;
+  state.exchangeFeeds = await fetchJson("/api/exchanges");
+  state.exchangeFeedsLoaded = true;
+  return state.exchangeFeeds;
 }
 
 function defaultStrategyConfigForIdea(idea) {
@@ -887,6 +898,21 @@ function renderConnectorCard(connector) {
   return `<article class="provider-card"><div class="card-topline"><span class="card-icon">${escapeHtml(initials(connector.label))}</span>${statusChip(stateLabel, connectorStateVariant(connector))}</div><h3>${escapeHtml(connector.label)}</h3><p>${escapeHtml(connector.summary || connector.target_surface || "Connector status is not available.")}</p><div class="detail-list"><div><span>Mode</span><strong>${escapeHtml(connector.mode || "Not set")}</strong></div><div><span>Readiness</span><strong>${number(readiness, 0)}%</strong></div><div><span>Category</span><strong>${escapeHtml(connector.category || "Data")}</strong></div><div><span>Source</span><strong>${escapeHtml(connector.source || "Not set")}</strong></div></div><div class="card-meta">${(connector.env_keys || []).slice(0, 4).map((key) => `<span>${escapeHtml(key)}</span>`).join("") || `<span>No browser secret needed</span>`}</div><div class="card-footer"><small>${escapeHtml(connector.activation_phase || "Connector")}</small><button class="text-link" type="button" data-connector-diagnostic="${escapeHtml(connector.id)}">Diagnostics</button>${connector.app_url ? `<a class="text-link" href="${escapeHtml(connector.app_url)}" target="_blank" rel="noreferrer">Docs</a>` : ""}</div></article>`;
 }
 
+function exchangeFeedVariant(feed) {
+  if (feed.status === "live" || feed.status === "ready") return "ready";
+  if (feed.status === "partial") return "partial";
+  return "blocked";
+}
+
+function renderExchangeFeedsPanel() {
+  const snapshot = state.exchangeFeeds;
+  const feeds = snapshot?.feeds || [];
+  if (!feeds.length) {
+    return `<section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>Exchange feeds</h2><p>Public exchange connectivity is not available yet.</p></div>${statusChip("Setup", "blocked")}</div></section>`;
+  }
+  return `<section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>Exchange feeds</h2><p>Free public APIs only. No exchange account keys, custody, or live execution.</p></div>${statusChip(snapshot.status === "live" ? "Live" : "Ready", snapshot.status === "live" ? "ready" : "partial")}</div><div class="compact-list">${feeds.map((feed) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(feed.label)}</strong><span>${escapeHtml(feed.market_type)} · ${escapeHtml(feed.mode)} · ${escapeHtml((feed.symbols || []).slice(0, 4).join(", ") || "No symbols")}</span><small>${escapeHtml(feed.latest_prices?.length ? feed.latest_prices.map((price) => `${price.asset} ${money(price.price)}`).join(" · ") : feed.message)}</small></span>${statusChip(feed.status === "live" ? "Live sample" : feed.status === "ready" ? "Ready" : "Setup", exchangeFeedVariant(feed))}</div>`).join("")}</div></section>`;
+}
+
 function renderPortfolio(payload) {
   const summary = payload.paper_trading?.summary || {};
   const allocations = payload.social_trading?.allocations || [];
@@ -909,6 +935,7 @@ function renderConnections(payload) {
   return `
     ${pageHeader("Connections", "Free APIs, exchanges, wallets, and intelligence feeds", "Connect only what you already have. Missing providers stay blocked until real credentials are configured, and credentials stay in secret stores.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
     <section class="metric-grid"><article class="metric-card"><span>Provider connectors</span><strong>${number(connectors.length)}</strong><small>Free/public MVP surfaces</small></article><article class="metric-card"><span>Live or ready</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Needs setup</span><strong>${number(needsSetup.length)}</strong><small>Requires real credentials or config</small></article><article class="metric-card"><span>Market mode</span><strong>${escapeHtml(p.market_provider_mode || "setup")}</strong><small>${escapeHtml(p.market_provider_source || "No source")}</small></article></section>
+    ${renderExchangeFeedsPanel()}
     <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>On-chain onboarding</h2><p>${readyWallets.length ? "Wallet-gated workspace is active with stablecoin-capable read-only connections." : "Connect a public wallet address to activate the MVP onboarding path."}</p></div>${statusChip(readyWallets.length ? "Active" : "Needed", readyWallets.length ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Use Base, Arbitrum, Polygon, Optimism, Ethereum, or Solana for stablecoin rail tracking.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</section>
     <section class="card-grid">${connectors.map(renderConnectorCard).join("") || `<div class="empty-state"><div><h3>No MVP connectors found</h3><p>Provider configuration is unavailable. Check system status.</p><a class="button small" href="/status">Open status</a></div></div>`}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Cards, onramps, broker execution, and infrastructure controls are hidden from this MVP page.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
@@ -949,6 +976,9 @@ async function renderCurrentPage(force = false) {
     }
     if (payload.auth_session?.authenticated && ["portfolio", "connections"].includes(state.page)) {
       await loadWalletBalances(force);
+    }
+    if (state.page === "connections") {
+      await loadExchangeFeeds(force);
     }
     const renderers = {
       home: renderHome,

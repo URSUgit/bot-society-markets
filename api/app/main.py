@@ -46,6 +46,7 @@ from .models import (
     CycleResult,
     DashboardSnapshot,
     EdgeSnapshot,
+    ExchangeFeedSnapshot,
     FeatureReadinessEnvelope,
     FinancialSignalExtractionRequest,
     FinancialSignalExtractionResult,
@@ -514,6 +515,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/assets", response_model=list[AssetSnapshot])
     def assets(request: Request) -> list[AssetSnapshot]:
         return get_service(request).get_assets()
+
+    @app.get("/api/v1/exchanges", response_model=ExchangeFeedSnapshot)
+    @app.get("/api/exchanges", response_model=ExchangeFeedSnapshot)
+    def exchange_feeds(request: Request) -> ExchangeFeedSnapshot:
+        return get_service(request).get_exchange_feed_snapshot()
 
     @app.get("/api/v1/assets/{asset}/history", response_model=AssetHistoryEnvelope)
     @app.get("/api/assets/{asset}/history", response_model=AssetHistoryEnvelope)
