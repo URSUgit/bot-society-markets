@@ -407,6 +407,7 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         connector_ids = {item["id"] for item in connectors_payload["connectors"]}
         assert "binance-spot-market-data" in connector_ids
         assert "coingecko-market-data" in connector_ids
+        assert "stock-market-calendar" in connector_ids
         assert "polymarket-intel" in connector_ids
         assert "ibkr-brokerage-gateway" in connector_ids
         assert "youtube-social-discovery" in connector_ids
@@ -416,6 +417,10 @@ def test_connector_and_infrastructure_system_endpoints() -> None:
         assert all(0 <= item["readiness_score"] <= 1 for item in connectors_payload["connectors"])
         assert all(item["activation_phase"] for item in connectors_payload["connectors"])
         assert all(item["owner"] for item in connectors_payload["connectors"])
+        calendar_connector = next(item for item in connectors_payload["connectors"] if item["id"] == "stock-market-calendar")
+        assert calendar_connector["source"] == "pandas_market_calendars"
+        assert calendar_connector["state"] in {"live", "ready"}
+        assert calendar_connector["readiness_score"] >= 0.75
 
         diagnostic_response = client.get("/api/system/connectors/stripe-billing-rail/diagnostics")
         assert diagnostic_response.status_code == 200

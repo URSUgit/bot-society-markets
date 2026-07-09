@@ -846,6 +846,7 @@ const APP_ROUTE_ALIASES = {
 const MVP_CONNECTOR_IDS = new Set([
   "binance-spot-market-data",
   "coingecko-market-data",
+  "stock-market-calendar",
   "hyperliquid-market-feed",
   "signal-ingestion",
   "fred-macro",

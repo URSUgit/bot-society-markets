@@ -5267,6 +5267,8 @@ class BotSocietyService:
         social_fallback_active = provider_status.social_discovery_fallback_active
         binance_enabled = self.settings.market_provider_mode in {"auto", "binance"}
         hyperliquid_enabled = self.settings.market_provider_mode in {"auto", "hyperliquid"}
+        market_sessions = self.get_market_sessions_snapshot()
+        market_calendar_ready = market_sessions.status == "live" and market_sessions.holiday_aware
         ibkr_endpoint_configured = self.settings.ibkr_connection_mode != "disabled" and (
             bool(self.settings.ibkr_tws_host and self.settings.ibkr_tws_port)
             if self.settings.ibkr_connection_mode == "tws_gateway"
@@ -5321,6 +5323,28 @@ class BotSocietyService:
                     "Keep market mode on auto so CoinGecko acts as the final spot-data fallback after Binance and Hyperliquid.",
                     "Attach a live API key before increasing tracked assets.",
                 ],
+            ),
+            self._connector_item(
+                connector_id="stock-market-calendar",
+                label="Stock Market Calendar",
+                category="Market Data",
+                mode="calendar",
+                source=market_sessions.source,
+                configured=market_calendar_ready,
+                live_capable=True,
+                ready=market_calendar_ready,
+                fallback_active=not market_calendar_ready,
+                activation_phase="Holiday-aware session calendar",
+                owner="Data Integrations",
+                risk_level="low",
+                target_surface="US and Asia equity session timers, market open/close state, holidays, and lunch breaks",
+                env_keys=[],
+                next_actions=[
+                    "Keep pandas_market_calendars updated so exchange holiday and session rules stay current.",
+                    "Upgrade to TradingHours.com later if the product needs live corporate-action-grade calendar operations.",
+                    "Use /api/markets/sessions as the single browser source for stock session timers.",
+                ],
+                app_url="https://pandas-market-calendars.readthedocs.io/",
             ),
             self._connector_item(
                 connector_id="hyperliquid-market-feed",
