@@ -39,7 +39,16 @@ def upgrade() -> None:
 
     if not _has_column(inspector, "users", "is_demo_user"):
         op.add_column("users", sa.Column("is_demo_user", sa.Boolean(), nullable=False, server_default=sa.text("false")))
-    op.execute("UPDATE users SET is_demo_user = 1 WHERE slug = 'demo-operator'")
+    users = sa.table(
+        "users",
+        sa.column("slug", sa.String()),
+        sa.column("is_demo_user", sa.Boolean()),
+    )
+    op.execute(
+        users.update()
+        .where(users.c.slug == "demo-operator")
+        .values(is_demo_user=sa.true())
+    )
 
 
 def downgrade() -> None:
