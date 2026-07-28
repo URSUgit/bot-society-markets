@@ -2073,7 +2073,22 @@ class UserSecuritySnapshot(BaseModel):
 class AuthRegisterRequest(BaseModel):
     display_name: str = Field(min_length=2, max_length=120)
     email: str = Field(min_length=5, max_length=320)
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("email must be a valid address")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not re.search(r"[a-z]", value) or not re.search(r"[A-Z]", value) or not re.search(r"\d", value):
+            raise ValueError("password must include uppercase, lowercase, and numeric characters")
+        return value
 
 
 class AuthLoginRequest(BaseModel):
@@ -2103,7 +2118,14 @@ class AuthForgotPasswordResponse(BaseModel):
 
 class AuthResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16, max_length=256)
-    new_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not re.search(r"[a-z]", value) or not re.search(r"[A-Z]", value) or not re.search(r"\d", value):
+            raise ValueError("new_password must include uppercase, lowercase, and numeric characters")
+        return value
 
 
 class AuthOnboardingUpdateRequest(BaseModel):

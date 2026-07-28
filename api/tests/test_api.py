@@ -1371,6 +1371,46 @@ def test_alert_inbox_endpoints_support_read_flow() -> None:
         assert read_all_response.json()["unread_count"] == 0
 
 
+def test_auth_registration_enforces_account_input_policy() -> None:
+    with build_client() as client:
+        invalid_email_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Invalid Email",
+                "email": "not-an-email",
+                "password": "SuperSecure123",
+            },
+        )
+        assert invalid_email_response.status_code == 422
+
+        weak_password_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Weak Password",
+                "email": "weak@example.com",
+                "password": "lowercase1234",
+            },
+        )
+        assert weak_password_response.status_code == 422
+
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Normalized Account",
+                "email": "  Normalized@Example.COM  ",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        assert register_response.json()["user"]["email"] == "normalized@example.com"
+
+        weak_reset_response = client.post(
+            "/api/auth/reset-password",
+            json={"token": "a" * 32, "new_password": "lowercase1234"},
+        )
+        assert weak_reset_response.status_code == 422
+
+
 def test_auth_and_notification_channels_flow() -> None:
     with build_client() as client:
         register_response = client.post(
