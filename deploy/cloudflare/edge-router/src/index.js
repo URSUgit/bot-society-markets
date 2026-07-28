@@ -447,7 +447,7 @@ export default {
     });
     const upstreamDeadlineMilliseconds = canCachePublicRead
       ? originDeadlineMilliseconds
-      : (assetFallback ? 4500 : 20000);
+      : (assetFallback ? 4500 : (upstreamMethod === "GET" ? 9000 : 15000));
     let upstreamResponse;
     try {
       upstreamResponse = await fetchWithinDeadline(upstreamRequest, upstreamDeadlineMilliseconds);
@@ -484,6 +484,13 @@ export default {
         reason: "origin returned server error",
         originStatus: upstreamResponse.status,
       });
+    }
+    if (upstreamResponse.status >= 500) {
+      return originUnavailableResponse(
+        origin,
+        incomingUrl,
+        `origin returned ${upstreamResponse.status}`,
+      );
     }
 
     const response = new Response(request.method === "HEAD" ? null : upstreamResponse.body, {
