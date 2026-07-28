@@ -445,13 +445,12 @@ export default {
       body: upstreamMethod === "GET" ? undefined : request.body,
       redirect: "manual",
     });
+    const upstreamDeadlineMilliseconds = canCachePublicRead
+      ? originDeadlineMilliseconds
+      : (assetFallback ? 4500 : 20000);
     let upstreamResponse;
     try {
-      // Anonymous dashboard reads degrade gracefully instead of waiting for
-      // an intermittent Akash ingress timeout. Writes and personal reads do not.
-      upstreamResponse = canCachePublicRead
-        ? await fetchWithinDeadline(upstreamRequest, originDeadlineMilliseconds)
-        : await fetch(upstreamRequest);
+      upstreamResponse = await fetchWithinDeadline(upstreamRequest, upstreamDeadlineMilliseconds);
     } catch (error) {
       if (requireLiveOrigin) {
         return originUnavailableResponse(origin, incomingUrl, error?.message || error?.name || "origin fetch failed");
@@ -468,7 +467,11 @@ export default {
           originError: error?.message || error?.name || "origin fetch failed",
         });
       }
-      throw error;
+      return originUnavailableResponse(
+        origin,
+        incomingUrl,
+        error?.message || error?.name || "origin fetch failed",
+      );
     }
     if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500 && !requireLiveOrigin) {
       return withDeliveryMode(publicFallback, "edge-fallback", {
