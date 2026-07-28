@@ -4,8 +4,7 @@
   "compatibility_date": "2026-04-28",
   "workers_dev": false,
   "vars": {
-    "ORIGIN_BASE_URL": "https://app.bitprivat.com",
-    "ORIGIN_RESOLVE_OVERRIDE": "4jvb5gj889dkpd11bkgno7gdes.ingress.zhab.systems"
+    "ORIGIN_BASE_URL": "https://bitprivat-api.onrender.com"
   },
   "routes": [
     {
