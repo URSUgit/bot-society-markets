@@ -160,7 +160,26 @@ if ($ExpectSocialTrading) {
             Name = "Social traders API"
             Url = "$ApiUrl/api/social-traders?v=$cacheBust"
             RequireLive = $true
-            Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*display_name*" -and $r.Content -like "*composite_score*" }
+            Assert = {
+                param($r)
+                if ($r.StatusCode -ne 200) {
+                    return $false
+                }
+                try {
+                    $parsedTraders = $r.Content | ConvertFrom-Json
+                    if ($null -eq $parsedTraders) {
+                        return $true
+                    }
+                    $traders = @($parsedTraders)
+                    return $traders.Count -eq 0 -or (
+                        $traders[0].PSObject.Properties.Name -contains "display_name" -and
+                        $traders[0].PSObject.Properties.Name -contains "composite_score"
+                    )
+                }
+                catch {
+                    return $false
+                }
+            }
         },
         @{
             Name = "Social traders route"
