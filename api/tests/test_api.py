@@ -75,6 +75,77 @@ def test_healthcheck() -> None:
         assert response.json()["status"] == "ok"
 
 
+def test_external_intelligence_endpoints_degrade_and_normalize() -> None:
+    settings = Settings(
+        database_path=Path(tempfile.gettempdir()) / "unused-external-intelligence.db",
+        alpaca_api_key=None,
+        alpaca_api_secret=None,
+        blockscout_api_urls={"ethereum": "https://eth.blockscout.com"},
+    )
+    address = "0x1111111111111111111111111111111111111111"
+    sec_payload = {
+        "ticker": "AAPL",
+        "cik": "0000320193",
+        "company_name": "Apple Inc.",
+        "filings": [
+            {
+                "ticker": "AAPL",
+                "cik": "0000320193",
+                "company_name": "Apple Inc.",
+                "form": "10-Q",
+                "filing_date": "2026-07-28",
+                "report_date": "2026-06-27",
+                "accession_number": "0000320193-26-000001",
+                "primary_document": "aapl-20260627.htm",
+                "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000001/aapl-20260627.htm",
+            }
+        ],
+    }
+    activity_payload = {
+        "transactions": [
+            {
+                "transaction_hash": "0xtx",
+                "chain": "ethereum",
+                "timestamp": "2026-07-29T12:00:00Z",
+                "status": "success",
+                "direction": "inbound",
+                "from_address": "0x2222222222222222222222222222222222222222",
+                "to_address": address,
+                "value_native": 1.0,
+                "fee_native": 0.000021,
+                "method": "transfer",
+                "block_number": 123,
+                "explorer_url": "https://eth.blockscout.com/tx/0xtx",
+            }
+        ],
+        "token_transfers": [],
+    }
+
+    with (
+        patch("api.app.providers.SecEdgarProvider.fetch_filings", return_value=sec_payload),
+        patch("api.app.providers.BlockscoutActivityProvider.fetch_activity", return_value=activity_payload),
+        build_client(settings) as client,
+    ):
+        equities = client.get("/api/v1/markets/equities")
+        assert equities.status_code == 200
+        assert equities.json()["status"] == "not_configured"
+        assert equities.json()["configured"] is False
+
+        filings = client.get("/api/v1/research/sec/AAPL/filings?forms=10-Q&limit=5")
+        assert filings.status_code == 200
+        assert filings.json()["status"] == "live"
+        assert filings.json()["filings"][0]["form"] == "10-Q"
+
+        activity = client.get(f"/api/v1/onchain/ethereum/{address}/activity?limit=5")
+        assert activity.status_code == 200
+        assert activity.json()["status"] == "live"
+        assert activity.json()["transactions"][0]["direction"] == "inbound"
+
+        invalid_activity = client.get("/api/v1/onchain/ethereum/not-an-address/activity")
+        assert invalid_activity.status_code == 400
+        assert "valid EVM wallet address" in invalid_activity.json()["detail"]
+
+
 def test_generic_postgres_url_uses_installed_psycopg_driver() -> None:
     url = "postgresql://user:pass@example.test/db?sslmode=require"
     assert normalize_database_url(url) == "postgresql+psycopg://user:pass@example.test/db?sslmode=require"
@@ -595,7 +666,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
         assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-4" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-5" in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
         assert app_js_response.status_code == 200
@@ -614,6 +685,8 @@ def test_professional_console_pages_are_served() -> None:
         assert "USDT" in app_js_response.text
         assert "? 50000 : 20000" in app_js_response.text
         assert "taking longer than expected to wake" in app_js_response.text
+        assert "/api/markets/equities" in app_js_response.text
+        assert "US equities" in app_js_response.text
         assert "No private keys, no custody" in app_js_response.text
         assert "/legacy-dashboard" not in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()
@@ -653,7 +726,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-4" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-5" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 

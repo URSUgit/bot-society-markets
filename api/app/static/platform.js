@@ -269,6 +269,8 @@ const state = {
   walletBalancesLoaded: false,
   exchangeFeeds: null,
   exchangeFeedsLoaded: false,
+  equityMarkets: null,
+  equityMarketsLoaded: false,
   newsSentiment: null,
   newsSentimentLoaded: false,
   marketSessions: null,
@@ -715,6 +717,23 @@ async function loadExchangeFeeds(force = false) {
   return state.exchangeFeeds;
 }
 
+
+async function loadEquityMarkets(force = false) {
+  if (state.equityMarketsLoaded && !force) return state.equityMarkets;
+  try {
+    state.equityMarkets = await fetchJson("/api/markets/equities");
+  } catch (error) {
+    state.equityMarkets = {
+      configured: false,
+      status: "unavailable",
+      message: error.message || "US equity data is unavailable.",
+      equities: [],
+    };
+  }
+  state.equityMarketsLoaded = true;
+  return state.equityMarkets;
+}
+
 async function loadNewsSentiment(force = false) {
   if (state.newsSentimentLoaded && !force) return state.newsSentiment;
   try {
@@ -887,6 +906,38 @@ function renderMarketSessionsPanel() {
         ${statusChip(calendarLabel, calendarVariant)}
       </div>
       <div class="session-grid">${sessionCards}</div>
+    </section>`;
+}
+
+
+function renderEquityMarketRow(item) {
+  const change = Number(item.change_percent) || 0;
+  const direction = change > 0 ? "positive" : change < 0 ? "negative" : "";
+  return `
+    <div class="asset-row">
+      <div class="asset-name"><span class="asset-symbol">${escapeHtml(item.symbol)}</span><span><strong>${escapeHtml(item.symbol)}</strong><small>${escapeHtml(item.feed || "US equity")}</small></span></div>
+      <div class="asset-cell"><strong>${money(item.price, "USD", 2)}</strong><small>Latest trade</small></div>
+      <div class="asset-cell"><strong class="${direction}">${change > 0 ? "+" : ""}${percent(change)}</strong><small>Session change</small></div>
+      <div class="asset-cell asset-volume"><strong>${item.volume == null ? "--" : Number(item.volume).toLocaleString(locale())}</strong><small>Day volume</small></div>
+      <div class="asset-cell"><strong>${item.bid == null || item.ask == null ? "--" : `${money(item.bid, "USD", 2)} / ${money(item.ask, "USD", 2)}`}</strong><small>Bid / ask</small></div>
+    </div>`;
+}
+
+function renderEquityMarketsPanel() {
+  const snapshot = state.equityMarkets;
+  const equities = snapshot?.equities || [];
+  const isLive = snapshot?.status === "live";
+  const statusLabel = isLive ? `${snapshot.feed || "iex"} live` : snapshot?.status === "not_configured" ? "Connect Alpaca" : "Unavailable";
+  const summary = snapshot?.message || "Real US equity and ETF snapshots from the configured Alpaca market-data feed.";
+  return `
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><h2>US equities</h2><p>${escapeHtml(summary)}</p></div>
+        ${statusChip(statusLabel, isLive ? "ready" : "partial")}
+      </div>
+      <div class="asset-list">
+        ${equities.length ? equities.map(renderEquityMarketRow).join("") : `<div class="empty-state"><strong>No equity snapshots yet</strong><span>${escapeHtml(summary)}</span></div>`}
+      </div>
     </section>`;
 }
 
@@ -1152,6 +1203,7 @@ function renderData(payload) {
     ${pageHeader("Data Library", "Find information by the question it answers", "Every dataset shows its source, freshness, limits, cost posture, and permitted use before you add it to a strategy.", `<button class="button secondary" type="button" data-open-license>How licensing works</button><a class="button" href="/ideas">Use data in an idea</a>`)}
     <div class="filter-bar" aria-label="Dataset filters">${filters.map(([id, label]) => `<button class="chip-button ${state.dataFilter === id ? "active" : ""}" type="button" data-data-filter="${id}">${label}</button>`).join("")}</div>
     ${renderMarketSessionsPanel()}
+${renderEquityMarketsPanel()}
     ${renderNewsSentimentPanel()}
     <section class="card-grid">${visible.map((dataset) => renderDatasetCard(dataset, datasetRuntime(dataset, payload))).join("")}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Licensing is part of the product.</strong> BITprivat will not mirror or resell restricted third-party datasets. Paid and user-owned sources remain locked to their permitted research, charting, backtest, or live uses.</p></section>`;
@@ -1372,6 +1424,7 @@ async function renderCurrentPage(force = false) {
     }
     if (["home", "data"].includes(state.page)) {
       await loadMarketSessions(force);
+      await loadEquityMarkets(force);
       await loadNewsSentiment(force);
     }
     const renderers = {

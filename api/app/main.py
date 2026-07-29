@@ -48,6 +48,9 @@ from .models import (
     DailyMarketSummaryDelivery,
     EdgeSnapshot,
     ExchangeFeedSnapshot,
+    EquityMarketSnapshot,
+    OnchainActivitySnapshot,
+    SecFilingsSnapshot,
     FeatureReadinessEnvelope,
     FinancialSignalExtractionRequest,
     FinancialSignalExtractionResult,
@@ -523,6 +526,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/exchanges", response_model=ExchangeFeedSnapshot)
     def exchange_feeds(request: Request) -> ExchangeFeedSnapshot:
         return get_service(request).get_exchange_feed_snapshot()
+
+    @app.get("/api/v1/markets/equities", response_model=EquityMarketSnapshot)
+    @app.get("/api/markets/equities", response_model=EquityMarketSnapshot)
+    def equity_market_snapshot(request: Request) -> EquityMarketSnapshot:
+        return get_service(request).get_equity_market_snapshot()
+
+    @app.get("/api/v1/research/sec/{ticker}/filings", response_model=SecFilingsSnapshot)
+    @app.get("/api/research/sec/{ticker}/filings", response_model=SecFilingsSnapshot)
+    def sec_filings(
+        request: Request,
+        ticker: str,
+        forms: str = Query(default="10-K,10-Q,8-K", max_length=100),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> SecFilingsSnapshot:
+        normalized_forms = tuple(form.strip().upper() for form in forms.split(",") if form.strip())
+        return get_service(request).get_sec_filings(ticker, forms=normalized_forms, limit=limit)
+
+    @app.get("/api/v1/onchain/{chain}/{address}/activity", response_model=OnchainActivitySnapshot)
+    @app.get("/api/onchain/{chain}/{address}/activity", response_model=OnchainActivitySnapshot)
+    def onchain_activity(
+        request: Request,
+        chain: str,
+        address: str,
+        limit: int = Query(default=25, ge=1, le=50),
+    ) -> OnchainActivitySnapshot:
+        try:
+            return get_service(request).get_onchain_activity(chain, address, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
     @app.get("/api/v1/markets/sessions", response_model=MarketSessionsSnapshot)
     @app.get("/api/markets/sessions", response_model=MarketSessionsSnapshot)

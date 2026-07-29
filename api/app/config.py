@@ -102,6 +102,13 @@ class Settings:
     coingecko_api_key: str | None = None
     coingecko_plan: Literal["demo", "pro"] = "demo"
     tracked_coin_ids: tuple[str, ...] = ("bitcoin", "ethereum", "solana")
+    tracked_equity_symbols: tuple[str, ...] = ("SPY", "QQQ", "AAPL", "MSFT", "NVDA")
+    alpaca_api_key: str | None = None
+    alpaca_api_secret: str | None = None
+    alpaca_feed: str = "iex"
+    alpaca_data_base_url: str = "https://data.alpaca.markets"
+    sec_user_agent: str = "BITprivat/0.8 contact@bitprivat.com"
+    blockscout_api_urls: dict[str, str] = field(default_factory=dict)
     binance_api_base_url: str = "https://api.binance.com"
     binance_quote_asset: str = "USDT"
     fred_api_key: str | None = None
@@ -326,6 +333,19 @@ def get_settings() -> Settings:
     coin_ids = _split_csv_env(os.getenv("BSM_TRACKED_COIN_IDS", "bitcoin,ethereum,solana"))
     fred_series_ids = _split_csv_env(os.getenv("BSM_FRED_SERIES_IDS", "FEDFUNDS,DGS10,CPIAUCSL,WALCL,VIXCLS"))
     tracked_wallets = _split_csv_env(os.getenv("BSM_TRACKED_WALLETS", ""))
+    tracked_equity_symbols = _split_csv_env(
+        os.getenv("BSM_TRACKED_EQUITY_SYMBOLS", "SPY,QQQ,AAPL,MSFT,NVDA")
+    )
+    blockscout_api_urls = {
+        chain: url
+        for chain, url in {
+            "ethereum": os.getenv("BSM_BLOCKSCOUT_ETHEREUM_URL", "https://eth.blockscout.com"),
+            "arbitrum": os.getenv("BSM_BLOCKSCOUT_ARBITRUM_URL", "https://arbitrum.blockscout.com"),
+            "base": os.getenv("BSM_BLOCKSCOUT_BASE_URL", "https://base.blockscout.com"),
+            "optimism": os.getenv("BSM_BLOCKSCOUT_OPTIMISM_URL", "https://optimism.blockscout.com"),
+        }.items()
+        if url
+    }
     wallet_balance_rpc_urls = {
         chain: url
         for chain, url in {
@@ -397,6 +417,13 @@ def get_settings() -> Settings:
         coingecko_api_key=os.getenv("BSM_COINGECKO_API_KEY") or None,
         coingecko_plan=plan,
         tracked_coin_ids=coin_ids or ("bitcoin", "ethereum", "solana"),
+        tracked_equity_symbols=tracked_equity_symbols or ("SPY", "QQQ", "AAPL", "MSFT", "NVDA"),
+        alpaca_api_key=os.getenv("BSM_ALPACA_API_KEY") or None,
+        alpaca_api_secret=os.getenv("BSM_ALPACA_API_SECRET") or None,
+        alpaca_feed=(os.getenv("BSM_ALPACA_FEED") or "iex").lower(),
+        alpaca_data_base_url=os.getenv("BSM_ALPACA_DATA_BASE_URL", "https://data.alpaca.markets"),
+        sec_user_agent=os.getenv("BSM_SEC_USER_AGENT", "BITprivat/0.8 contact@bitprivat.com"),
+        blockscout_api_urls=blockscout_api_urls,
         binance_api_base_url=os.getenv("BSM_BINANCE_API_BASE_URL", "https://api.binance.com"),
         binance_quote_asset=(os.getenv("BSM_BINANCE_QUOTE_ASSET") or "USDT").upper(),
         fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,

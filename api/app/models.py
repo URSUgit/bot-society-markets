@@ -108,6 +108,97 @@ class ExchangeFeedSnapshot(BaseModel):
     feeds: list[ExchangeFeedStatus] = Field(default_factory=list)
 
 
+class EquityMarketItem(BaseModel):
+    symbol: str
+    as_of: str
+    price: float
+    previous_close: float | None = None
+    change: float | None = None
+    change_percent: float | None = None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    source: str
+    feed: str
+
+
+class EquityMarketSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    feed: str
+    configured: bool
+    status: str
+    message: str | None = None
+    equities: list[EquityMarketItem] = Field(default_factory=list)
+
+
+class SecFilingView(BaseModel):
+    ticker: str
+    cik: str
+    company_name: str
+    form: str
+    filing_date: str
+    report_date: str | None = None
+    accession_number: str
+    primary_document: str
+    filing_url: str
+
+
+class SecFilingsSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    ticker: str
+    cik: str | None = None
+    company_name: str | None = None
+    status: str
+    message: str | None = None
+    filings: list[SecFilingView] = Field(default_factory=list)
+
+
+class OnchainTransactionView(BaseModel):
+    transaction_hash: str
+    chain: str
+    timestamp: str | None = None
+    status: str
+    direction: str
+    from_address: str
+    to_address: str | None = None
+    value_native: float = 0.0
+    fee_native: float | None = None
+    method: str | None = None
+    block_number: int | None = None
+    explorer_url: str
+
+
+class OnchainTokenTransferView(BaseModel):
+    transaction_hash: str
+    chain: str
+    timestamp: str | None = None
+    direction: str
+    from_address: str
+    to_address: str | None = None
+    token_name: str | None = None
+    token_symbol: str | None = None
+    token_type: str | None = None
+    amount: float | None = None
+    explorer_url: str
+
+
+class OnchainActivitySnapshot(BaseModel):
+    generated_at: str
+    source: str
+    chain: str
+    address: str
+    configured: bool
+    status: str
+    message: str | None = None
+    transactions: list[OnchainTransactionView] = Field(default_factory=list)
+    token_transfers: list[OnchainTokenTransferView] = Field(default_factory=list)
+
+
 class MarketSessionWindow(BaseModel):
     label: str
     start: str

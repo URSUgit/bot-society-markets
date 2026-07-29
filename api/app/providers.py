@@ -79,6 +79,319 @@ class WalletProviderBase:
         return scores[0][1]
 
 
+class AlpacaEquityProvider(MarketProviderBase):
+    source_name = "alpaca-market-data"
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        api_secret: str | None,
+        symbols: tuple[str, ...],
+        feed: str = "iex",
+        base_url: str = "https://data.alpaca.markets",
+        timeout_seconds: int = 10,
+    ) -> None:
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.symbols = tuple(dict.fromkeys(symbol.strip().upper() for symbol in symbols if symbol.strip()))
+        self.feed = feed
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.api_key or not self.api_secret:
+            return ProviderReadiness(False, "Alpaca market data requires BSM_ALPACA_API_KEY and BSM_ALPACA_API_SECRET")
+        if not self.symbols:
+            return ProviderReadiness(False, "Alpaca market data requires BSM_TRACKED_EQUITY_SYMBOLS")
+        return ProviderReadiness(True)
+
+    def fetch_snapshot(self) -> list[dict]:
+        readiness = self.readiness()
+        if not readiness.ready:
+            raise ValueError(readiness.warning or "Alpaca market data is not configured")
+        query = urlencode({"symbols": ",".join(self.symbols), "feed": self.feed})
+        request = Request(
+            f"{self.base_url}/v2/stocks/snapshots?{query}",
+            headers={
+                "accept": "application/json",
+                "APCA-API-KEY-ID": self.api_key or "",
+                "APCA-API-SECRET-KEY": self.api_secret or "",
+                "user-agent": "BITprivat/0.8",
+            },
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        snapshots = payload.get("snapshots", payload) if isinstance(payload, dict) else {}
+        rows: list[dict] = []
+        for symbol in self.symbols:
+            snapshot = snapshots.get(symbol) or snapshots.get(symbol.upper())
+            if not isinstance(snapshot, dict):
+                continue
+            latest_trade = snapshot.get("latestTrade") or snapshot.get("latest_trade") or {}
+            latest_quote = snapshot.get("latestQuote") or snapshot.get("latest_quote") or {}
+            minute_bar = snapshot.get("minuteBar") or snapshot.get("minute_bar") or {}
+            daily_bar = snapshot.get("dailyBar") or snapshot.get("daily_bar") or {}
+            previous_bar = snapshot.get("prevDailyBar") or snapshot.get("prev_daily_bar") or {}
+            price = self._first_float(latest_trade.get("p"), minute_bar.get("c"), daily_bar.get("c"))
+            if price is None:
+                continue
+            previous_close = self._first_float(previous_bar.get("c"))
+            change = price - previous_close if previous_close is not None else None
+            change_percent = (change / previous_close) if change is not None and previous_close else None
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "as_of": str(latest_trade.get("t") or minute_bar.get("t") or daily_bar.get("t") or to_timestamp(datetime.now(timezone.utc))),
+                    "price": price,
+                    "previous_close": previous_close,
+                    "change": change,
+                    "change_percent": change_percent,
+                    "open": self._first_float(daily_bar.get("o")),
+                    "high": self._first_float(daily_bar.get("h")),
+                    "low": self._first_float(daily_bar.get("l")),
+                    "volume": self._first_float(daily_bar.get("v")),
+                    "bid": self._first_float(latest_quote.get("bp")),
+                    "ask": self._first_float(latest_quote.get("ap")),
+                    "source": self.source_name,
+                    "feed": self.feed,
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _first_float(*values) -> float | None:
+        for value in values:
+            if value is None or value == "":
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+
+class SecEdgarProvider:
+    source_name = "sec-edgar"
+    TICKER_INDEX_URL = "https://www.sec.gov/files/company_tickers.json"
+    SUBMISSIONS_BASE_URL = "https://data.sec.gov/submissions"
+    ARCHIVES_BASE_URL = "https://www.sec.gov/Archives/edgar/data"
+
+    def __init__(self, *, user_agent: str, timeout_seconds: int = 10) -> None:
+        self.user_agent = user_agent.strip()
+        self.timeout_seconds = timeout_seconds
+        self._ticker_index: dict[str, dict] | None = None
+
+    def readiness(self) -> ProviderReadiness:
+        if not self.user_agent:
+            return ProviderReadiness(False, "SEC EDGAR requires BSM_SEC_USER_AGENT")
+        return ProviderReadiness(True)
+
+    def fetch_filings(self, ticker: str, *, forms: tuple[str, ...], limit: int = 20) -> dict:
+        normalized_ticker = ticker.strip().upper()
+        if not normalized_ticker:
+            raise ValueError("Ticker is required")
+        company = self._load_ticker_index().get(normalized_ticker)
+        if not company:
+            raise ValueError(f"SEC EDGAR has no company mapping for {normalized_ticker}")
+        cik_number = int(company["cik_str"])
+        cik = f"{cik_number:010d}"
+        payload = self._get_json(f"{self.SUBMISSIONS_BASE_URL}/CIK{cik}.json")
+        recent = (payload.get("filings") or {}).get("recent") or {}
+        allowed_forms = {form.strip().upper() for form in forms if form.strip()}
+        rows: list[dict] = []
+        accessions = recent.get("accessionNumber") or []
+        for index, accession in enumerate(accessions):
+            form = self._item_at(recent.get("form"), index)
+            if allowed_forms and str(form).upper() not in allowed_forms:
+                continue
+            primary_document = str(self._item_at(recent.get("primaryDocument"), index) or "")
+            accession_number = str(accession)
+            accession_path = accession_number.replace("-", "")
+            filing_url = (
+                f"{self.ARCHIVES_BASE_URL}/{cik_number}/{accession_path}/{primary_document}"
+                if primary_document
+                else f"{self.ARCHIVES_BASE_URL}/{cik_number}/{accession_path}"
+            )
+            rows.append(
+                {
+                    "ticker": normalized_ticker,
+                    "cik": cik,
+                    "company_name": str(payload.get("name") or company.get("title") or normalized_ticker),
+                    "form": str(form or ""),
+                    "filing_date": str(self._item_at(recent.get("filingDate"), index) or ""),
+                    "report_date": self._optional_string(self._item_at(recent.get("reportDate"), index)),
+                    "accession_number": accession_number,
+                    "primary_document": primary_document,
+                    "filing_url": filing_url,
+                }
+            )
+            if len(rows) >= max(1, min(limit, 100)):
+                break
+        return {
+            "ticker": normalized_ticker,
+            "cik": cik,
+            "company_name": str(payload.get("name") or company.get("title") or normalized_ticker),
+            "filings": rows,
+        }
+
+    def _load_ticker_index(self) -> dict[str, dict]:
+        if self._ticker_index is not None:
+            return self._ticker_index
+        payload = self._get_json(self.TICKER_INDEX_URL)
+        index: dict[str, dict] = {}
+        rows = payload.values() if isinstance(payload, dict) else []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ticker = str(row.get("ticker") or "").upper()
+            if ticker:
+                index[ticker] = row
+        self._ticker_index = index
+        return index
+
+    def _get_json(self, url: str) -> dict:
+        request = Request(
+            url,
+            headers={"accept": "application/json", "user-agent": self.user_agent},
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _item_at(values, index: int):
+        return values[index] if isinstance(values, list) and index < len(values) else None
+
+    @staticmethod
+    def _optional_string(value) -> str | None:
+        text = str(value or "").strip()
+        return text or None
+
+
+class BlockscoutActivityProvider:
+    source_name = "blockscout-v2"
+
+    def __init__(self, *, base_urls: dict[str, str], timeout_seconds: int = 10) -> None:
+        self.base_urls = {chain.lower(): url.rstrip("/") for chain, url in base_urls.items() if url.strip()}
+        self.timeout_seconds = timeout_seconds
+
+    def readiness(self, chain: str) -> ProviderReadiness:
+        if chain.lower() not in self.base_urls:
+            return ProviderReadiness(False, f"Blockscout requires BSM_BLOCKSCOUT_{chain.upper()}_URL")
+        return ProviderReadiness(True)
+
+    def fetch_activity(self, chain: str, address: str, *, limit: int = 25) -> dict:
+        normalized_chain = chain.strip().lower()
+        normalized_address = address.strip().lower()
+        readiness = self.readiness(normalized_chain)
+        if not readiness.ready:
+            raise ValueError(readiness.warning or "Blockscout is not configured")
+        base_url = self.base_urls[normalized_chain]
+        bounded_limit = max(1, min(limit, 50))
+        transactions_payload = self._get_json(f"{base_url}/api/v2/addresses/{normalized_address}/transactions")
+        transfers_payload = self._get_json(f"{base_url}/api/v2/addresses/{normalized_address}/token-transfers")
+        transactions = [
+            self._normalize_transaction(base_url, normalized_chain, normalized_address, item)
+            for item in (transactions_payload.get("items") or [])[:bounded_limit]
+            if isinstance(item, dict) and item.get("hash")
+        ]
+        transfers = [
+            self._normalize_transfer(base_url, normalized_chain, normalized_address, item)
+            for item in (transfers_payload.get("items") or [])[:bounded_limit]
+            if isinstance(item, dict) and (item.get("transaction_hash") or item.get("tx_hash"))
+        ]
+        return {"transactions": transactions, "token_transfers": transfers}
+
+    def _get_json(self, url: str) -> dict:
+        request = Request(url, headers={"accept": "application/json", "user-agent": "BITprivat/0.8"})
+        with urlopen(request, timeout=self.timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _direction(address: str, from_address: str, to_address: str | None) -> str:
+        if from_address.lower() == address:
+            return "outbound"
+        if to_address and to_address.lower() == address:
+            return "inbound"
+        return "related"
+
+    @classmethod
+    def _normalize_transaction(cls, base_url: str, chain: str, address: str, item: dict) -> dict:
+        from_address = cls._address_value(item.get("from"))
+        to_address = cls._address_value(item.get("to")) or None
+        transaction_hash = str(item.get("hash"))
+        value_native = cls._scaled_value(item.get("value"), 18) or 0.0
+        fee = item.get("fee") or {}
+        fee_native = cls._scaled_value(fee.get("value") if isinstance(fee, dict) else fee, 18)
+        status_value = item.get("status")
+        status = "success" if status_value in {True, "ok", "success", "1"} else "failed" if status_value in {False, "error", "failed", "0"} else "unknown"
+        return {
+            "transaction_hash": transaction_hash,
+            "chain": chain,
+            "timestamp": cls._optional_text(item.get("timestamp")),
+            "status": status,
+            "direction": cls._direction(address, from_address, to_address),
+            "from_address": from_address,
+            "to_address": to_address,
+            "value_native": value_native,
+            "fee_native": fee_native,
+            "method": cls._optional_text(item.get("method")),
+            "block_number": cls._optional_int(item.get("block_number")),
+            "explorer_url": f"{base_url}/tx/{transaction_hash}",
+        }
+
+    @classmethod
+    def _normalize_transfer(cls, base_url: str, chain: str, address: str, item: dict) -> dict:
+        from_address = cls._address_value(item.get("from"))
+        to_address = cls._address_value(item.get("to")) or None
+        transaction_hash = str(item.get("transaction_hash") or item.get("tx_hash"))
+        token = item.get("token") or {}
+        total = item.get("total") or {}
+        decimals = cls._optional_int(token.get("decimals") if isinstance(token, dict) else None)
+        raw_value = total.get("value") if isinstance(total, dict) else item.get("value")
+        amount = cls._scaled_value(raw_value, decimals or 0)
+        return {
+            "transaction_hash": transaction_hash,
+            "chain": chain,
+            "timestamp": cls._optional_text(item.get("timestamp")),
+            "direction": cls._direction(address, from_address, to_address),
+            "from_address": from_address,
+            "to_address": to_address,
+            "token_name": cls._optional_text(token.get("name") if isinstance(token, dict) else None),
+            "token_symbol": cls._optional_text(token.get("symbol") if isinstance(token, dict) else None),
+            "token_type": cls._optional_text(token.get("type") if isinstance(token, dict) else item.get("type")),
+            "amount": amount,
+            "explorer_url": f"{base_url}/tx/{transaction_hash}",
+        }
+
+    @staticmethod
+    def _address_value(value) -> str:
+        if isinstance(value, dict):
+            return str(value.get("hash") or value.get("address") or "").lower()
+        return str(value or "").lower()
+
+    @staticmethod
+    def _scaled_value(value, decimals: int) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value) / (10 ** max(0, decimals))
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    @staticmethod
+    def _optional_text(value) -> str | None:
+        text = str(value or "").strip()
+        return text or None
+
+    @staticmethod
+    def _optional_int(value) -> int | None:
+        try:
+            return int(value) if value is not None and value != "" else None
+        except (TypeError, ValueError):
+            return None
+
+
 class DemoMacroProvider(MacroProviderBase):
     source_name = "demo-macro-provider"
 

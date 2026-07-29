@@ -185,6 +185,19 @@ $env:BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY = "testnet-only-private-key"
 
 You can also place runtime values in a repo-root `.env` or `.env.local` file. `.env.local` overrides `.env`.
 
+## External Market and On-chain Intelligence
+
+The read-only intelligence layer adds three providers without changing the crypto scoring pipeline:
+
+- `GET /api/v1/markets/equities` returns batched Alpaca snapshots for `BSM_TRACKED_EQUITY_SYMBOLS`.
+- `GET /api/v1/research/sec/{ticker}/filings` returns recent SEC EDGAR filings. Optional query parameters: `forms=10-K,10-Q,8-K` and `limit=20`.
+- `GET /api/v1/onchain/{chain}/{address}/activity` returns recent Blockscout transactions and token transfers. Optional query parameter: `limit=25`.
+
+Alpaca requires `BSM_ALPACA_API_KEY` and `BSM_ALPACA_API_SECRET`. The default `iex` feed is selected with `BSM_ALPACA_FEED`. SEC requests identify the application through `BSM_SEC_USER_AGENT`. Blockscout instance URLs can be overridden per supported chain with the `BSM_BLOCKSCOUT_*_URL` settings shown in `.env.example`.
+
+All three endpoints use bounded timeouts and short-lived server-side caches. Missing credentials and upstream outages return structured `not_configured` or `unavailable` snapshots rather than failing the rest of the platform.
+
+
 ## Verification
 
 ```powershell

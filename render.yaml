@@ -25,6 +25,16 @@ services:
         value: rss
       - key: BSM_TRACKED_COIN_IDS
         value: bitcoin,ethereum,solana
+      - key: BSM_TRACKED_EQUITY_SYMBOLS
+        value: SPY,QQQ,AAPL,MSFT,NVDA
+      - key: BSM_ALPACA_API_KEY
+        sync: false
+      - key: BSM_ALPACA_API_SECRET
+        sync: false
+      - key: BSM_ALPACA_FEED
+        value: iex
+      - key: BSM_SEC_USER_AGENT
+        value: BITprivat/0.8 contact@bitprivat.com
       - key: BSM_ALERT_INBOX_LIMIT
         value: "10"
       - key: BSM_SESSION_TTL_HOURS

@@ -69,6 +69,13 @@ from .models import (
     EdgeOpportunityView,
     EdgeSnapshot,
     ExchangeFeedSnapshot,
+    EquityMarketItem,
+    EquityMarketSnapshot,
+    OnchainActivitySnapshot,
+    OnchainTokenTransferView,
+    OnchainTransactionView,
+    SecFilingView,
+    SecFilingsSnapshot,
     ExchangeFeedStatus,
     ExchangeMarketPrice,
     FollowedBot,
@@ -192,6 +199,8 @@ from .nvidia_nim import NvidiaNimClient
 from .orchestration import PredictionOrchestrator
 from .providers import (
     AutoMarketProvider,
+    AlpacaEquityProvider,
+    BlockscoutActivityProvider,
     BinanceSpotMarketProvider,
     CoinGeckoMarketProvider,
     DemoMarketProvider,
@@ -207,6 +216,7 @@ from .providers import (
     PolymarketWalletProvider,
     RedditSignalProvider,
     RSSNewsSignalProvider,
+    SecEdgarProvider,
 )
 from .repository import BotSocietyRepository
 from .scoring import ScoringEngine, clamp
@@ -361,6 +371,22 @@ class BotSocietyService:
             api_key=self.settings.coingecko_api_key,
             tracked_coin_ids=self.settings.tracked_coin_ids,
         )
+        self.alpaca_equity_provider = AlpacaEquityProvider(
+            api_key=self.settings.alpaca_api_key,
+            api_secret=self.settings.alpaca_api_secret,
+            symbols=self.settings.tracked_equity_symbols,
+            feed=self.settings.alpaca_feed,
+            base_url=self.settings.alpaca_data_base_url,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
+        self.sec_edgar_provider = SecEdgarProvider(
+            user_agent=self.settings.sec_user_agent,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
+        self.blockscout_activity_provider = BlockscoutActivityProvider(
+            base_urls=self.settings.blockscout_api_urls,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
         self.market_provider = self._build_market_provider()
         self.signal_provider = self._build_signal_provider()
         self.social_discovery_provider = self._build_social_discovery_provider()
@@ -388,6 +414,9 @@ class BotSocietyService:
         self.system_pulse_cache: tuple[datetime, SystemPulseSnapshot] | None = None
         self.assets_cache: tuple[datetime, list[AssetSnapshot]] | None = None
         self.exchange_feed_cache: tuple[datetime, ExchangeFeedSnapshot] | None = None
+        self.equity_market_cache: tuple[datetime, EquityMarketSnapshot] | None = None
+        self.sec_filings_cache: dict[str, tuple[datetime, SecFilingsSnapshot]] = {}
+        self.onchain_activity_cache: dict[str, tuple[datetime, OnchainActivitySnapshot]] = {}
         self.market_sessions_cache: tuple[datetime, MarketSessionsSnapshot] | None = None
         self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
         self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
@@ -2817,6 +2846,173 @@ class BotSocietyService:
         assets = [self._to_asset_model(row) for row in rows]
         self.assets_cache = (datetime.now(timezone.utc), assets)
         return assets
+
+
+    def get_equity_market_snapshot(self, *, force_refresh: bool = False) -> EquityMarketSnapshot:
+        if not force_refresh and self._cache_is_fresh(self.equity_market_cache, ttl_seconds=120):
+            return self.equity_market_cache[1]
+        readiness = self.alpaca_equity_provider.readiness()
+        if not readiness.ready:
+            snapshot = EquityMarketSnapshot(
+                generated_at=self._now(),
+                source=self.alpaca_equity_provider.source_name,
+                feed=self.settings.alpaca_feed,
+                configured=False,
+                status="not_configured",
+                message=readiness.warning,
+                equities=[],
+            )
+        else:
+            try:
+                rows = self.alpaca_equity_provider.fetch_snapshot()
+                snapshot = EquityMarketSnapshot(
+                    generated_at=self._now(),
+                    source=self.alpaca_equity_provider.source_name,
+                    feed=self.settings.alpaca_feed,
+                    configured=True,
+                    status="live" if rows else "empty",
+                    message=None if rows else "Alpaca returned no snapshots for the configured symbols.",
+                    equities=[EquityMarketItem(**row) for row in rows],
+                )
+            except Exception as exc:
+                snapshot = EquityMarketSnapshot(
+                    generated_at=self._now(),
+                    source=self.alpaca_equity_provider.source_name,
+                    feed=self.settings.alpaca_feed,
+                    configured=True,
+                    status="unavailable",
+                    message=f"Alpaca market data is temporarily unavailable ({exc.__class__.__name__}).",
+                    equities=[],
+                )
+        self.equity_market_cache = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def get_sec_filings(
+        self,
+        ticker: str,
+        *,
+        forms: tuple[str, ...] = ("10-K", "10-Q", "8-K"),
+        limit: int = 20,
+        force_refresh: bool = False,
+    ) -> SecFilingsSnapshot:
+        normalized_ticker = ticker.strip().upper()
+        normalized_forms = tuple(dict.fromkeys(form.strip().upper() for form in forms if form.strip()))
+        bounded_limit = max(1, min(limit, 100))
+        cache_key = f"{normalized_ticker}:{','.join(normalized_forms)}:{bounded_limit}"
+        cached = self.sec_filings_cache.get(cache_key)
+        if not force_refresh and self._cache_is_fresh(cached, ttl_seconds=900):
+            return cached[1]
+        readiness = self.sec_edgar_provider.readiness()
+        if not readiness.ready:
+            snapshot = SecFilingsSnapshot(
+                generated_at=self._now(),
+                source=self.sec_edgar_provider.source_name,
+                ticker=normalized_ticker,
+                status="not_configured",
+                message=readiness.warning,
+                filings=[],
+            )
+        else:
+            try:
+                payload = self.sec_edgar_provider.fetch_filings(
+                    normalized_ticker,
+                    forms=normalized_forms,
+                    limit=bounded_limit,
+                )
+                filings = [SecFilingView(**row) for row in payload["filings"]]
+                snapshot = SecFilingsSnapshot(
+                    generated_at=self._now(),
+                    source=self.sec_edgar_provider.source_name,
+                    ticker=normalized_ticker,
+                    cik=payload["cik"],
+                    company_name=payload["company_name"],
+                    status="live" if filings else "empty",
+                    message=None if filings else "SEC EDGAR returned no matching recent filings.",
+                    filings=filings,
+                )
+            except ValueError as exc:
+                snapshot = SecFilingsSnapshot(
+                    generated_at=self._now(),
+                    source=self.sec_edgar_provider.source_name,
+                    ticker=normalized_ticker,
+                    status="not_found",
+                    message=str(exc),
+                    filings=[],
+                )
+            except Exception as exc:
+                snapshot = SecFilingsSnapshot(
+                    generated_at=self._now(),
+                    source=self.sec_edgar_provider.source_name,
+                    ticker=normalized_ticker,
+                    status="unavailable",
+                    message=f"SEC EDGAR is temporarily unavailable ({exc.__class__.__name__}).",
+                    filings=[],
+                )
+        self.sec_filings_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def get_onchain_activity(
+        self,
+        chain: str,
+        address: str,
+        *,
+        limit: int = 25,
+        force_refresh: bool = False,
+    ) -> OnchainActivitySnapshot:
+        normalized_chain = chain.strip().lower()
+        normalized_address = address.strip().lower()
+        if normalized_chain not in EVM_WALLET_CHAINS:
+            raise ValueError(f"Unsupported EVM chain: {normalized_chain}")
+        if not EVM_ADDRESS_RE.fullmatch(normalized_address):
+            raise ValueError("A valid EVM wallet address is required")
+        bounded_limit = max(1, min(limit, 50))
+        cache_key = f"{normalized_chain}:{normalized_address}:{bounded_limit}"
+        cached = self.onchain_activity_cache.get(cache_key)
+        if not force_refresh and self._cache_is_fresh(cached, ttl_seconds=120):
+            return cached[1]
+        readiness = self.blockscout_activity_provider.readiness(normalized_chain)
+        if not readiness.ready:
+            snapshot = OnchainActivitySnapshot(
+                generated_at=self._now(),
+                source=self.blockscout_activity_provider.source_name,
+                chain=normalized_chain,
+                address=normalized_address,
+                configured=False,
+                status="not_configured",
+                message=readiness.warning,
+            )
+        else:
+            try:
+                payload = self.blockscout_activity_provider.fetch_activity(
+                    normalized_chain,
+                    normalized_address,
+                    limit=bounded_limit,
+                )
+                transactions = [OnchainTransactionView(**row) for row in payload["transactions"]]
+                transfers = [OnchainTokenTransferView(**row) for row in payload["token_transfers"]]
+                snapshot = OnchainActivitySnapshot(
+                    generated_at=self._now(),
+                    source=self.blockscout_activity_provider.source_name,
+                    chain=normalized_chain,
+                    address=normalized_address,
+                    configured=True,
+                    status="live" if transactions or transfers else "empty",
+                    message=None if transactions or transfers else "Blockscout returned no recent activity.",
+                    transactions=transactions,
+                    token_transfers=transfers,
+                )
+            except Exception as exc:
+                snapshot = OnchainActivitySnapshot(
+                    generated_at=self._now(),
+                    source=self.blockscout_activity_provider.source_name,
+                    chain=normalized_chain,
+                    address=normalized_address,
+                    configured=True,
+                    status="unavailable",
+                    message=f"Blockscout is temporarily unavailable ({exc.__class__.__name__}).",
+                )
+        self.onchain_activity_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
 
     def get_exchange_feed_snapshot(self, *, force_refresh: bool = False) -> ExchangeFeedSnapshot:
         if not force_refresh and self._cache_is_fresh(self.exchange_feed_cache, ttl_seconds=120):
@@ -10124,6 +10320,9 @@ class BotSocietyService:
         self.system_pulse_cache = None
         self.assets_cache = None
         self.exchange_feed_cache = None
+        self.equity_market_cache = None
+        self.sec_filings_cache.clear()
+        self.onchain_activity_cache.clear()
         self.leaderboard_cache.clear()
         self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
