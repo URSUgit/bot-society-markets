@@ -595,7 +595,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
         assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-3" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-4" in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
         assert app_js_response.status_code == 200
@@ -653,7 +653,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-3" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-4" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
