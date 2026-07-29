@@ -414,6 +414,16 @@ export default {
     if (incomingUrl.pathname === "/status" || incomingUrl.pathname === "/status/" || incomingUrl.pathname === "/ops") {
       return assetResponse(STATUS_HTML, "text/html; charset=utf-8");
     }
+
+    const isSafeRead = request.method === "GET" || request.method === "HEAD";
+    const appRoot = incomingUrl.hostname === "app.bitprivat.com" && incomingUrl.pathname === "/"
+      ? assetResponse(PLATFORM_HTML, "text/html; charset=utf-8")
+      : null;
+    const packagedAppAsset = isSafeRead ? (appRoot || appAssetFallback(incomingUrl.pathname)) : null;
+    if (packagedAppAsset) {
+      return withDeliveryMode(packagedAppAsset, "edge-packaged-asset");
+    }
+
     const allowPublicSnapshots = env.BSM_ALLOW_EDGE_PUBLIC_SNAPSHOTS === "true";
     const publicFallback = allowPublicSnapshots ? publicApiSnapshot(incomingUrl.pathname) : null;
     if (!env.ORIGIN_RESOLVE_OVERRIDE && publicFallback && !requireLiveOrigin) {
