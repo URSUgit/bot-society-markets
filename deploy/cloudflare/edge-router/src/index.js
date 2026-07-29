@@ -87,6 +87,10 @@ function cacheControl(hostname, pathname, contentType) {
   return "public, max-age=120";
 }
 
+function isColdStartOrigin(origin) {
+  return origin.hostname.endsWith(".onrender.com");
+}
+
 function headerSafe(value) {
   return String(value ?? "")
     .replace(/[\r\n]/g, " ")
@@ -449,28 +453,48 @@ export default {
       ? originDeadlineMilliseconds
       : (assetFallback ? 4500 : (upstreamMethod === "GET" ? 9000 : 15000));
     let upstreamResponse;
+    let fetchError;
     try {
       upstreamResponse = await fetchWithinDeadline(upstreamRequest, upstreamDeadlineMilliseconds);
     } catch (error) {
+      fetchError = error;
+    }
+    if (!upstreamResponse && upstreamMethod === "GET" && isColdStartOrigin(origin)) {
+      const hasGracefulFallback = !requireLiveOrigin && (
+        (canCachePublicRead && publicFallback) || assetFallback
+      );
+      if (hasGracefulFallback) {
+        ctx.waitUntil(
+          fetchWithinDeadline(upstreamRequest, 35000).then(() => undefined).catch(() => undefined),
+        );
+      } else {
+        try {
+          upstreamResponse = await fetchWithinDeadline(upstreamRequest, 35000);
+        } catch (error) {
+          fetchError = error;
+        }
+      }
+    }
+    if (!upstreamResponse) {
       if (requireLiveOrigin) {
-        return originUnavailableResponse(origin, incomingUrl, error?.message || error?.name || "origin fetch failed");
+        return originUnavailableResponse(origin, incomingUrl, fetchError?.message || fetchError?.name || "origin fetch failed");
       }
       if (canCachePublicRead && publicFallback) {
         return withDeliveryMode(publicFallback, "edge-fallback", {
           reason: "origin fetch failed before deadline",
-          originError: error?.message || error?.name || "origin fetch failed",
+          originError: fetchError?.message || fetchError?.name || "origin fetch failed",
         });
       }
       if (assetFallback) {
         return withDeliveryMode(assetFallback, "edge-asset-fallback", {
           reason: "origin fetch failed",
-          originError: error?.message || error?.name || "origin fetch failed",
+          originError: fetchError?.message || fetchError?.name || "origin fetch failed",
         });
       }
       return originUnavailableResponse(
         origin,
         incomingUrl,
-        error?.message || error?.name || "origin fetch failed",
+        fetchError?.message || fetchError?.name || "origin fetch failed",
       );
     }
     if (canCachePublicRead && publicFallback && upstreamResponse.status >= 500 && !requireLiveOrigin) {
