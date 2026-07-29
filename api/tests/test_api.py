@@ -612,6 +612,8 @@ def test_professional_console_pages_are_served() -> None:
         assert "platform-wallet-form" in app_js_response.text
         assert "USDC" in app_js_response.text
         assert "USDT" in app_js_response.text
+        assert "? 50000 : 20000" in app_js_response.text
+        assert "taking longer than expected to wake" in app_js_response.text
         assert "No private keys, no custody" in app_js_response.text
         assert "/legacy-dashboard" not in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()

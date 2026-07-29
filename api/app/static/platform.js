@@ -496,13 +496,16 @@ function showToast(message) {
 }
 
 async function fetchJson(path, options = {}) {
+  const { timeoutMs: requestedTimeoutMs, ...fetchOptions } = options;
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+  const timeoutMs = Number(requestedTimeoutMs || (method === "GET" || method === "HEAD" ? 50000 : 20000));
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 14000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(path, {
       credentials: "same-origin",
-      headers: { "Accept": "application/json", "Content-Type": "application/json", ...(options.headers || {}) },
-      ...options,
+      headers: { "Accept": "application/json", "Content-Type": "application/json", ...(fetchOptions.headers || {}) },
+      ...fetchOptions,
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => ({}));
@@ -511,6 +514,11 @@ async function fetchJson(path, options = {}) {
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
     return payload;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("The data provider is taking longer than expected to wake. Retry the request in a moment.");
+    }
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
