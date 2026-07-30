@@ -3130,7 +3130,7 @@ class BotSocietyService:
                 system_prompt="Return strict JSON only. Never invent facts beyond the supplied SEC metadata.",
                 temperature=0.0,
                 max_tokens=360,
-                json_mode=True,
+                json_mode=False,
             )
             try:
                 signal = self._normalize_intelligence_signal(
@@ -3238,7 +3238,7 @@ class BotSocietyService:
                 system_prompt="Return strict JSON only. Use only the supplied on-chain records and never infer wallet ownership.",
                 temperature=0.0,
                 max_tokens=360,
-                json_mode=True,
+                json_mode=False,
             )
             try:
                 payload = response.json() if response else {}

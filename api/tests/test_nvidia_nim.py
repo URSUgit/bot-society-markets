@@ -42,7 +42,7 @@ def test_nim_client_routes_task_and_json_mode(monkeypatch: pytest.MonkeyPatch) -
         return FakeResponse(
             {
                 "model": "writer/palmyra-fin-70b-32k",
-                "choices": [{"message": {"content": '{"sentiment": 0.4}'}}],
+                "choices": [{"message": {"content": '```json\n{"sentiment": 0.4}\n```'}}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19},
             }
         )

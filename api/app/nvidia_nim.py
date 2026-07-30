@@ -65,7 +65,24 @@ class NimResponse:
     raw: dict[str, object] = field(default_factory=dict)
 
     def json(self) -> dict[str, object]:
-        return json.loads(self.content)
+        text = self.content.strip()
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            if text.startswith("```"):
+                lines = text.splitlines()
+                if lines and lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                text = "\n".join(lines).strip()
+            object_start = text.find("{")
+            if object_start < 0:
+                raise
+            payload, _ = json.JSONDecoder().raw_decode(text[object_start:])
+        if not isinstance(payload, dict):
+            raise ValueError("NVIDIA NIM JSON response must be an object")
+        return payload
 
 
 class NimClientError(RuntimeError):
