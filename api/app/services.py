@@ -3021,12 +3021,69 @@ class BotSocietyService:
 
 
     @staticmethod
+    @staticmethod
     def _normalize_intelligence_signal(
         payload: dict[str, object],
         *,
         asset: str,
         model: str,
     ) -> IntelligenceSignalView:
+        normalized_payload = payload
+        for container_key in ("signal", "result", "intelligence"):
+            nested = normalized_payload.get(container_key)
+            if isinstance(nested, dict):
+                normalized_payload = nested
+                break
+        analysis_value = normalized_payload.get("analysis")
+        if isinstance(analysis_value, dict):
+            normalized_payload = analysis_value
+
+        def score_value(value: object, *, kind: str) -> float:
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value or "").strip().lower()
+            if not text:
+                return 0.0
+            if text.endswith("%"):
+                try:
+                    numeric = float(text[:-1].strip()) / 100.0
+                    return numeric * 2.0 - 1.0 if kind == "sentiment" else numeric
+                except ValueError:
+                    return 0.0
+            try:
+                return float(text)
+            except ValueError:
+                if kind == "sentiment":
+                    return {
+                        "very negative": -0.9,
+                        "negative": -0.6,
+                        "bearish": -0.6,
+                        "neutral": 0.0,
+                        "mixed": 0.0,
+                        "positive": 0.6,
+                        "bullish": 0.6,
+                        "very positive": 0.9,
+                    }.get(text, 0.0)
+                return {
+                    "none": 0.0,
+                    "minimal": 0.1,
+                    "low": 0.25,
+                    "medium": 0.55,
+                    "moderate": 0.55,
+                    "high": 0.85,
+                    "critical": 1.0,
+                }.get(text, 0.0)
+
+        category_aliases = {
+            "compliance": "regulation",
+            "legal": "regulation",
+            "liquidity": "flows",
+            "fund_flow": "flows",
+            "fund_flows": "flows",
+            "cybersecurity": "security",
+            "fraud": "security",
+            "financial": "earnings",
+        }
         allowed_categories = {
             "earnings",
             "capital_allocation",
@@ -3040,25 +3097,36 @@ class BotSocietyService:
             "risk",
             "other",
         }
-        category = str(payload.get("category") or "other").strip().lower()
+        category = str(normalized_payload.get("category") or "other").strip().lower().replace(" ", "_")
+        category = category_aliases.get(category, category)
         if category not in allowed_categories:
             category = "other"
-        horizon = str(payload.get("horizon") or "near_term").strip().lower()
+        horizon = str(normalized_payload.get("horizon") or normalized_payload.get("time_horizon") or "near_term").strip().lower().replace(" ", "_")
+        horizon = {"short_term": "near_term", "short": "near_term", "medium": "medium_term", "long": "long_term"}.get(horizon, horizon)
         if horizon not in {"immediate", "near_term", "medium_term", "long_term"}:
             horizon = "near_term"
-        summary = str(payload.get("summary") or "").strip()
+        summary = str(
+            normalized_payload.get("summary")
+            or normalized_payload.get("assessment")
+            or normalized_payload.get("rationale")
+            or (analysis_value if isinstance(analysis_value, str) else "")
+            or normalized_payload.get("note")
+            or ""
+        ).strip()
         if not summary:
             raise ValueError("NVIDIA intelligence response did not include a summary")
-        raw_evidence = payload.get("evidence")
-        evidence = []
+        raw_evidence = normalized_payload.get("evidence") or normalized_payload.get("key_points") or normalized_payload.get("observations")
+        evidence: list[str] = []
         if isinstance(raw_evidence, list):
             evidence = [str(item).strip()[:240] for item in raw_evidence if str(item).strip()][:5]
+        elif isinstance(raw_evidence, str) and raw_evidence.strip():
+            evidence = [raw_evidence.strip()[:240]]
         return IntelligenceSignalView(
             asset=asset.strip().upper()[:16],
             category=category,
-            sentiment=round(clamp(float(payload.get("sentiment") or 0.0), -1.0, 1.0), 4),
-            relevance=round(clamp(float(payload.get("relevance") or 0.0), 0.0, 1.0), 4),
-            risk_score=round(clamp(float(payload.get("risk_score") or 0.0), 0.0, 1.0), 4),
+            sentiment=round(clamp(score_value(normalized_payload.get("sentiment"), kind="sentiment"), -1.0, 1.0), 4),
+            relevance=round(clamp(score_value(normalized_payload.get("relevance") or normalized_payload.get("confidence"), kind="relevance"), 0.0, 1.0), 4),
+            risk_score=round(clamp(score_value(normalized_payload.get("risk_score") or normalized_payload.get("risk"), kind="risk"), 0.0, 1.0), 4),
             horizon=horizon,
             summary=summary[:1200],
             evidence=evidence,

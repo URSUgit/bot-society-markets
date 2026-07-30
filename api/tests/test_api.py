@@ -216,13 +216,15 @@ def test_external_intelligence_uses_nvidia_json_and_caches_results() -> None:
     sec_response = SimpleNamespace(
         model="writer/palmyra-fin-70b-32k",
         json=lambda: {
-            "category": "earnings",
-            "sentiment": 0.1,
-            "relevance": 0.9,
-            "risk_score": 0.3,
-            "horizon": "near_term",
-            "summary": "A recent quarterly filing is a high-priority research event.",
-            "evidence": ["10-Q filed on 2026-07-29"],
+            "signal": {
+                "category": "financial",
+                "sentiment": "neutral",
+                "confidence": "90%",
+                "risk": "medium",
+                "time_horizon": "short term",
+                "assessment": "A recent quarterly filing is a high-priority research event.",
+                "key_points": "10-Q filed on 2026-07-29",
+            }
         },
     )
     onchain_response = SimpleNamespace(
