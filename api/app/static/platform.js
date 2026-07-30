@@ -271,6 +271,10 @@ const state = {
   exchangeFeedsLoaded: false,
   equityMarkets: null,
   equityMarketsLoaded: false,
+  secFilings: null,
+  secFilingsLoading: false,
+  secTicker: "",
+  secForms: "10-K,10-Q,8-K",
   newsSentiment: null,
   newsSentimentLoaded: false,
   marketSessions: null,
@@ -621,9 +625,19 @@ function renderWalletCompact(wallet) {
   const snapshot = walletBalanceSnapshot();
   const balances = (snapshot?.balances || []).filter((item) => Number(item.wallet_id) === Number(wallet.id));
   const issue = (snapshot?.issues || []).find((item) => Number(item.wallet_id) === Number(wallet.id));
-  const balanceCopy = balances.length ? balances.map((item) => `${number(item.balance, item.decimals > 6 ? 4 : 2)} ${item.token_symbol}`).join(" · ") : issue?.message || (snapshot ? snapshot.message : coins.length ? coins.join(", ") : "No stablecoin rail");
-  const balanceState = balances.length ? ["Real balances", "ready"] : issue ? ["Setup", "blocked"] : [wallet.onchain_ready ? "Ready" : "Tracked", wallet.onchain_ready ? "ready" : "partial"];
-  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || walletDisplayName(wallet))}</strong><span>${escapeHtml(walletDisplayName(wallet))} · ${escapeHtml(shortAddress(wallet.address))}</span><small>${escapeHtml(wallet.read_only ? "Read-only" : "Active")} · ${escapeHtml(wallet.verified ? "Signed verification" : "Manual public address")} · ${escapeHtml(balanceCopy)}</small></span>${statusChip(balanceState[0], balanceState[1])}</div>`;
+  const balanceCopy = balances.length
+    ? balances.map((item) => `${number(item.balance, item.decimals > 6 ? 4 : 2)} ${item.token_symbol}`).join(" - ")
+    : issue?.message || (snapshot ? snapshot.message : coins.length ? coins.join(", ") : "No stablecoin rail");
+  const balanceState = balances.length
+    ? ["Real balances", "ready"]
+    : issue
+      ? ["Setup", "blocked"]
+      : [wallet.onchain_ready ? "Ready" : "Tracked", wallet.onchain_ready ? "ready" : "partial"];
+  const activitySupported = ["ethereum", "arbitrum", "base", "optimism"].includes(String(wallet.chain || "").toLowerCase());
+  const activityButton = activitySupported
+    ? `<button class="button small secondary" type="button" data-wallet-activity data-chain="${escapeHtml(wallet.chain)}" data-address="${escapeHtml(wallet.address)}" data-wallet-label="${escapeHtml(wallet.label || walletDisplayName(wallet))}">Activity</button>`
+    : "";
+  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(wallet.label || walletDisplayName(wallet))}</strong><span>${escapeHtml(walletDisplayName(wallet))} - ${escapeHtml(shortAddress(wallet.address))}</span><small>${escapeHtml(wallet.read_only ? "Read-only" : "Active")} - ${escapeHtml(wallet.verified ? "Verified" : "Verification pending")} - ${escapeHtml(balanceCopy)}</small></span><span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${statusChip(balanceState[0], balanceState[1])}${activityButton}</span></div>`;
 }
 
 function walletBalanceSnapshot() {
@@ -1194,6 +1208,55 @@ function datasetRuntime(dataset, payload) {
   return { state: "planned", label: "Planned", source: "Not connected" };
 }
 
+function renderSecFilingsPanel() {
+  const snapshot = state.secFilings;
+  const filings = snapshot?.filings || [];
+  const selectedForms = state.secForms || "10-K,10-Q,8-K";
+  const status = state.secFilingsLoading
+    ? ["Loading", "partial"]
+    : snapshot
+      ? [snapshot.status === "live" ? "Live" : snapshot.status === "not_found" ? "Not found" : "Unavailable", snapshot.status === "live" ? "ready" : "blocked"]
+      : ["Ready", "partial"];
+  const results = state.secFilingsLoading
+    ? `<div class="empty-state"><div><h3>Loading SEC filings</h3><p>Requesting the latest company submissions from EDGAR.</p></div></div>`
+    : !snapshot
+      ? `<div class="empty-state"><div><h3>Search a public company</h3><p>Enter a US-listed ticker to load official SEC filings.</p></div></div>`
+      : filings.length
+        ? `<div class="compact-list">${filings.map((filing) => `<a class="compact-item" href="${escapeHtml(filing.filing_url)}" target="_blank" rel="noopener noreferrer"><span class="activity-icon">${escapeHtml(filing.form)}</span><span class="compact-copy"><strong>${escapeHtml(filing.company_name)}</strong><span>${escapeHtml(filing.form)} filed ${escapeHtml(dateLabel(filing.filing_date))}${filing.report_date ? ` for period ${escapeHtml(dateLabel(filing.report_date))}` : ""}</span><small>CIK ${escapeHtml(filing.cik)} - SEC EDGAR</small></span>${statusChip("Open", "ready")}</a>`).join("")}</div>`
+        : `<div class="empty-state"><div><h3>No matching filings</h3><p>${escapeHtml(snapshot.message || `No ${selectedForms || "requested"} filings were returned for ${snapshot.ticker || state.secTicker}.`)}</p></div></div>`;
+  return `<section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>SEC company filings</h2><p>Official annual, quarterly, and material-event disclosures.</p></div>${statusChip(status[0], status[1])}</div><form class="stack-form" id="sec-filings-form"><label><span>Ticker</span><input name="ticker" type="text" value="${escapeHtml(state.secTicker)}" maxlength="10" placeholder="AAPL" autocomplete="off" required></label><label><span>Filing set</span><select name="forms"><option value="10-K,10-Q,8-K"${selectedForms === "10-K,10-Q,8-K" ? " selected" : ""}>Core reports</option><option value="10-K"${selectedForms === "10-K" ? " selected" : ""}>Annual reports (10-K)</option><option value="10-Q"${selectedForms === "10-Q" ? " selected" : ""}>Quarterly reports (10-Q)</option><option value="8-K"${selectedForms === "8-K" ? " selected" : ""}>Material events (8-K)</option><option value=""${selectedForms === "" ? " selected" : ""}>All recent filings</option></select></label><button class="button" type="submit"${state.secFilingsLoading ? " disabled" : ""}>${state.secFilingsLoading ? "Loading" : "Search filings"}</button></form>${results}</section>`;
+}
+
+async function loadSecFilingsFromForm(form) {
+  const formData = new FormData(form);
+  const ticker = String(formData.get("ticker") || "").trim().toUpperCase();
+  const forms = String(formData.get("forms") || "").trim();
+  if (!/^[A-Z0-9.-]{1,10}$/.test(ticker)) {
+    throw new Error("Enter a valid US market ticker.");
+  }
+  state.secTicker = ticker;
+  state.secForms = forms;
+  state.secFilingsLoading = true;
+  root.innerHTML = renderData(state.dashboard);
+  updateMarketSessionTimers();
+  try {
+    const query = new URLSearchParams({ limit: "20" });
+    if (forms) query.set("forms", forms);
+    state.secFilings = await fetchJson(`/api/research/sec/${encodeURIComponent(ticker)}/filings?${query.toString()}`);
+  } catch (error) {
+    state.secFilings = {
+      ticker,
+      status: "unavailable",
+      message: error.message || "SEC filings are unavailable.",
+      filings: [],
+    };
+    throw error;
+  } finally {
+    state.secFilingsLoading = false;
+    root.innerHTML = renderData(state.dashboard);
+    updateMarketSessionTimers();
+  }
+}
 function renderData(payload) {
   const filters = [
     ["all", "All information"], ["market", "Market"], ["social", "People"], ["macro", "Economy"], ["alternative", "Events"], ["onchain", "On-chain"],
@@ -1204,6 +1267,7 @@ function renderData(payload) {
     <div class="filter-bar" aria-label="Dataset filters">${filters.map(([id, label]) => `<button class="chip-button ${state.dataFilter === id ? "active" : ""}" type="button" data-data-filter="${id}">${label}</button>`).join("")}</div>
     ${renderMarketSessionsPanel()}
 ${renderEquityMarketsPanel()}
+    ${renderSecFilingsPanel()}
     ${renderNewsSentimentPanel()}
     <section class="card-grid">${visible.map((dataset) => renderDatasetCard(dataset, datasetRuntime(dataset, payload))).join("")}</section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Licensing is part of the product.</strong> BITprivat will not mirror or resell restricted third-party datasets. Paid and user-owned sources remain locked to their permitted research, charting, backtest, or live uses.</p></section>`;
@@ -1366,6 +1430,46 @@ function renderPortfolio(payload) {
     <section class="content-grid two"><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Asset positions</h2><p>Current paper exposure by asset.</p></div></div>${payload.paper_trading?.positions?.length ? `<div class="position-list">${payload.paper_trading.positions.map(renderPosition).join("")}</div>` : `<div class="empty-state"><div><h3>No allocation yet</h3><p>Your paper account is fully in cash.</p><a class="button small" href="/paper">Open practice account</a></div></div>`}</article><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Connected wallets</h2><p>Public wallet addresses for stablecoin rail tracking. No custody or transfers.</p></div>${statusChip(onchainReady ? "Ready" : "Connect", onchainReady ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Connect a read-only wallet to activate on-chain onboarding.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</article><article class="panel"><div class="panel-head"><div class="panel-title"><h2>Expert-bot allocations</h2><p>Delegated research budgets remain paper-only.</p></div></div>${allocations.length ? `<div class="compact-list">${allocations.map((item) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(item.trader_name || item.trader_slug)}</strong><span>${escapeHtml(item.mode || "signals")}</span></span><strong class="number">${money(item.allocation_limit_usd || item.delegated_usd)}</strong></div>`).join("")}</div>` : `<div class="empty-state"><div><h3>No expert bot allocation</h3><p>Explore a creator profile and choose signals or managed-paper research.</p><a class="button small" href="/social-traders">Explore bots</a></div></div>`}</article></section>`;
 }
 
+function onchainNativeSymbol(chain) {
+  return String(chain || "").toLowerCase() === "polygon" ? "POL" : "ETH";
+}
+
+function renderOnchainActivity(snapshot) {
+  const transactions = snapshot.transactions || [];
+  const transfers = snapshot.token_transfers || [];
+  const nativeSymbol = onchainNativeSymbol(snapshot.chain);
+  const transactionRows = transactions.length
+    ? `<div class="compact-list">${transactions.map((item) => `<a class="compact-item" href="${escapeHtml(item.explorer_url)}" target="_blank" rel="noopener noreferrer"><span class="activity-icon">${item.direction === "in" ? "+" : "-"}</span><span class="compact-copy"><strong>${escapeHtml(item.method || "Native transfer")}</strong><span>${escapeHtml(item.direction === "in" ? "Received" : "Sent")} ${number(item.value_native, 6)} ${nativeSymbol}</span><small>${escapeHtml(dateLabel(item.timestamp))} - ${escapeHtml(shortAddress(item.transaction_hash))}</small></span>${statusChip(item.status || "Observed", item.status === "ok" || item.status === "success" ? "ready" : "partial")}</a>`).join("")}</div>`
+    : `<p class="muted-copy">No recent native transactions were returned.</p>`;
+  const transferRows = transfers.length
+    ? `<div class="compact-list">${transfers.map((item) => `<a class="compact-item" href="${escapeHtml(item.explorer_url)}" target="_blank" rel="noopener noreferrer"><span class="activity-icon">${item.direction === "in" ? "+" : "-"}</span><span class="compact-copy"><strong>${escapeHtml(item.token_symbol || item.token_name || "Token")}</strong><span>${escapeHtml(item.direction === "in" ? "Received" : "Sent")} ${item.amount == null ? "unknown amount" : number(item.amount, 6)}</span><small>${escapeHtml(dateLabel(item.timestamp))} - ${escapeHtml(item.token_type || "token transfer")}</small></span>${statusChip("Explorer", "ready")}</a>`).join("")}</div>`
+    : `<p class="muted-copy">No recent token transfers were returned.</p>`;
+  return `<section class="drawer-section"><div class="detail-list"><div><span>Network</span><strong>${escapeHtml(snapshot.chain)}</strong></div><div><span>Address</span><strong>${escapeHtml(shortAddress(snapshot.address))}</strong></div><div><span>Provider</span><strong>${escapeHtml(snapshot.source)}</strong></div><div><span>Updated</span><strong>${escapeHtml(dateLabel(snapshot.generated_at))}</strong></div></div></section><section class="drawer-section"><h3>Transactions</h3>${transactionRows}</section><section class="drawer-section"><h3>Token transfers</h3>${transferRows}</section>`;
+}
+
+async function openWalletActivity(target) {
+  const chain = String(target.dataset.chain || "").toLowerCase();
+  const address = String(target.dataset.address || "").trim();
+  const label = target.dataset.walletLabel || walletDisplayName({ chain });
+  if (!chain || !address) throw new Error("Wallet activity requires a chain and address.");
+  const originalText = target.textContent;
+  target.disabled = true;
+  target.textContent = "Loading";
+  try {
+    const snapshot = await fetchJson(`/api/onchain/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/activity?limit=12`);
+    openDrawer({
+      kicker: "On-chain activity",
+      title: label,
+      body: snapshot.status === "live" || snapshot.status === "empty"
+        ? renderOnchainActivity(snapshot)
+        : `<div class="empty-state"><div><h3>Activity unavailable</h3><p>${escapeHtml(snapshot.message || "The explorer did not return wallet activity.")}</p></div></div>`,
+      footer: `<span>Read-only explorer data. BITprivat never requests wallet secrets.</span>`,
+    });
+  } finally {
+    target.disabled = false;
+    target.textContent = originalText;
+  }
+}
 function renderConnections(payload) {
   const p = payload.provider_status || {};
   const wallets = payload.user_profile?.wallet_connections || [];
@@ -1878,7 +1982,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -1894,6 +1998,9 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-social-method")) openMethodology();
     if (target.hasAttribute("data-open-license")) openLicenseGuide();
     if (target.dataset.connectionDetail) openConnectionDetail(target.dataset.connectionDetail);
+    if (target.hasAttribute("data-wallet-activity")) {
+      openWalletActivity(target).catch((error) => showToast(error.message || "Wallet activity is unavailable."));
+    }
     if (target.dataset.connectorDiagnostic) {
       openConnectorDiagnostic(target.dataset.connectorDiagnostic);
     }
@@ -1916,6 +2023,10 @@ function bindGlobalEvents() {
 
   document.addEventListener("submit", async (event) => {
     try {
+      if (event.target.id === "sec-filings-form") {
+        event.preventDefault();
+        await loadSecFilingsFromForm(event.target);
+      }
       if (event.target.id === "idea-form") {
         event.preventDefault();
         await saveIdea(event.target);

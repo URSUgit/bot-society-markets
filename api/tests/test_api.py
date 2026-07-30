@@ -666,7 +666,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
         assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-5" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-6" in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
         assert app_js_response.status_code == 200
@@ -687,6 +687,12 @@ def test_professional_console_pages_are_served() -> None:
         assert "taking longer than expected to wake" in app_js_response.text
         assert "/api/markets/equities" in app_js_response.text
         assert "US equities" in app_js_response.text
+        assert "/api/research/sec/" in app_js_response.text
+        assert "SEC company filings" in app_js_response.text
+        assert "sec-filings-form" in app_js_response.text
+        assert "/api/onchain/" in app_js_response.text
+        assert "data-wallet-activity" in app_js_response.text
+        assert "On-chain activity" in app_js_response.text
         assert "No private keys, no custody" in app_js_response.text
         assert "/legacy-dashboard" not in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()
@@ -726,7 +732,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-5" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-6" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
