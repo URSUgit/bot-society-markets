@@ -273,6 +273,8 @@ const state = {
   equityMarketsLoaded: false,
   secFilings: null,
   secFilingsLoading: false,
+  secIntelligence: null,
+  secIntelligenceLoading: false,
   secTicker: "",
   secForms: "10-K,10-Q,8-K",
   newsSentiment: null,
@@ -1208,6 +1210,24 @@ function datasetRuntime(dataset, payload) {
   return { state: "planned", label: "Planned", source: "Not connected" };
 }
 
+function renderIntelligenceSignal(signal, { title = "NVIDIA intelligence" } = {}) {
+  if (!signal) return "";
+  const sentiment = Number(signal.sentiment || 0);
+  const evidence = (signal.evidence || []).map((item) => `<div class="compact-item"><span class="activity-icon">i</span><span class="compact-copy"><strong>Evidence</strong><span>${escapeHtml(item)}</span></span></div>`).join("");
+  return `<section class="drawer-section"><div class="panel-head"><div class="panel-title"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(signal.summary)}</p></div>${statusChip(signal.llm_generated ? "NVIDIA" : "Fallback", signal.llm_generated ? "ready" : "partial")}</div><div class="detail-list"><div><span>Asset</span><strong>${escapeHtml(signal.asset)}</strong></div><div><span>Category</span><strong>${escapeHtml(signal.category)}</strong></div><div><span>Sentiment</span><strong class="${sentiment >= 0 ? "positive" : "negative"}">${sentiment >= 0 ? "+" : ""}${number(sentiment, 2)}</strong></div><div><span>Relevance</span><strong>${percent(signal.relevance || 0)}</strong></div><div><span>Risk score</span><strong>${percent(signal.risk_score || 0)}</strong></div><div><span>Horizon</span><strong>${escapeHtml(String(signal.horizon || "near_term").replaceAll("_", " "))}</strong></div></div>${evidence ? `<div class="compact-list" style="margin-top:12px">${evidence}</div>` : ""}<p class="muted-copy">Model: ${escapeHtml(signal.model || "NVIDIA NIM")}. Research signal only, not investment advice.</p></section>`;
+}
+
+function renderSecIntelligenceResult() {
+  if (state.secIntelligenceLoading) {
+    return `<div class="inline-notice"><span class="state-dot warning"></span><p><strong>Analyzing filing activity.</strong> NVIDIA is evaluating only the supplied SEC metadata.</p></div>`;
+  }
+  const snapshot = state.secIntelligence;
+  if (!snapshot) return "";
+  if (snapshot.status === "live" && snapshot.signal) {
+    return renderIntelligenceSignal(snapshot.signal, { title: `${snapshot.ticker} filing signal` });
+  }
+  return `<div class="inline-notice"><span class="state-dot warning"></span><p><strong>Intelligence ${escapeHtml(snapshot.status || "unavailable")}.</strong> ${escapeHtml(snapshot.message || "No analysis was returned.")}</p></div>`;
+}
 function renderSecFilingsPanel() {
   const snapshot = state.secFilings;
   const filings = snapshot?.filings || [];
@@ -1224,7 +1244,7 @@ function renderSecFilingsPanel() {
       : filings.length
         ? `<div class="compact-list">${filings.map((filing) => `<a class="compact-item" href="${escapeHtml(filing.filing_url)}" target="_blank" rel="noopener noreferrer"><span class="activity-icon">${escapeHtml(filing.form)}</span><span class="compact-copy"><strong>${escapeHtml(filing.company_name)}</strong><span>${escapeHtml(filing.form)} filed ${escapeHtml(dateLabel(filing.filing_date))}${filing.report_date ? ` for period ${escapeHtml(dateLabel(filing.report_date))}` : ""}</span><small>CIK ${escapeHtml(filing.cik)} - SEC EDGAR</small></span>${statusChip("Open", "ready")}</a>`).join("")}</div>`
         : `<div class="empty-state"><div><h3>No matching filings</h3><p>${escapeHtml(snapshot.message || `No ${selectedForms || "requested"} filings were returned for ${snapshot.ticker || state.secTicker}.`)}</p></div></div>`;
-  return `<section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>SEC company filings</h2><p>Official annual, quarterly, and material-event disclosures.</p></div>${statusChip(status[0], status[1])}</div><form class="stack-form" id="sec-filings-form"><label><span>Ticker</span><input name="ticker" type="text" value="${escapeHtml(state.secTicker)}" maxlength="10" placeholder="AAPL" autocomplete="off" required></label><label><span>Filing set</span><select name="forms"><option value="10-K,10-Q,8-K"${selectedForms === "10-K,10-Q,8-K" ? " selected" : ""}>Core reports</option><option value="10-K"${selectedForms === "10-K" ? " selected" : ""}>Annual reports (10-K)</option><option value="10-Q"${selectedForms === "10-Q" ? " selected" : ""}>Quarterly reports (10-Q)</option><option value="8-K"${selectedForms === "8-K" ? " selected" : ""}>Material events (8-K)</option><option value=""${selectedForms === "" ? " selected" : ""}>All recent filings</option></select></label><button class="button" type="submit"${state.secFilingsLoading ? " disabled" : ""}>${state.secFilingsLoading ? "Loading" : "Search filings"}</button></form>${results}</section>`;
+  return `<section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>SEC company filings</h2><p>Official annual, quarterly, and material-event disclosures.</p></div>${statusChip(status[0], status[1])}</div><form class="stack-form" id="sec-filings-form"><label><span>Ticker</span><input name="ticker" type="text" value="${escapeHtml(state.secTicker)}" maxlength="10" placeholder="AAPL" autocomplete="off" required></label><label><span>Filing set</span><select name="forms"><option value="10-K,10-Q,8-K"${selectedForms === "10-K,10-Q,8-K" ? " selected" : ""}>Core reports</option><option value="10-K"${selectedForms === "10-K" ? " selected" : ""}>Annual reports (10-K)</option><option value="10-Q"${selectedForms === "10-Q" ? " selected" : ""}>Quarterly reports (10-Q)</option><option value="8-K"${selectedForms === "8-K" ? " selected" : ""}>Material events (8-K)</option><option value=""${selectedForms === "" ? " selected" : ""}>All recent filings</option></select></label><button class="button" type="submit"${state.secFilingsLoading ? " disabled" : ""}>${state.secFilingsLoading ? "Loading" : "Search filings"}</button>${filings.length ? `<button class="button secondary" type="button" data-sec-intelligence${state.secIntelligenceLoading ? " disabled" : ""}>${state.secIntelligenceLoading ? "Analyzing" : "Analyze with NVIDIA"}</button>` : ""}</form>${renderSecIntelligenceResult()}${results}</section>`;
 }
 
 async function loadSecFilingsFromForm(form) {
@@ -1236,6 +1256,7 @@ async function loadSecFilingsFromForm(form) {
   }
   state.secTicker = ticker;
   state.secForms = forms;
+  state.secIntelligence = null;
   state.secFilingsLoading = true;
   root.innerHTML = renderData(state.dashboard);
   updateMarketSessionTimers();
@@ -1253,6 +1274,33 @@ async function loadSecFilingsFromForm(form) {
     throw error;
   } finally {
     state.secFilingsLoading = false;
+    root.innerHTML = renderData(state.dashboard);
+    updateMarketSessionTimers();
+  }
+}
+
+
+async function loadSecFilingIntelligence(target) {
+  if (!state.secTicker || !state.secFilings?.filings?.length) {
+    throw new Error("Search SEC filings before requesting intelligence.");
+  }
+  state.secIntelligenceLoading = true;
+  root.innerHTML = renderData(state.dashboard);
+  updateMarketSessionTimers();
+  try {
+    const query = new URLSearchParams({ limit: "8" });
+    if (state.secForms) query.set("forms", state.secForms);
+    state.secIntelligence = await fetchJson(`/api/research/sec/${encodeURIComponent(state.secTicker)}/intelligence?${query.toString()}`);
+  } catch (error) {
+    state.secIntelligence = {
+      ticker: state.secTicker,
+      status: "unavailable",
+      message: error.message || "NVIDIA filing intelligence is unavailable.",
+      signal: null,
+    };
+    throw error;
+  } finally {
+    state.secIntelligenceLoading = false;
     root.innerHTML = renderData(state.dashboard);
     updateMarketSessionTimers();
   }
@@ -1463,7 +1511,32 @@ async function openWalletActivity(target) {
       body: snapshot.status === "live" || snapshot.status === "empty"
         ? renderOnchainActivity(snapshot)
         : `<div class="empty-state"><div><h3>Activity unavailable</h3><p>${escapeHtml(snapshot.message || "The explorer did not return wallet activity.")}</p></div></div>`,
-      footer: `<span>Read-only explorer data. BITprivat never requests wallet secrets.</span>`,
+      footer: `<span>Read-only explorer data. BITprivat never requests wallet secrets.</span><button class="button small" type="button" data-wallet-intelligence data-chain="${escapeHtml(chain)}" data-address="${escapeHtml(address)}" data-wallet-label="${escapeHtml(label)}">Analyze with NVIDIA</button>`, 
+    });
+  } finally {
+    target.disabled = false;
+    target.textContent = originalText;
+  }
+}
+
+
+async function openWalletIntelligence(target) {
+  const chain = String(target.dataset.chain || "").toLowerCase();
+  const address = String(target.dataset.address || "").trim();
+  const label = target.dataset.walletLabel || walletDisplayName({ chain });
+  if (!chain || !address) throw new Error("Wallet intelligence requires a chain and address.");
+  const originalText = target.textContent;
+  target.disabled = true;
+  target.textContent = "Analyzing";
+  try {
+    const snapshot = await fetchJson(`/api/onchain/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/intelligence?limit=20`);
+    openDrawer({
+      kicker: "NVIDIA intelligence",
+      title: label,
+      body: snapshot.status === "live" && snapshot.signal
+        ? renderIntelligenceSignal(snapshot.signal, { title: "On-chain activity signal" })
+        : `<div class="empty-state"><div><h3>Intelligence ${escapeHtml(snapshot.status || "unavailable")}</h3><p>${escapeHtml(snapshot.message || "No on-chain analysis was returned.")}</p></div></div>`,
+      footer: `<span>${number(snapshot.transactions_analyzed || 0)} transactions and ${number(snapshot.token_transfers_analyzed || 0)} token transfers analyzed. Research only.</span>`,
     });
   } finally {
     target.disabled = false;
@@ -1982,7 +2055,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -2000,6 +2073,12 @@ function bindGlobalEvents() {
     if (target.dataset.connectionDetail) openConnectionDetail(target.dataset.connectionDetail);
     if (target.hasAttribute("data-wallet-activity")) {
       openWalletActivity(target).catch((error) => showToast(error.message || "Wallet activity is unavailable."));
+    }
+    if (target.hasAttribute("data-wallet-intelligence")) {
+      openWalletIntelligence(target).catch((error) => showToast(error.message || "Wallet intelligence is unavailable."));
+    }
+    if (target.hasAttribute("data-sec-intelligence")) {
+      loadSecFilingIntelligence(target).catch((error) => showToast(error.message || "Filing intelligence is unavailable."));
     }
     if (target.dataset.connectorDiagnostic) {
       openConnectorDiagnostic(target.dataset.connectorDiagnostic);

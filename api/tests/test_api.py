@@ -141,11 +141,127 @@ def test_external_intelligence_endpoints_degrade_and_normalize() -> None:
         assert activity.json()["status"] == "live"
         assert activity.json()["transactions"][0]["direction"] == "inbound"
 
+        filing_intelligence = client.get("/api/v1/research/sec/AAPL/intelligence?forms=10-Q&limit=5")
+        assert filing_intelligence.status_code == 200
+        assert filing_intelligence.json()["status"] == "not_configured"
+        assert filing_intelligence.json()["signal"] is None
+
+        activity_intelligence = client.get(f"/api/v1/onchain/ethereum/{address}/intelligence?limit=5")
+        assert activity_intelligence.status_code == 200
+        assert activity_intelligence.json()["status"] == "not_configured"
+        assert activity_intelligence.json()["signal"] is None
+
         invalid_activity = client.get("/api/v1/onchain/ethereum/not-an-address/activity")
         assert invalid_activity.status_code == 400
         assert "valid EVM wallet address" in invalid_activity.json()["detail"]
 
 
+def test_external_intelligence_uses_nvidia_json_and_caches_results() -> None:
+    settings = Settings(
+        database_path=Path(tempfile.gettempdir()) / "unused-nvidia-intelligence.db",
+        blockscout_api_urls={"ethereum": "https://eth.blockscout.com"},
+    )
+    address = "0x1111111111111111111111111111111111111111"
+    sec_payload = {
+        "ticker": "MSFT",
+        "cik": "0000789019",
+        "company_name": "Microsoft Corp",
+        "filings": [
+            {
+                "ticker": "MSFT",
+                "cik": "0000789019",
+                "company_name": "Microsoft Corp",
+                "form": "10-Q",
+                "filing_date": "2026-07-29",
+                "report_date": "2026-06-30",
+                "accession_number": "0000789019-26-000001",
+                "primary_document": "msft-20260630.htm",
+                "filing_url": "https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-20260630.htm",
+            }
+        ],
+    }
+    activity_payload = {
+        "transactions": [
+            {
+                "transaction_hash": "0xtx",
+                "chain": "ethereum",
+                "timestamp": "2026-07-30T08:00:00Z",
+                "status": "success",
+                "direction": "outbound",
+                "from_address": address,
+                "to_address": "0x2222222222222222222222222222222222222222",
+                "value_native": 0.25,
+                "fee_native": 0.000021,
+                "method": "transfer",
+                "block_number": 456,
+                "explorer_url": "https://eth.blockscout.com/tx/0xtx",
+            }
+        ],
+        "token_transfers": [
+            {
+                "transaction_hash": "0xtx2",
+                "chain": "ethereum",
+                "timestamp": "2026-07-30T08:05:00Z",
+                "direction": "inbound",
+                "from_address": "0x3333333333333333333333333333333333333333",
+                "to_address": address,
+                "token_name": "USD Coin",
+                "token_symbol": "USDC",
+                "token_type": "ERC-20",
+                "amount": 2500.0,
+                "explorer_url": "https://eth.blockscout.com/tx/0xtx2",
+            }
+        ],
+    }
+    sec_response = SimpleNamespace(
+        model="writer/palmyra-fin-70b-32k",
+        json=lambda: {
+            "category": "earnings",
+            "sentiment": 0.1,
+            "relevance": 0.9,
+            "risk_score": 0.3,
+            "horizon": "near_term",
+            "summary": "A recent quarterly filing is a high-priority research event.",
+            "evidence": ["10-Q filed on 2026-07-29"],
+        },
+    )
+    onchain_response = SimpleNamespace(
+        model="meta/llama-3.3-70b-instruct",
+        json=lambda: {
+            "asset": "USDC",
+            "category": "flows",
+            "sentiment": 0.2,
+            "relevance": 0.8,
+            "risk_score": 0.25,
+            "horizon": "immediate",
+            "summary": "Recent activity includes an inbound USDC transfer and an outbound native transfer.",
+            "evidence": ["2500 USDC inbound", "0.25 ETH outbound"],
+        },
+    )
+
+    with (
+        patch.dict("os.environ", {"NVIDIA_API_KEY": "test-key"}),
+        patch("api.app.providers.SecEdgarProvider.fetch_filings", return_value=sec_payload),
+        patch("api.app.providers.BlockscoutActivityProvider.fetch_activity", return_value=activity_payload),
+        patch("api.app.services.NvidiaNimClient.try_ask", side_effect=[sec_response, onchain_response]) as nim_ask,
+        build_client(settings) as client,
+    ):
+        filing_result = client.get("/api/v1/research/sec/MSFT/intelligence?forms=10-Q&limit=5")
+        assert filing_result.status_code == 200
+        assert filing_result.json()["status"] == "live"
+        assert filing_result.json()["signal"]["asset"] == "MSFT"
+        assert filing_result.json()["signal"]["llm_generated"] is True
+
+        onchain_result = client.get(f"/api/v1/onchain/ethereum/{address}/intelligence?limit=5")
+        assert onchain_result.status_code == 200
+        assert onchain_result.json()["status"] == "live"
+        assert onchain_result.json()["signal"]["asset"] == "USDC"
+        assert onchain_result.json()["token_transfers_analyzed"] == 1
+
+        cached_result = client.get("/api/v1/research/sec/MSFT/intelligence?forms=10-Q&limit=5")
+        assert cached_result.status_code == 200
+        assert cached_result.json() == filing_result.json()
+        assert nim_ask.call_count == 2
 def test_generic_postgres_url_uses_installed_psycopg_driver() -> None:
     url = "postgresql://user:pass@example.test/db?sslmode=require"
     assert normalize_database_url(url) == "postgresql+psycopg://user:pass@example.test/db?sslmode=require"
@@ -666,7 +782,7 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
         assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-6" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-7" in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
         assert app_js_response.status_code == 200
@@ -693,6 +809,11 @@ def test_professional_console_pages_are_served() -> None:
         assert "/api/onchain/" in app_js_response.text
         assert "data-wallet-activity" in app_js_response.text
         assert "On-chain activity" in app_js_response.text
+        assert "/api/research/sec/" in app_js_response.text
+        assert "/intelligence" in app_js_response.text
+        assert "data-sec-intelligence" in app_js_response.text
+        assert "data-wallet-intelligence" in app_js_response.text
+        assert "Analyze with NVIDIA" in app_js_response.text
         assert "No private keys, no custody" in app_js_response.text
         assert "/legacy-dashboard" not in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()
@@ -732,7 +853,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-6" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-7" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 

@@ -49,7 +49,9 @@ from .models import (
     EdgeSnapshot,
     ExchangeFeedSnapshot,
     EquityMarketSnapshot,
+    OnchainActivityIntelligenceSnapshot,
     OnchainActivitySnapshot,
+    SecFilingIntelligenceSnapshot,
     SecFilingsSnapshot,
     FeatureReadinessEnvelope,
     FinancialSignalExtractionRequest,
@@ -543,6 +545,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         normalized_forms = tuple(form.strip().upper() for form in forms.split(",") if form.strip())
         return get_service(request).get_sec_filings(ticker, forms=normalized_forms, limit=limit)
 
+    @app.get("/api/v1/research/sec/{ticker}/intelligence", response_model=SecFilingIntelligenceSnapshot)
+    @app.get("/api/research/sec/{ticker}/intelligence", response_model=SecFilingIntelligenceSnapshot)
+    def sec_filing_intelligence(
+        request: Request,
+        ticker: str,
+        forms: str = Query(default="10-K,10-Q,8-K", max_length=100),
+        limit: int = Query(default=8, ge=1, le=12),
+    ) -> SecFilingIntelligenceSnapshot:
+        normalized_forms = tuple(form.strip().upper() for form in forms.split(",") if form.strip())
+        return get_service(request).get_sec_filing_intelligence(ticker, forms=normalized_forms, limit=limit)
+
     @app.get("/api/v1/onchain/{chain}/{address}/activity", response_model=OnchainActivitySnapshot)
     @app.get("/api/onchain/{chain}/{address}/activity", response_model=OnchainActivitySnapshot)
     def onchain_activity(
@@ -556,6 +569,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+
+    @app.get("/api/v1/onchain/{chain}/{address}/intelligence", response_model=OnchainActivityIntelligenceSnapshot)
+    @app.get("/api/onchain/{chain}/{address}/intelligence", response_model=OnchainActivityIntelligenceSnapshot)
+    def onchain_activity_intelligence(
+        request: Request,
+        chain: str,
+        address: str,
+        limit: int = Query(default=20, ge=1, le=30),
+    ) -> OnchainActivityIntelligenceSnapshot:
+        try:
+            return get_service(request).get_onchain_activity_intelligence(chain, address, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/v1/markets/sessions", response_model=MarketSessionsSnapshot)
     @app.get("/api/markets/sessions", response_model=MarketSessionsSnapshot)

@@ -199,6 +199,42 @@ class OnchainActivitySnapshot(BaseModel):
     token_transfers: list[OnchainTokenTransferView] = Field(default_factory=list)
 
 
+class IntelligenceSignalView(BaseModel):
+    asset: str
+    category: str
+    sentiment: float = 0.0
+    relevance: float = 0.0
+    risk_score: float = 0.0
+    horizon: str = "near_term"
+    summary: str
+    evidence: list[str] = Field(default_factory=list)
+    provider: str = "nvidia-nim"
+    model: str | None = None
+    llm_generated: bool = False
+
+
+class SecFilingIntelligenceSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    ticker: str
+    status: str
+    message: str | None = None
+    filings_analyzed: int = 0
+    signal: IntelligenceSignalView | None = None
+
+
+class OnchainActivityIntelligenceSnapshot(BaseModel):
+    generated_at: str
+    source: str
+    chain: str
+    address: str
+    status: str
+    message: str | None = None
+    transactions_analyzed: int = 0
+    token_transfers_analyzed: int = 0
+    signal: IntelligenceSignalView | None = None
+
+
 class MarketSessionWindow(BaseModel):
     label: str
     start: str

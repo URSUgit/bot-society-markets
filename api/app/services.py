@@ -71,9 +71,12 @@ from .models import (
     ExchangeFeedSnapshot,
     EquityMarketItem,
     EquityMarketSnapshot,
+    IntelligenceSignalView,
+    OnchainActivityIntelligenceSnapshot,
     OnchainActivitySnapshot,
     OnchainTokenTransferView,
     OnchainTransactionView,
+    SecFilingIntelligenceSnapshot,
     SecFilingView,
     SecFilingsSnapshot,
     ExchangeFeedStatus,
@@ -417,6 +420,8 @@ class BotSocietyService:
         self.equity_market_cache: tuple[datetime, EquityMarketSnapshot] | None = None
         self.sec_filings_cache: dict[str, tuple[datetime, SecFilingsSnapshot]] = {}
         self.onchain_activity_cache: dict[str, tuple[datetime, OnchainActivitySnapshot]] = {}
+        self.sec_filing_intelligence_cache: dict[str, tuple[datetime, SecFilingIntelligenceSnapshot]] = {}
+        self.onchain_intelligence_cache: dict[str, tuple[datetime, OnchainActivityIntelligenceSnapshot]] = {}
         self.market_sessions_cache: tuple[datetime, MarketSessionsSnapshot] | None = None
         self.leaderboard_cache: dict[str, tuple[datetime, list[BotSummary]]] = {}
         self.landing_snapshot_cache: dict[str, tuple[datetime, LandingSnapshot]] = {}
@@ -3012,6 +3017,260 @@ class BotSocietyService:
                     message=f"Blockscout is temporarily unavailable ({exc.__class__.__name__}).",
                 )
         self.onchain_activity_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+
+    @staticmethod
+    def _normalize_intelligence_signal(
+        payload: dict[str, object],
+        *,
+        asset: str,
+        model: str,
+    ) -> IntelligenceSignalView:
+        allowed_categories = {
+            "earnings",
+            "capital_allocation",
+            "governance",
+            "regulation",
+            "operations",
+            "flows",
+            "treasury",
+            "counterparty",
+            "security",
+            "risk",
+            "other",
+        }
+        category = str(payload.get("category") or "other").strip().lower()
+        if category not in allowed_categories:
+            category = "other"
+        horizon = str(payload.get("horizon") or "near_term").strip().lower()
+        if horizon not in {"immediate", "near_term", "medium_term", "long_term"}:
+            horizon = "near_term"
+        summary = str(payload.get("summary") or "").strip()
+        if not summary:
+            raise ValueError("NVIDIA intelligence response did not include a summary")
+        raw_evidence = payload.get("evidence")
+        evidence = []
+        if isinstance(raw_evidence, list):
+            evidence = [str(item).strip()[:240] for item in raw_evidence if str(item).strip()][:5]
+        return IntelligenceSignalView(
+            asset=asset.strip().upper()[:16],
+            category=category,
+            sentiment=round(clamp(float(payload.get("sentiment") or 0.0), -1.0, 1.0), 4),
+            relevance=round(clamp(float(payload.get("relevance") or 0.0), 0.0, 1.0), 4),
+            risk_score=round(clamp(float(payload.get("risk_score") or 0.0), 0.0, 1.0), 4),
+            horizon=horizon,
+            summary=summary[:1200],
+            evidence=evidence,
+            provider="nvidia-nim",
+            model=model[:120],
+            llm_generated=True,
+        )
+
+    def get_sec_filing_intelligence(
+        self,
+        ticker: str,
+        *,
+        forms: tuple[str, ...] = ("10-K", "10-Q", "8-K"),
+        limit: int = 8,
+        force_refresh: bool = False,
+    ) -> SecFilingIntelligenceSnapshot:
+        normalized_ticker = ticker.strip().upper()
+        normalized_forms = tuple(dict.fromkeys(form.strip().upper() for form in forms if form.strip()))
+        bounded_limit = max(1, min(limit, 12))
+        cache_key = f"{normalized_ticker}:{','.join(normalized_forms)}:{bounded_limit}"
+        cached = self.sec_filing_intelligence_cache.get(cache_key)
+        if not force_refresh and self._cache_is_fresh(cached, ttl_seconds=1800):
+            return cached[1]
+        filings = self.get_sec_filings(normalized_ticker, forms=normalized_forms, limit=bounded_limit)
+        if filings.status not in {"live", "empty"} or not filings.filings:
+            snapshot = SecFilingIntelligenceSnapshot(
+                generated_at=self._now(),
+                source=filings.source,
+                ticker=normalized_ticker,
+                status=filings.status,
+                message=filings.message or "No SEC filings are available for analysis.",
+                filings_analyzed=0,
+            )
+        elif not self.nim_client.api_key:
+            snapshot = SecFilingIntelligenceSnapshot(
+                generated_at=self._now(),
+                source=filings.source,
+                ticker=normalized_ticker,
+                status="not_configured",
+                message="NVIDIA_API_KEY is required for filing intelligence.",
+                filings_analyzed=0,
+            )
+        else:
+            filing_rows = [
+                {
+                    "form": item.form,
+                    "filing_date": item.filing_date,
+                    "report_date": item.report_date,
+                    "company_name": item.company_name,
+                    "filing_url": item.filing_url,
+                }
+                for item in filings.filings[:bounded_limit]
+            ]
+            prompt = dedent(
+                f"""
+                Analyze this SEC filing activity metadata for ticker {normalized_ticker}.
+                Do not infer financial results or filing contents that are not present.
+                Assess only disclosure cadence, form importance, recency, and likely research priority.
+                Filing metadata:
+                {json.dumps(filing_rows, separators=(",", ":"))}
+
+                Return JSON with exactly these fields:
+                {{"category":"earnings|capital_allocation|governance|regulation|operations|risk|other","sentiment":-1.0,"relevance":0.0,"risk_score":0.0,"horizon":"immediate|near_term|medium_term|long_term","summary":"concise factual research note","evidence":["metadata fact"]}}
+                """
+            ).strip()
+            response = self.nim_client.try_ask(
+                prompt,
+                task_type="finance",
+                system_prompt="Return strict JSON only. Never invent facts beyond the supplied SEC metadata.",
+                temperature=0.0,
+                max_tokens=360,
+                json_mode=True,
+            )
+            try:
+                signal = self._normalize_intelligence_signal(
+                    response.json() if response else {},
+                    asset=normalized_ticker,
+                    model=response.model if response else "",
+                )
+                snapshot = SecFilingIntelligenceSnapshot(
+                    generated_at=self._now(),
+                    source=f"{filings.source}+nvidia-nim",
+                    ticker=normalized_ticker,
+                    status="live",
+                    filings_analyzed=len(filing_rows),
+                    signal=signal,
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                snapshot = SecFilingIntelligenceSnapshot(
+                    generated_at=self._now(),
+                    source=f"{filings.source}+nvidia-nim",
+                    ticker=normalized_ticker,
+                    status="unavailable",
+                    message=f"NVIDIA filing intelligence is temporarily unavailable ({exc.__class__.__name__}).",
+                    filings_analyzed=0,
+                )
+        self.sec_filing_intelligence_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
+        return snapshot
+
+    def get_onchain_activity_intelligence(
+        self,
+        chain: str,
+        address: str,
+        *,
+        limit: int = 20,
+        force_refresh: bool = False,
+    ) -> OnchainActivityIntelligenceSnapshot:
+        normalized_chain = chain.strip().lower()
+        normalized_address = address.strip().lower()
+        bounded_limit = max(1, min(limit, 30))
+        cache_key = f"{normalized_chain}:{normalized_address}:{bounded_limit}"
+        cached = self.onchain_intelligence_cache.get(cache_key)
+        if not force_refresh and self._cache_is_fresh(cached, ttl_seconds=600):
+            return cached[1]
+        activity = self.get_onchain_activity(normalized_chain, normalized_address, limit=bounded_limit)
+        transaction_count = len(activity.transactions)
+        transfer_count = len(activity.token_transfers)
+        if activity.status not in {"live", "empty"} or not (transaction_count or transfer_count):
+            snapshot = OnchainActivityIntelligenceSnapshot(
+                generated_at=self._now(),
+                source=activity.source,
+                chain=normalized_chain,
+                address=normalized_address,
+                status=activity.status,
+                message=activity.message or "No on-chain activity is available for analysis.",
+                transactions_analyzed=0,
+                token_transfers_analyzed=0,
+            )
+        elif not self.nim_client.api_key:
+            snapshot = OnchainActivityIntelligenceSnapshot(
+                generated_at=self._now(),
+                source=activity.source,
+                chain=normalized_chain,
+                address=normalized_address,
+                status="not_configured",
+                message="NVIDIA_API_KEY is required for on-chain intelligence.",
+                transactions_analyzed=0,
+                token_transfers_analyzed=0,
+            )
+        else:
+            transaction_rows = [
+                {
+                    "timestamp": item.timestamp,
+                    "direction": item.direction,
+                    "status": item.status,
+                    "value_native": item.value_native,
+                    "fee_native": item.fee_native,
+                    "method": item.method,
+                }
+                for item in activity.transactions[:bounded_limit]
+            ]
+            transfer_rows = [
+                {
+                    "timestamp": item.timestamp,
+                    "direction": item.direction,
+                    "token_symbol": item.token_symbol,
+                    "token_type": item.token_type,
+                    "amount": item.amount,
+                }
+                for item in activity.token_transfers[:bounded_limit]
+            ]
+            prompt = dedent(
+                f"""
+                Analyze recent read-only wallet activity on {normalized_chain}.
+                Identify flow direction, concentration, operational risk, and the most relevant token or native asset.
+                Do not identify the wallet owner and do not infer activity not present in the records.
+                Transactions: {json.dumps(transaction_rows, separators=(",", ":"))}
+                Token transfers: {json.dumps(transfer_rows, separators=(",", ":"))}
+
+                Return JSON with exactly these fields:
+                {{"asset":"ETH or token symbol","category":"flows|treasury|counterparty|security|risk|other","sentiment":-1.0,"relevance":0.0,"risk_score":0.0,"horizon":"immediate|near_term|medium_term|long_term","summary":"concise factual activity note","evidence":["observed activity fact"]}}
+                """
+            ).strip()
+            response = self.nim_client.try_ask(
+                prompt,
+                task_type="classification",
+                system_prompt="Return strict JSON only. Use only the supplied on-chain records and never infer wallet ownership.",
+                temperature=0.0,
+                max_tokens=360,
+                json_mode=True,
+            )
+            try:
+                payload = response.json() if response else {}
+                requested_asset = re.sub(r"[^A-Za-z0-9.-]", "", str(payload.get("asset") or ""))[:16]
+                default_asset = "ETH" if normalized_chain in {"ethereum", "base", "arbitrum", "optimism"} else normalized_chain.upper()
+                signal = self._normalize_intelligence_signal(
+                    payload,
+                    asset=requested_asset or default_asset,
+                    model=response.model if response else "",
+                )
+                snapshot = OnchainActivityIntelligenceSnapshot(
+                    generated_at=self._now(),
+                    source=f"{activity.source}+nvidia-nim",
+                    chain=normalized_chain,
+                    address=normalized_address,
+                    status="live",
+                    transactions_analyzed=len(transaction_rows),
+                    token_transfers_analyzed=len(transfer_rows),
+                    signal=signal,
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                snapshot = OnchainActivityIntelligenceSnapshot(
+                    generated_at=self._now(),
+                    source=f"{activity.source}+nvidia-nim",
+                    chain=normalized_chain,
+                    address=normalized_address,
+                    status="unavailable",
+                    message=f"NVIDIA on-chain intelligence is temporarily unavailable ({exc.__class__.__name__}).",
+                    transactions_analyzed=0,
+                    token_transfers_analyzed=0,
+                )
+        self.onchain_intelligence_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
         return snapshot
 
     def get_exchange_feed_snapshot(self, *, force_refresh: bool = False) -> ExchangeFeedSnapshot:
@@ -10323,6 +10582,8 @@ class BotSocietyService:
         self.equity_market_cache = None
         self.sec_filings_cache.clear()
         self.onchain_activity_cache.clear()
+        self.sec_filing_intelligence_cache.clear()
+        self.onchain_intelligence_cache.clear()
         self.leaderboard_cache.clear()
         self.landing_snapshot_cache.clear()
         self.dashboard_snapshot_cache.clear()
