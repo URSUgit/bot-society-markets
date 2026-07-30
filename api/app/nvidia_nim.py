@@ -133,7 +133,9 @@ class NvidiaNimClient:
         backoff_base_seconds: float = 0.75,
         rate_limiter: NimRateLimiter | None = None,
     ) -> None:
-        self.api_key = api_key if api_key is not None else os.getenv("NVIDIA_API_KEY")
+        raw_api_key = api_key if api_key is not None else os.getenv("NVIDIA_API_KEY")
+        self.api_key = str(raw_api_key or "").strip()
+        self.last_error: str | None = None
         self.base_url = (base_url or os.getenv("NVIDIA_NIM_BASE_URL") or NIM_BASE_URL).rstrip("/")
         self.timeout_seconds = max(1, timeout_seconds)
         self.max_retries_per_model = max(0, max_retries_per_model)
@@ -188,8 +190,11 @@ class NvidiaNimClient:
         **kwargs: object,
     ) -> NimResponse | None:
         try:
-            return self.ask(prompt, task_type, **kwargs)
-        except NimClientError:
+            response = self.ask(prompt, task_type, **kwargs)
+            self.last_error = None
+            return response
+        except NimClientError as exc:
+            self.last_error = str(exc)[:240]
             return None
 
     def _chat_completion(

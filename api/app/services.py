@@ -3152,7 +3152,10 @@ class BotSocietyService:
                     source=f"{filings.source}+nvidia-nim",
                     ticker=normalized_ticker,
                     status="unavailable",
-                    message=f"NVIDIA filing intelligence is temporarily unavailable ({exc.__class__.__name__}).",
+                    message=(
+                        f"NVIDIA filing intelligence is temporarily unavailable "
+                        f"({self.nim_client.last_error or exc.__class__.__name__})."
+                    ),
                     filings_analyzed=0,
                 )
         self.sec_filing_intelligence_cache[cache_key] = (datetime.now(timezone.utc), snapshot)
@@ -3266,7 +3269,10 @@ class BotSocietyService:
                     chain=normalized_chain,
                     address=normalized_address,
                     status="unavailable",
-                    message=f"NVIDIA on-chain intelligence is temporarily unavailable ({exc.__class__.__name__}).",
+                    message=(
+                        f"NVIDIA on-chain intelligence is temporarily unavailable "
+                        f"({self.nim_client.last_error or exc.__class__.__name__})."
+                    ),
                     transactions_analyzed=0,
                     token_transfers_analyzed=0,
                 )

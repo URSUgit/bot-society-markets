@@ -48,7 +48,7 @@ def test_nim_client_routes_task_and_json_mode(monkeypatch: pytest.MonkeyPatch) -
         )
 
     monkeypatch.setattr(nvidia_nim, "urlopen", fake_urlopen)
-    client = NvidiaNimClient(api_key="test-key", timeout_seconds=9, max_retries_per_model=0)
+    client = NvidiaNimClient(api_key="  test-key  ", timeout_seconds=9, max_retries_per_model=0)
 
     response = client.ask(
         "Classify this market headline.",
@@ -60,6 +60,7 @@ def test_nim_client_routes_task_and_json_mode(monkeypatch: pytest.MonkeyPatch) -
     payload = captured["payload"]
     assert captured["url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
     assert captured["timeout"] == 9
+    assert captured["headers"]["Authorization"] == "Bearer test-key"
     assert payload["model"] == "writer/palmyra-fin-70b-32k"
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["messages"][0] == {"role": "system", "content": "Return JSON only."}
@@ -101,6 +102,7 @@ def test_nim_try_ask_degrades_gracefully_without_key(monkeypatch: pytest.MonkeyP
     client = NvidiaNimClient(api_key="", max_retries_per_model=0)
 
     assert client.try_ask("headline", task_type="classification") is None
+    assert client.last_error == "NVIDIA_API_KEY is not set"
 
 
 def test_nim_rate_limiter_stays_under_per_minute_limit() -> None:
