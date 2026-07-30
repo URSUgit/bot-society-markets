@@ -232,8 +232,8 @@ class NvidiaNimClient:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 response_payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            if exc.code in {429, 503}:
-                raise NimTransientError(f"NVIDIA NIM transient HTTP {exc.code}") from exc
+            if exc.code in {404, 408, 429, 502, 503, 504}:
+                raise NimTransientError(f"NVIDIA NIM model unavailable HTTP {exc.code}") from exc
             raise NimClientError(f"NVIDIA NIM HTTP {exc.code}") from exc
         except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             raise NimTransientError(f"NVIDIA NIM transport failure: {exc.__class__.__name__}") from exc

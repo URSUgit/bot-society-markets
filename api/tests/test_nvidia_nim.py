@@ -97,6 +97,32 @@ def test_nim_client_falls_back_after_503(monkeypatch: pytest.MonkeyPatch) -> Non
     assert response.model == "nvidia/nemotron-3-super-120b-a12b"
 
 
+def test_nim_client_falls_back_when_model_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested_models: list[str] = []
+
+    def fake_urlopen(request, timeout: int):
+        payload = json.loads(request.data.decode("utf-8"))
+        requested_models.append(payload["model"])
+        if len(requested_models) == 1:
+            raise HTTPError(request.full_url, 404, "model not found", hdrs=None, fp=None)
+        return FakeResponse(
+            {
+                "model": payload["model"],
+                "choices": [{"message": {"content": "fallback ok"}}],
+            }
+        )
+
+    monkeypatch.setattr(nvidia_nim, "urlopen", fake_urlopen)
+    monkeypatch.setattr(nvidia_nim.time, "sleep", lambda seconds: None)
+    client = NvidiaNimClient(api_key="test-key", max_retries_per_model=0)
+
+    response = client.ask("hello", task_type="finance")
+
+    assert requested_models[:2] == [
+        "writer/palmyra-fin-70b-32k",
+        "nvidia/nemotron-3-super-120b-a12b",
+    ]
+    assert response.content == "fallback ok"
 def test_nim_try_ask_degrades_gracefully_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     client = NvidiaNimClient(api_key="", max_retries_per_model=0)
