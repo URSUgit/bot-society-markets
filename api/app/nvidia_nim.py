@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import json
 import os
 import random
+import re
 import time
 from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
@@ -77,9 +78,17 @@ class NimResponse:
                     lines = lines[:-1]
                 text = "\n".join(lines).strip()
             object_start = text.find("{")
-            if object_start < 0:
-                raise
-            payload, _ = json.JSONDecoder().raw_decode(text[object_start:])
+            if object_start >= 0:
+                try:
+                    payload, _ = json.JSONDecoder().raw_decode(text[object_start:])
+                except json.JSONDecodeError:
+                    payload = None
+            else:
+                payload = None
+            if payload is None:
+                visible_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+                visible_text = visible_text or text
+                payload = {"summary": visible_text[:1200]}
         if not isinstance(payload, dict):
             raise ValueError("NVIDIA NIM JSON response must be an object")
         return payload

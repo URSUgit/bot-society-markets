@@ -6,7 +6,7 @@ from urllib.error import HTTPError
 import pytest
 
 from api.app import nvidia_nim
-from api.app.nvidia_nim import NimConfigurationError, NimRateLimiter, NvidiaNimClient
+from api.app.nvidia_nim import NimConfigurationError, NimRateLimiter, NimResponse, NvidiaNimClient
 
 
 class FakeResponse:
@@ -131,6 +131,14 @@ def test_nim_try_ask_degrades_gracefully_without_key(monkeypatch: pytest.MonkeyP
     assert client.last_error == "NVIDIA_API_KEY is not set"
 
 
+def test_nim_response_wraps_plain_text_as_summary() -> None:
+    response = NimResponse(
+        content="<think>internal reasoning</think>\nRecent filing activity should be reviewed.",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        task_type="finance",
+    )
+
+    assert response.json() == {"summary": "Recent filing activity should be reviewed."}
 def test_nim_rate_limiter_stays_under_per_minute_limit() -> None:
     now = 0.0
     sleeps: list[float] = []
