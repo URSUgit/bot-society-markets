@@ -10,6 +10,7 @@ from api.app.providers import (
     BinanceSpotMarketProvider,
     BlockscoutActivityProvider,
     MarketProviderBase,
+    MarketCandleProvider,
     ProviderReadiness,
     SecEdgarProvider,
 )
@@ -303,3 +304,101 @@ def test_blockscout_provider_normalizes_transactions_and_token_transfers(monkeyp
     assert result["token_transfers"][0]["direction"] == "inbound"
     assert result["token_transfers"][0]["token_symbol"] == "USDC"
     assert result["token_transfers"][0]["amount"] == 2.5
+
+
+def test_market_candle_provider_parses_binance_klines(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = [
+        [1778140800000, "100.0", "106.0", "98.0", "104.0", "1250.5", 0, "0", 0, "0", "0", "0"],
+        [1778144400000, "104.0", "109.0", "102.0", "108.0", "980.25", 0, "0", 0, "0", "0", "0"],
+    ]
+    requested_urls: list[str] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        requested_urls.append(request.full_url)
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+    provider = MarketCandleProvider(
+        binance_base_url="https://api.binance.com",
+        binance_quote_asset="USDT",
+        alpaca_api_key=None,
+        alpaca_api_secret=None,
+        alpaca_feed="iex",
+        alpaca_base_url="https://data.alpaca.markets",
+    )
+
+    result = provider.fetch_candles("btc", timeframe="1h", limit=200)
+
+    assert result["source"] == "binance-spot"
+    assert result["delayed"] is False
+    assert result["candles"][0]["time"] == 1778140800
+    assert result["candles"][1]["close"] == 108.0
+    assert "symbol=BTCUSDT" in requested_urls[0]
+    assert "interval=1h" in requested_urls[0]
+
+
+def test_market_candle_provider_parses_alpaca_bars(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "bars": [
+            {"t": "2026-05-07T14:00:00Z", "o": 210.0, "h": 214.0, "l": 208.0, "c": 213.0, "v": 50000},
+        ]
+    }
+    requested = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        requested.append(request)
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+    provider = MarketCandleProvider(
+        binance_base_url="https://api.binance.com",
+        binance_quote_asset="USDT",
+        alpaca_api_key="key",
+        alpaca_api_secret="secret",
+        alpaca_feed="iex",
+        alpaca_base_url="https://data.alpaca.markets",
+    )
+
+    result = provider.fetch_candles("AAPL", timeframe="15m", limit=100)
+
+    assert result["source"] == "alpaca-iex"
+    assert result["delayed"] is True
+    assert result["candles"][0]["open"] == 210.0
+    assert result["candles"][0]["volume"] == 50000.0
+    assert "/v2/stocks/AAPL/bars" in requested[0].full_url
+    assert "timeframe=15Min" in requested[0].full_url
+    assert requested[0].headers["Apca-api-key-id"] == "key"
+
+
+def test_market_candle_provider_requires_alpaca_for_equities() -> None:
+    provider = MarketCandleProvider(
+        binance_base_url="https://api.binance.com",
+        binance_quote_asset="USDT",
+        alpaca_api_key=None,
+        alpaca_api_secret=None,
+        alpaca_feed="iex",
+        alpaca_base_url="https://data.alpaca.markets",
+    )
+
+    with pytest.raises(ValueError, match="Alpaca"):
+        provider.fetch_candles("AAPL", timeframe="1h", limit=100)

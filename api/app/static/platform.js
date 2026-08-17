@@ -281,6 +281,14 @@ const state = {
   newsSentimentLoaded: false,
   marketSessions: null,
   marketSessionsLoaded: false,
+  tradeAsset: localStorage.getItem("bp-trade-asset") || "BTC",
+  tradeTimeframe: localStorage.getItem("bp-trade-timeframe") || "1h",
+  tradeView: "chart",
+  tradeCandles: null,
+  tradeCandlesKey: "",
+  tradeCharts: [],
+  tradePollTimer: null,
+  pendingPaperOrder: null,
   latestBacktest: readStoredObject("bp-latest-backtest"),
 };
 
@@ -678,7 +686,31 @@ function loadDashboard(force = false) {
   }
   if (state.dashboard && !force) return Promise.resolve(state.dashboard);
   if (state.dashboardPromise && !force) return state.dashboardPromise;
-  state.dashboardPromise = fetchJson(`/api/dashboard${force ? `?v=${Date.now()}` : ""}`)
+  state.dashboardPromise = fetchJson("/api/auth/session")
+    .then(async (session) => {
+      if (session.authenticated) {
+        return fetchJson(`/api/dashboard${force ? `?v=${Date.now()}` : ""}`);
+      }
+      const landing = await fetchJson(`/api/landing${force ? `?v=${Date.now()}` : ""}`);
+      return {
+        ...landing,
+        auth_session: session,
+        user_profile: null,
+        recent_predictions: [],
+        paper_trading: {
+          summary: {
+            starting_balance: 0,
+            cash_balance: 0,
+            equity: 0,
+            unrealized_pnl: 0,
+            open_exposure: 0,
+            open_positions: 0,
+          },
+          positions: [],
+          orders: [],
+        },
+      };
+    })
     .then((payload) => {
       state.dashboard = payload;
       updateChrome(payload);
@@ -1413,23 +1445,378 @@ function renderTraderCard(trader) {
     </article>`;
 }
 
+const TRADE_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
+const CRYPTO_TRADE_ASSETS = new Set(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "DOT"]);
+
+function tradingAssets(payload) {
+  const assets = new Map();
+  (payload?.assets || []).forEach((item) => assets.set(item.asset, { ...item, kind: "crypto" }));
+  (state.equityMarkets?.equities || []).forEach((item) => assets.set(item.symbol, { ...item, asset: item.symbol, kind: "equity" }));
+  if (!assets.has(state.tradeAsset)) {
+    assets.set(state.tradeAsset, { asset: state.tradeAsset, kind: CRYPTO_TRADE_ASSETS.has(state.tradeAsset) ? "crypto" : "equity" });
+  }
+  return [...assets.values()];
+}
+
+function tradingQuote(payload, symbol) {
+  return tradingAssets(payload).find((item) => item.asset === symbol) || { asset: symbol };
+}
+
+function destroyTradingWorkspace() {
+  if (state.tradePollTimer) {
+    window.clearInterval(state.tradePollTimer);
+    state.tradePollTimer = null;
+  }
+  (state.tradeCharts || []).forEach((chart) => {
+    try { chart.remove(); } catch (_) { /* chart already detached */ }
+  });
+  state.tradeCharts = [];
+}
+
+function simpleMovingAverage(candles, period) {
+  const result = [];
+  let total = 0;
+  candles.forEach((candle, index) => {
+    total += candle.close;
+    if (index >= period) total -= candles[index - period].close;
+    if (index >= period - 1) result.push({ time: candle.time, value: total / period });
+  });
+  return result;
+}
+
+function exponentialMovingAverage(points, period, valueKey = "close") {
+  if (!points.length) return [];
+  const multiplier = 2 / (period + 1);
+  let current = Number(points[0][valueKey]);
+  return points.map((point) => {
+    current = (Number(point[valueKey]) - current) * multiplier + current;
+    return { time: point.time, value: current };
+  });
+}
+
+function relativeStrengthIndex(candles, period = 14) {
+  if (candles.length <= period) return [];
+  let gains = 0;
+  let losses = 0;
+  for (let index = 1; index <= period; index += 1) {
+    const change = candles[index].close - candles[index - 1].close;
+    gains += Math.max(change, 0);
+    losses += Math.max(-change, 0);
+  }
+  let averageGain = gains / period;
+  let averageLoss = losses / period;
+  const result = [];
+  for (let index = period; index < candles.length; index += 1) {
+    if (index > period) {
+      const change = candles[index].close - candles[index - 1].close;
+      averageGain = ((averageGain * (period - 1)) + Math.max(change, 0)) / period;
+      averageLoss = ((averageLoss * (period - 1)) + Math.max(-change, 0)) / period;
+    }
+    const value = averageLoss === 0 ? 100 : 100 - (100 / (1 + (averageGain / averageLoss)));
+    result.push({ time: candles[index].time, value });
+  }
+  return result;
+}
+
+function macdValues(candles) {
+  const fast = exponentialMovingAverage(candles, 12);
+  const slow = exponentialMovingAverage(candles, 26);
+  const macd = candles.map((candle, index) => ({ time: candle.time, value: fast[index].value - slow[index].value }));
+  const signalInput = macd.map((point) => ({ time: point.time, close: point.value }));
+  const signal = exponentialMovingAverage(signalInput, 9);
+  const histogram = macd.map((point, index) => ({ time: point.time, value: point.value - signal[index].value }));
+  return { macd, signal, histogram };
+}
+
+function averageTrueRange(candles, period = 14) {
+  if (candles.length <= period) return null;
+  const ranges = candles.map((candle, index) => {
+    if (!index) return candle.high - candle.low;
+    const previous = candles[index - 1].close;
+    return Math.max(candle.high - candle.low, Math.abs(candle.high - previous), Math.abs(candle.low - previous));
+  });
+  return ranges.slice(-period).reduce((total, value) => total + value, 0) / period;
+}
+
+function tradingChartOptions(container, height) {
+  const dark = state.theme === "dark";
+  return {
+    width: Math.max(container.clientWidth, 320),
+    height,
+    layout: {
+      background: { color: "transparent" },
+      textColor: dark ? "#a9b8b3" : "#566661",
+      fontFamily: 'Inter, "Segoe UI", sans-serif',
+      attributionLogo: true,
+    },
+    grid: {
+      vertLines: { color: dark ? "rgba(180, 200, 194, 0.07)" : "rgba(20, 48, 43, 0.08)" },
+      horzLines: { color: dark ? "rgba(180, 200, 194, 0.07)" : "rgba(20, 48, 43, 0.08)" },
+    },
+    crosshair: { mode: 0 },
+    rightPriceScale: { borderColor: dark ? "#33423e" : "#d8dfdc" },
+    timeScale: { borderColor: dark ? "#33423e" : "#d8dfdc", timeVisible: true, secondsVisible: false },
+  };
+}
+
+function nearestCandleTime(candles, rawTime) {
+  const timestamp = Math.floor(new Date(rawTime).getTime() / 1000);
+  if (!Number.isFinite(timestamp) || !candles.length) return null;
+  return candles.reduce((nearest, candle) => Math.abs(candle.time - timestamp) < Math.abs(nearest - timestamp) ? candle.time : nearest, candles[0].time);
+}
+
+function attachTradeMarkers(series, candles, payload) {
+  if (!window.LightweightCharts?.createSeriesMarkers) return;
+  const signals = (payload?.recent_signals || [])
+    .filter((signal) => signal.asset === state.tradeAsset)
+    .slice(0, 16)
+    .map((signal) => ({
+      time: nearestCandleTime(candles, signal.observed_at),
+      position: Number(signal.sentiment) >= 0 ? "belowBar" : "aboveBar",
+      color: Number(signal.sentiment) >= 0 ? "#0c8f68" : "#c84b55",
+      shape: Number(signal.sentiment) >= 0 ? "arrowUp" : "arrowDown",
+      text: `${signal.source_type || "signal"} ${Number(signal.sentiment) >= 0 ? "+" : ""}${number(signal.sentiment, 2)}`,
+    }))
+    .filter((marker) => marker.time !== null);
+  if (signals.length) window.LightweightCharts.createSeriesMarkers(series, signals);
+}
+
+function updateTradingMetrics(candles, snapshot, payload) {
+  const last = candles[candles.length - 1];
+  const previous = candles[candles.length - 2] || last;
+  const rsi = relativeStrengthIndex(candles);
+  const macd = macdValues(candles);
+  const atr = averageTrueRange(candles);
+  const sentiment = state.newsSentiment?.assets?.find((item) => item.asset === state.tradeAsset)?.score;
+  const values = {
+    "trade-last-price": money(last.close, "USD", last.close < 10 ? 4 : 2),
+    "trade-change": `${last.close >= previous.close ? "+" : ""}${percent((last.close - previous.close) / previous.close, 2)}`,
+    "trade-rsi": rsi.length ? number(rsi[rsi.length - 1].value, 1) : "--",
+    "trade-macd": macd.histogram.length ? number(macd.histogram[macd.histogram.length - 1].value, 4) : "--",
+    "trade-atr": atr === null ? "--" : number(atr, last.close < 10 ? 4 : 2),
+    "trade-sentiment": Number.isFinite(Number(sentiment)) ? number(sentiment, 2) : "--",
+    "trade-source": `${snapshot.source}${snapshot.delayed ? " · delayed" : " · live"}`,
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  });
+}
+
+function renderTradingCharts(snapshot, payload) {
+  const candles = (snapshot?.candles || []).map((candle) => ({
+    time: Number(candle.time),
+    open: Number(candle.open),
+    high: Number(candle.high),
+    low: Number(candle.low),
+    close: Number(candle.close),
+    volume: Number(candle.volume || 0),
+  })).filter((candle) => Number.isFinite(candle.time) && Number.isFinite(candle.close));
+  const chartTarget = document.getElementById("trade-price-chart");
+  const rsiTarget = document.getElementById("trade-rsi-chart");
+  const macdTarget = document.getElementById("trade-macd-chart");
+  if (!candles.length || !chartTarget || !rsiTarget || !macdTarget || !window.LightweightCharts) return;
+
+  (state.tradeCharts || []).forEach((chart) => chart.remove());
+  state.tradeCharts = [];
+  const chart = window.LightweightCharts.createChart(chartTarget, tradingChartOptions(chartTarget, 430));
+  const candleSeries = chart.addSeries(window.LightweightCharts.CandlestickSeries, {
+    upColor: "#0c8f68", downColor: "#c84b55", wickUpColor: "#0c8f68", wickDownColor: "#c84b55", borderVisible: false,
+  });
+  candleSeries.setData(candles);
+  const volumeSeries = chart.addSeries(window.LightweightCharts.HistogramSeries, {
+    priceFormat: { type: "volume" }, priceScaleId: "volume", lastValueVisible: false, priceLineVisible: false,
+  });
+  volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  volumeSeries.setData(candles.map((candle) => ({
+    time: candle.time,
+    value: candle.volume,
+    color: candle.close >= candle.open ? "rgba(12,143,104,.38)" : "rgba(200,75,85,.38)",
+  })));
+  const sma20 = chart.addSeries(window.LightweightCharts.LineSeries, { color: "#3377b8", lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+  sma20.setData(simpleMovingAverage(candles, 20));
+  const ema50 = chart.addSeries(window.LightweightCharts.LineSeries, { color: "#c4862e", lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+  ema50.setData(exponentialMovingAverage(candles, 50));
+  attachTradeMarkers(candleSeries, candles, payload);
+  chart.timeScale().fitContent();
+
+  const rsiChart = window.LightweightCharts.createChart(rsiTarget, tradingChartOptions(rsiTarget, 145));
+  const rsiSeries = rsiChart.addSeries(window.LightweightCharts.LineSeries, { color: "#7656a6", lineWidth: 2, priceLineVisible: false });
+  rsiSeries.setData(relativeStrengthIndex(candles));
+  rsiSeries.createPriceLine({ price: 70, color: "rgba(200,75,85,.55)", lineStyle: 2, axisLabelVisible: true, title: "70" });
+  rsiSeries.createPriceLine({ price: 30, color: "rgba(12,143,104,.55)", lineStyle: 2, axisLabelVisible: true, title: "30" });
+  rsiChart.timeScale().fitContent();
+
+  const macd = macdValues(candles);
+  const macdChart = window.LightweightCharts.createChart(macdTarget, tradingChartOptions(macdTarget, 165));
+  const macdSeries = macdChart.addSeries(window.LightweightCharts.LineSeries, { color: "#3377b8", lineWidth: 2, priceLineVisible: false });
+  const signalSeries = macdChart.addSeries(window.LightweightCharts.LineSeries, { color: "#c4862e", lineWidth: 2, priceLineVisible: false });
+  const histogram = macdChart.addSeries(window.LightweightCharts.HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
+  macdSeries.setData(macd.macd);
+  signalSeries.setData(macd.signal);
+  histogram.setData(macd.histogram.map((point) => ({ ...point, color: point.value >= 0 ? "rgba(12,143,104,.55)" : "rgba(200,75,85,.55)" })));
+  macdChart.timeScale().fitContent();
+
+  state.tradeCharts = [chart, rsiChart, macdChart];
+  updateTradingMetrics(candles, snapshot, payload);
+}
+
+async function loadTradingCandles(force = false) {
+  const key = `${state.tradeAsset}:${state.tradeTimeframe}`;
+  if (!force && state.tradeCandles && state.tradeCandlesKey === key) return state.tradeCandles;
+  const snapshot = await fetchJson(`/api/v1/markets/${encodeURIComponent(state.tradeAsset)}/candles?timeframe=${encodeURIComponent(state.tradeTimeframe)}&limit=300`);
+  state.tradeCandles = snapshot;
+  state.tradeCandlesKey = key;
+  return snapshot;
+}
+
+function mountTradingViewWidget(targetId, scriptName, config) {
+  const target = document.getElementById(targetId);
+  if (!target || target.dataset.loaded === "true") return;
+  target.dataset.loaded = "true";
+  target.innerHTML = '<div class="tradingview-widget-container__widget"></div>';
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://s3.tradingview.com/external-embedding/${scriptName}`;
+  script.textContent = JSON.stringify(config);
+  script.addEventListener("error", () => {
+    target.innerHTML = '<div class="trade-widget-error"><strong>TradingView widget unavailable</strong><span>The rest of the terminal continues using BITprivat market APIs.</span></div>';
+  });
+  target.appendChild(script);
+}
+
+function setTradeView(view) {
+  state.tradeView = view;
+  document.querySelectorAll("[data-trade-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.tradeView === view));
+  document.querySelectorAll("[data-trade-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.tradePanel === view));
+  if (view === "heatmap") {
+    mountTradingViewWidget("trade-heatmap-widget", "embed-widget-stock-heatmap.js", {
+      exchanges: [], dataSource: "SPX500", grouping: "sector", blockSize: "market_cap_basic", blockColor: "change", locale: "en", symbolUrl: "", colorTheme: state.theme, hasTopBar: true, isDataSetEnabled: true, isZoomEnabled: true, hasSymbolTooltip: true, width: "100%", height: "100%",
+    });
+  }
+  if (view === "calendar") {
+    mountTradingViewWidget("trade-calendar-widget", "embed-widget-events.js", {
+      colorTheme: state.theme, isTransparent: true, width: "100%", height: "100%", locale: "en", importanceFilter: "0,1", countryFilter: "us,jp,cn,hk,sg,kr,tw",
+    });
+  }
+}
+
+async function initializeTradingWorkspace(payload, force = false) {
+  const status = document.getElementById("trade-chart-status");
+  if (!status) return;
+  if (state.tradeView !== "chart") {
+    setTradeView(state.tradeView);
+    return;
+  }
+  status.textContent = force ? "Refreshing real bars..." : "Loading real bars...";
+  status.dataset.state = "loading";
+  try {
+    const snapshot = await loadTradingCandles(force);
+    renderTradingCharts(snapshot, payload);
+    status.textContent = `${snapshot.source}${snapshot.delayed ? " · delayed feed" : " · live feed"} · ${snapshot.candles.length} bars`;
+    status.dataset.state = "live";
+  } catch (error) {
+    status.textContent = error.message || "Real candle data is unavailable.";
+    status.dataset.state = "blocked";
+    const target = document.getElementById("trade-price-chart");
+    if (target) target.innerHTML = `<div class="trade-chart-error"><strong>No generated chart data</strong><span>${escapeHtml(error.message || "Configure a supported market-data provider.")}</span></div>`;
+  }
+  if (!state.tradePollTimer) {
+    state.tradePollTimer = window.setInterval(() => {
+      if (state.page === "paper" && state.tradeView === "chart") initializeTradingWorkspace(payload, true);
+    }, ["1m", "5m", "15m"].includes(state.tradeTimeframe) ? 30000 : 60000);
+  }
+}
+
+async function refreshTradingWorkspace({ asset = state.tradeAsset, timeframe = state.tradeTimeframe } = {}) {
+  state.tradeAsset = String(asset || "BTC").trim().toUpperCase();
+  state.tradeTimeframe = TRADE_TIMEFRAMES.includes(timeframe) ? timeframe : "1h";
+  localStorage.setItem("bp-trade-asset", state.tradeAsset);
+  localStorage.setItem("bp-trade-timeframe", state.tradeTimeframe);
+  state.tradeCandles = null;
+  state.tradeCandlesKey = "";
+  destroyTradingWorkspace();
+  root.innerHTML = renderPaper(state.dashboard);
+  updateMarketSessionTimers();
+  await initializeTradingWorkspace(state.dashboard, true);
+}
+
+async function openTradeIntelligence() {
+  const asset = state.tradeAsset;
+  if (CRYPTO_TRADE_ASSETS.has(asset)) {
+    const sentiment = state.newsSentiment?.assets?.find((item) => item.asset === asset);
+    openDrawer({
+      kicker: "Market intelligence",
+      title: `${asset} evidence`,
+      body: sentiment ? `<section class="drawer-section"><h3>Aggregated news sentiment</h3><div class="detail-list"><div><span>Score</span><strong>${number(sentiment.score, 2)}</strong></div><div><span>Relevant headlines</span><strong>${number(sentiment.headline_count)}</strong></div><div><span>Average relevance</span><strong>${number(sentiment.average_relevance, 2)}</strong></div></div></section><div class="compact-list">${(sentiment.top_headlines || []).map((headline) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(headline)}</strong></span></div>`).join("")}</div>` : '<div class="empty-state"><div><h3>No classified headlines</h3><p>The trading terminal will not invent sentiment when the news layer has no evidence.</p></div></div>',
+    });
+    return;
+  }
+  openDrawer({ kicker: "NVIDIA filing intelligence", title: `Analyzing ${asset}`, body: '<div class="page-skeleton"><div class="skeleton-line wide"></div><div class="skeleton-line"></div></div>' });
+  try {
+    const snapshot = await fetchJson(`/api/v1/research/sec/${encodeURIComponent(asset)}/intelligence?forms=10-K,10-Q,8-K&limit=6`);
+    document.getElementById("drawer-body").innerHTML = renderIntelligenceSignal(snapshot.signal, { title: `${asset} filing assessment` });
+  } catch (error) {
+    document.getElementById("drawer-body").innerHTML = `<div class="error-state"><h2>Intelligence unavailable</h2><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function renderTradingSessionStrip() {
+  const sessions = state.marketSessions?.sessions || [];
+  if (!sessions.length) return '<div class="trade-session-empty">Market calendar unavailable</div>';
+  return sessions.slice(0, 4).map((session) => `<article class="trade-session" data-session-id="${escapeHtml(session.id)}"><span class="state-dot ${session.status === "open" ? "live" : session.status === "pre_market" || session.status === "after_hours" ? "warning" : ""}"></span><div><strong>${escapeHtml(session.exchange_code)}</strong><small>${escapeHtml(session.city)} · ${escapeHtml(session.status.replaceAll("_", " "))}</small></div><time data-session-countdown="${escapeHtml(session.id)}">${escapeHtml(session.countdown_label || "--")}</time></article>`).join("");
+}
+
 function renderPaper(payload) {
   const paper = payload.paper_trading || {};
   const summary = paper.summary || {};
-  const venues = payload.paper_venues?.venues || [];
-  const exposurePct = summary.equity ? clamp(summary.open_exposure / summary.equity * 100, 0, 100) : 0;
+  const assets = tradingAssets(payload);
+  const quote = tradingQuote(payload, state.tradeAsset);
+  const signals = (payload.recent_signals || []).filter((signal) => signal.asset === state.tradeAsset).slice(0, 6);
   return `
-    ${pageHeader("Practice account", "Test decisions with simulated money", "Paper trading helps expose bad rules and execution assumptions. It does not predict live performance.", `<button class="button" type="button" data-preview-order>Preview a paper order</button>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Paper equity</span><strong>${money(summary.equity || summary.starting_balance)}</strong><small>Simulated account value</small></article><article class="metric-card"><span>Available cash</span><strong>${money(summary.cash_balance)}</strong><small>Before estimated fees</small></article><article class="metric-card"><span>Unrealized P&L</span><strong class="${Number(summary.unrealized_pnl) >= 0 ? "positive" : "negative"}">${money(summary.unrealized_pnl)}</strong><small>Open paper positions only</small></article><article class="metric-card"><span>Total return</span><strong class="${Number(summary.total_return) >= 0 ? "positive" : "negative"}">${percent(summary.total_return || 0)}</strong><small>Simulation, not real return</small></article></section>
-    <section class="content-grid asymmetric">
-      <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Open paper positions</h2><p>Size, entry, current value, and simulated P&L.</p></div>${statusChip(`${summary.open_positions || 0} open`, "paper")}</div>${paper.positions?.length ? `<div class="position-list">${paper.positions.map(renderPosition).join("")}</div>` : `<div class="empty-state"><div><span class="card-icon">0</span><h3>No open paper positions</h3><p>Preview a simulated order to see fees, slippage, and risk checks before placing it.</p><button class="button small" type="button" data-preview-order>Preview order</button></div></div>`}</article>
-      <aside class="content-grid">
-        <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Exposure</h2><p>How much of the paper account is currently at risk.</p></div></div><div class="allocation-summary"><div class="allocation-line"><span>Open exposure</span><strong>${money(summary.open_exposure)}</strong></div><div class="progress-track"><i style="width:${exposurePct}%"></i></div><div class="allocation-line"><span>Portfolio share</span><strong>${number(exposurePct, 1)}%</strong></div></div></article>
-        <article class="panel"><div class="panel-head"><div class="panel-title"><h2>Available practice venues</h2><p>Configured does not mean approved for live use.</p></div></div><div class="compact-list">${venues.slice(0, 5).map((venue) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(venue.name || venue.venue_id || venue.id)}</strong><span>${escapeHtml(venue.summary || venue.mode || "Paper workflow")}</span></span>${statusChip(venue.ready ? "Ready" : venue.state || "Planned", venue.ready ? "ready" : "planned")}</div>`).join("")}</div></article>
-      </aside>
+    ${pageHeader("Trading workspace", `${state.tradeAsset} intelligent terminal`, "Real market data, technical context, evidence markers, and paper-only execution in one workspace.", `<button class="button secondary" type="button" data-trade-intelligence>Analyze evidence</button><button class="button" type="button" data-preview-order data-asset="${escapeHtml(state.tradeAsset)}">New paper order</button>`)}
+    <section class="trade-session-strip" aria-label="Global market sessions">${renderTradingSessionStrip()}</section>
+    <section class="trade-terminal">
+      <header class="trade-terminal-bar">
+        <form id="trade-symbol-form" class="trade-symbol-form">
+          <label for="trade-symbol-input">Symbol</label>
+          <input id="trade-symbol-input" name="symbol" list="trade-symbols" value="${escapeHtml(state.tradeAsset)}" maxlength="12" autocomplete="off">
+          <datalist id="trade-symbols">${assets.map((item) => `<option value="${escapeHtml(item.asset)}"></option>`).join("")}</datalist>
+          <button class="icon-button" type="submit" aria-label="Load symbol" title="Load symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+        </form>
+        <div class="trade-timeframes" role="group" aria-label="Chart timeframe">${TRADE_TIMEFRAMES.map((timeframe) => `<button type="button" class="${timeframe === state.tradeTimeframe ? "is-active" : ""}" data-trade-timeframe="${timeframe}">${timeframe}</button>`).join("")}</div>
+        <div class="trade-view-tabs" role="tablist" aria-label="Market view"><button type="button" class="${state.tradeView === "chart" ? "is-active" : ""}" data-trade-view="chart">Chart</button><button type="button" class="${state.tradeView === "heatmap" ? "is-active" : ""}" data-trade-view="heatmap">Heatmap</button><button type="button" class="${state.tradeView === "calendar" ? "is-active" : ""}" data-trade-view="calendar">Calendar</button></div>
+      </header>
+      <div class="trade-quote-strip">
+        <div><span>${escapeHtml(state.tradeAsset)}</span><strong id="trade-last-price">${quote.price ? money(quote.price, "USD", quote.price < 10 ? 4 : 2) : "--"}</strong><small id="trade-change">${Number.isFinite(Number(quote.change_24h ?? quote.change_percent)) ? percent(Number(quote.change_24h ?? quote.change_percent) / (quote.change_percent ? 100 : 1), 2) : "--"}</small></div>
+        <div><span>RSI 14</span><strong id="trade-rsi">--</strong></div>
+        <div><span>MACD hist.</span><strong id="trade-macd">--</strong></div>
+        <div><span>ATR 14</span><strong id="trade-atr">--</strong></div>
+        <div><span>News sentiment</span><strong id="trade-sentiment">--</strong></div>
+        <div><span>Data route</span><strong id="trade-source">Waiting</strong></div>
+      </div>
+      <div class="trade-main-grid">
+        <section class="trade-chart-shell">
+          <div class="trade-view-panel ${state.tradeView === "chart" ? "is-active" : ""}" data-trade-panel="chart">
+            <div class="trade-chart-heading"><div><strong>Candles · Volume · SMA20 · EMA50</strong><span id="trade-chart-status" data-state="loading">Loading real bars...</span></div><div class="trade-legend"><span class="sma">SMA20</span><span class="ema">EMA50</span></div></div>
+            <div id="trade-price-chart" class="trade-price-chart"></div>
+            <div class="indicator-heading"><strong>RSI 14</strong><span>Momentum range 30–70</span></div>
+            <div id="trade-rsi-chart" class="trade-indicator-chart"></div>
+            <div class="indicator-heading"><strong>MACD 12 / 26 / 9</strong><span>Momentum and signal crossover</span></div>
+            <div id="trade-macd-chart" class="trade-indicator-chart macd"></div>
+            <p class="trade-attribution">Charts powered by <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noreferrer">TradingView Lightweight Charts</a>. Market data is supplied by the provider named above.</p>
+          </div>
+          <div class="trade-view-panel ${state.tradeView === "heatmap" ? "is-active" : ""}" data-trade-panel="heatmap"><div id="trade-heatmap-widget" class="tradingview-widget-container trade-widget"></div></div>
+          <div class="trade-view-panel ${state.tradeView === "calendar" ? "is-active" : ""}" data-trade-panel="calendar"><div id="trade-calendar-widget" class="tradingview-widget-container trade-widget"></div></div>
+        </section>
+        <aside class="trade-side-panel">
+          <section class="trade-account-summary"><header><div><span>Paper account</span><strong>${money(summary.equity || summary.starting_balance)}</strong></div>${statusChip("paper only", "partial")}</header><dl><div><dt>Cash</dt><dd>${money(summary.cash_balance)}</dd></div><div><dt>Open exposure</dt><dd>${money(summary.open_exposure)}</dd></div><div><dt>Unrealized P&L</dt><dd class="${Number(summary.unrealized_pnl) >= 0 ? "positive" : "negative"}">${money(summary.unrealized_pnl)}</dd></div></dl><button class="button full" type="button" data-preview-order data-asset="${escapeHtml(state.tradeAsset)}">Preview paper order</button><small>Every order runs server-side exposure, balance, and paper-mode checks before submission.</small></section>
+          <section class="trade-evidence"><header><div><span>Latest evidence</span><strong>${signals.length} signals</strong></div><button class="icon-button" type="button" data-trade-intelligence aria-label="Analyze evidence" title="Analyze evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"></path></svg></button></header>${signals.length ? `<div class="trade-signal-list">${signals.map((signal) => `<article><span class="state-dot ${Number(signal.sentiment) >= 0 ? "live" : "blocked"}"></span><div><strong>${escapeHtml(signal.title)}</strong><small>${escapeHtml(signal.source)} · ${relativeDate(signal.observed_at)}</small></div><b>${Number(signal.sentiment) >= 0 ? "+" : ""}${number(signal.sentiment, 2)}</b></article>`).join("")}</div>` : '<div class="trade-empty-evidence">No recent evidence for this symbol. No synthetic signal is shown.</div>'}</section>
+          <section class="trade-open-positions"><header><span>Open positions</span><strong>${number(summary.open_positions || 0)}</strong></header>${paper.positions?.length ? `<div class="position-list compact">${paper.positions.slice(0, 4).map(renderPosition).join("")}</div>` : '<p>No paper positions.</p>'}</section>
+        </aside>
+      </div>
     </section>`;
 }
-
 function renderPosition(position) {
   const pnl = position.unrealized_pnl || position.realized_pnl || 0;
   return `<div class="position-row"><span class="activity-icon">${escapeHtml(position.asset || "?")}</span><span class="compact-copy"><strong>${escapeHtml(position.asset)} - ${escapeHtml(position.side || "position")}</strong><span>Entry ${money(position.entry_price || position.average_entry_price, "USD", 2)} - size ${number(position.quantity, 4)}</span></span><strong class="number ${Number(pnl) >= 0 ? "positive" : "negative"}">${money(pnl)}</strong></div>`;
@@ -1582,6 +1969,7 @@ function initials(value) {
 }
 
 async function renderCurrentPage(force = false) {
+  destroyTradingWorkspace();
   syncActiveNav();
   document.title = `${pageTitle(state.page)} | BITprivat`;
   root.innerHTML = `<div class="page-skeleton" aria-label="Loading page"><div class="skeleton-line wide"></div><div class="skeleton-line"></div><div class="skeleton-grid"><i></i><i></i><i></i></div></div>`;
@@ -1599,7 +1987,7 @@ async function renderCurrentPage(force = false) {
     if (state.page === "connections") {
       await loadExchangeFeeds(force);
     }
-    if (["home", "data"].includes(state.page)) {
+    if (["home", "data", "paper"].includes(state.page)) {
       await loadMarketSessions(force);
       await loadEquityMarkets(force);
       await loadNewsSentiment(force);
@@ -1619,6 +2007,10 @@ async function renderCurrentPage(force = false) {
     };
     root.innerHTML = renderers[state.page](payload);
     updateMarketSessionTimers();
+    if (state.page === "paper") {
+      setTradeView(state.tradeView);
+      await initializeTradingWorkspace(payload, force);
+    }
     root.focus({ preventScroll: true });
   } catch (error) {
     renderError(error);
@@ -1779,7 +2171,7 @@ function openOrderPreview(asset = "BTC") {
   openDrawer({
     kicker: "Paper order preview",
     title: "Review cost and risk before submission",
-    body: `<form class="form-grid" id="order-preview-form"><div class="form-row"><label class="field"><span>Asset</span><select name="asset">${(state.dashboard?.assets || [{ asset: "BTC" }, { asset: "ETH" }, { asset: "SOL" }]).map((item) => `<option value="${escapeHtml(item.asset)}" ${item.asset === asset ? "selected" : ""}>${escapeHtml(item.asset)}</option>`).join("")}</select></label><label class="field"><span>Direction</span><select name="side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label></div><label class="field"><span>Order type</span><select name="order_type"><option value="market">Market</option><option value="limit">Limit</option></select></label><label class="field"><span>Amount in USD</span><input name="notional_usd" type="number" min="10" max="10000" step="10" value="100" required><small>This uses simulated capital only.</small></label><label class="field" id="limit-price-field" hidden><span>Limit price</span><input name="price" type="number" min="0.0001" step="0.0001"></label></form><div id="order-preview-result" style="margin-top:16px"></div>`,
+    body: `<form class="form-grid" id="order-preview-form"><div class="form-row"><label class="field"><span>Asset</span><select name="asset">${tradingAssets(state.dashboard).map((item) => `<option value="${escapeHtml(item.asset)}" ${item.asset === asset ? "selected" : ""}>${escapeHtml(item.asset)}</option>`).join("")}</select></label><label class="field"><span>Direction</span><select name="side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label></div><label class="field"><span>Order type</span><select name="order_type"><option value="market">Market</option><option value="limit">Limit</option></select></label><label class="field"><span>Amount in USD</span><input name="notional_usd" type="number" min="10" max="10000" step="10" value="100" required><small>This uses simulated capital only.</small></label><label class="field" id="limit-price-field" hidden><span>Limit price</span><input name="price" type="number" min="0.0001" step="0.0001"></label></form><div id="order-preview-result" style="margin-top:16px"></div>`,
     footer: `<button class="button secondary" type="button" data-close-drawer>Cancel</button><button class="button" type="submit" form="order-preview-form">Calculate preview</button>`,
   });
   const orderType = document.querySelector('#order-preview-form [name="order_type"]');
@@ -1794,7 +2186,7 @@ async function submitOrderPreview(form) {
   const orderType = String(data.get("order_type") || "market");
   const payload = {
     venue: "paper",
-    asset: String(data.get("asset") || "BTC"),
+    asset: String(data.get("asset") || state.tradeAsset || "BTC"),
     side: String(data.get("side") || "buy"),
     order_type: orderType,
     notional_usd: Number(data.get("notional_usd") || 0),
@@ -1805,13 +2197,34 @@ async function submitOrderPreview(form) {
   target.innerHTML = `<div class="page-skeleton"><div class="skeleton-line wide"></div><div class="skeleton-line"></div></div>`;
   try {
     const preview = await fetchJson("/api/v1/trading/preview", { method: "POST", body: JSON.stringify(payload) });
-    target.innerHTML = `<section class="drawer-section"><h3>Estimated impact</h3><div class="detail-list"><div><span>Reference price</span><strong class="number">${money(preview.reference_price, "USD", 2)}</strong></div><div><span>Estimated fill</span><strong class="number">${money(preview.estimated_fill_price, "USD", 2)}</strong></div><div><span>Quantity</span><strong class="number">${number(preview.quantity, 6)}</strong></div><div><span>Fee</span><strong class="number">${money(preview.estimated_fee, "USD", 2)}</strong></div><div><span>Total cost</span><strong class="number">${money(preview.estimated_total_cost, "USD", 2)}</strong></div></div></section><div class="inline-notice"><span class="state-dot ${preview.risk?.approved ? "live" : "blocked"}"></span><p><strong>${preview.risk?.approved ? "Paper risk checks passed." : "Risk checks blocked this order."}</strong> ${escapeHtml(preview.message || preview.next_action || "Review the checks before continuing.")}</p></div>`;
-    toast("Preview calculated", "No order was placed. Review remains separate from submission.");
+    state.pendingPaperOrder = preview.risk?.approved ? payload : null;
+    target.innerHTML = `<section class="drawer-section"><h3>Estimated impact</h3><div class="detail-list"><div><span>Reference price</span><strong class="number">${money(preview.reference_price, "USD", 2)}</strong></div><div><span>Estimated fill</span><strong class="number">${money(preview.estimated_fill_price, "USD", 2)}</strong></div><div><span>Quantity</span><strong class="number">${number(preview.quantity, 6)}</strong></div><div><span>Fee</span><strong class="number">${money(preview.estimated_fee, "USD", 2)}</strong></div><div><span>Total cost</span><strong class="number">${money(preview.estimated_total_cost, "USD", 2)}</strong></div></div></section><div class="inline-notice"><span class="state-dot ${preview.risk?.approved ? "live" : "blocked"}"></span><p><strong>${preview.risk?.approved ? "Paper risk checks passed." : "Risk checks blocked this order."}</strong> ${escapeHtml(preview.message || preview.next_action || "Review the checks before continuing.")}</p></div>${preview.risk?.approved ? '<button class="button full" type="button" data-place-paper-order>Submit paper order</button><p class="field-note">This creates a simulated order only. Live execution remains blocked.</p>' : ""}`;
+    toast("Preview calculated", preview.risk?.approved ? "Review and submit the simulated order when ready." : "No order was created.");
   } catch (error) {
+    state.pendingPaperOrder = null;
     target.innerHTML = `<div class="error-state"><h2>Preview unavailable</h2><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
+async function placePendingPaperOrder(button) {
+  if (!state.pendingPaperOrder) {
+    showToast("Preview the order again before submission.");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Submitting paper order...";
+  try {
+    const order = await fetchJson("/api/v1/trading/orders", { method: "POST", body: JSON.stringify(state.pendingPaperOrder) });
+    state.pendingPaperOrder = null;
+    closeDrawer();
+    await renderCurrentPage(true);
+    toast("Paper order submitted", `${order.asset} ${order.side} is ${order.status}. Live trading was not used.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Submit paper order";
+    showToast(error.message || "Paper order submission failed.");
+  }
+}
 function openMethodology() {
   openDrawer({
     kicker: "Evidence and performance",
@@ -2055,7 +2468,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -2080,6 +2493,16 @@ function bindGlobalEvents() {
     if (target.hasAttribute("data-sec-intelligence")) {
       loadSecFilingIntelligence(target).catch((error) => showToast(error.message || "Filing intelligence is unavailable."));
     }
+    if (target.dataset.tradeTimeframe) {
+      refreshTradingWorkspace({ timeframe: target.dataset.tradeTimeframe }).catch((error) => showToast(error.message || "Unable to load timeframe."));
+    }
+    if (target.dataset.tradeView) setTradeView(target.dataset.tradeView);
+    if (target.hasAttribute("data-trade-intelligence")) {
+      openTradeIntelligence().catch((error) => showToast(error.message || "Market intelligence is unavailable."));
+    }
+    if (target.hasAttribute("data-place-paper-order")) {
+      placePendingPaperOrder(target).catch((error) => showToast(error.message || "Paper order failed."));
+    }
     if (target.dataset.connectorDiagnostic) {
       openConnectorDiagnostic(target.dataset.connectorDiagnostic);
     }
@@ -2102,6 +2525,11 @@ function bindGlobalEvents() {
 
   document.addEventListener("submit", async (event) => {
     try {
+      if (event.target.id === "trade-symbol-form") {
+        event.preventDefault();
+        const symbol = new FormData(event.target).get("symbol");
+        await refreshTradingWorkspace({ asset: symbol });
+      }
       if (event.target.id === "sec-filings-form") {
         event.preventDefault();
         await loadSecFilingsFromForm(event.target);

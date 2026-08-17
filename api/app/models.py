@@ -284,6 +284,24 @@ class AssetHistoryEnvelope(BaseModel):
     points: list[AssetHistoryPoint]
 
 
+class MarketCandle(BaseModel):
+    time: int
+    open: float = Field(gt=0)
+    high: float = Field(gt=0)
+    low: float = Field(gt=0)
+    close: float = Field(gt=0)
+    volume: float = Field(default=0, ge=0)
+
+
+class MarketCandlesSnapshot(BaseModel):
+    asset: str
+    timeframe: str
+    source: str
+    as_of: str
+    status: str
+    delayed: bool = False
+    candles: list[MarketCandle]
+
 class SignalView(BaseModel):
     id: int
     asset: str

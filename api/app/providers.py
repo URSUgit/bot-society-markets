@@ -171,6 +171,127 @@ class AlpacaEquityProvider(MarketProviderBase):
         return None
 
 
+
+class MarketCandleProvider:
+    source_name = "real-market-candles"
+    crypto_assets = {
+        "BTC": "BTC",
+        "ETH": "ETH",
+        "SOL": "SOL",
+        "BNB": "BNB",
+        "XRP": "XRP",
+        "DOGE": "DOGE",
+        "ADA": "ADA",
+        "AVAX": "AVAX",
+        "LINK": "LINK",
+        "DOT": "DOT",
+    }
+    supported_timeframes = {"1m", "5m", "15m", "1h", "4h", "1d"}
+    alpaca_timeframes = {
+        "1m": "1Min",
+        "5m": "5Min",
+        "15m": "15Min",
+        "1h": "1Hour",
+        "4h": "4Hour",
+        "1d": "1Day",
+    }
+
+    def __init__(
+        self,
+        *,
+        binance_base_url: str,
+        binance_quote_asset: str,
+        alpaca_api_key: str | None,
+        alpaca_api_secret: str | None,
+        alpaca_feed: str,
+        alpaca_base_url: str,
+        timeout_seconds: int = 10,
+    ) -> None:
+        self.binance_base_url = binance_base_url.rstrip("/")
+        self.binance_quote_asset = binance_quote_asset.upper()
+        self.alpaca_api_key = alpaca_api_key
+        self.alpaca_api_secret = alpaca_api_secret
+        self.alpaca_feed = alpaca_feed
+        self.alpaca_base_url = alpaca_base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    def fetch_candles(self, asset: str, *, timeframe: str, limit: int) -> dict:
+        symbol = asset.strip().upper()
+        if timeframe not in self.supported_timeframes:
+            raise ValueError(f"Unsupported timeframe: {timeframe}")
+        if symbol in self.crypto_assets:
+            return self._fetch_binance(symbol, timeframe=timeframe, limit=limit)
+        return self._fetch_alpaca(symbol, timeframe=timeframe, limit=limit)
+
+    def _fetch_binance(self, asset: str, *, timeframe: str, limit: int) -> dict:
+        params = urlencode(
+            {
+                "symbol": f"{self.crypto_assets[asset]}{self.binance_quote_asset}",
+                "interval": timeframe,
+                "limit": str(limit),
+            }
+        )
+        request = Request(
+            f"{self.binance_base_url}/api/v3/klines?{params}",
+            headers={"Accept": "application/json", "User-Agent": "BITprivat/1.0"},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                rows = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError("Binance candle data is temporarily unavailable.") from exc
+        candles = [
+            {
+                "time": int(row[0]) // 1000,
+                "open": float(row[1]),
+                "high": float(row[2]),
+                "low": float(row[3]),
+                "close": float(row[4]),
+                "volume": float(row[5]),
+            }
+            for row in rows
+            if isinstance(row, list) and len(row) >= 6
+        ]
+        return {"source": "binance-spot", "delayed": False, "candles": candles}
+
+    def _fetch_alpaca(self, asset: str, *, timeframe: str, limit: int) -> dict:
+        if not self.alpaca_api_key or not self.alpaca_api_secret:
+            raise ValueError("Equity candles require configured Alpaca market-data credentials.")
+        params = urlencode(
+            {
+                "timeframe": self.alpaca_timeframes[timeframe],
+                "limit": str(limit),
+                "adjustment": "all",
+                "feed": self.alpaca_feed,
+                "sort": "asc",
+            }
+        )
+        request = Request(
+            f"{self.alpaca_base_url}/v2/stocks/{asset}/bars?{params}",
+            headers={
+                "Accept": "application/json",
+                "APCA-API-KEY-ID": self.alpaca_api_key,
+                "APCA-API-SECRET-KEY": self.alpaca_api_secret,
+            },
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError("Alpaca candle data is temporarily unavailable.") from exc
+        candles = [
+            {
+                "time": int(datetime.fromisoformat(str(row["t"]).replace("Z", "+00:00")).timestamp()),
+                "open": float(row["o"]),
+                "high": float(row["h"]),
+                "low": float(row["l"]),
+                "close": float(row["c"]),
+                "volume": float(row.get("v", 0)),
+            }
+            for row in payload.get("bars", [])
+        ]
+        return {"source": f"alpaca-{self.alpaca_feed}", "delayed": self.alpaca_feed == "iex", "candles": candles}
+
 class SecEdgarProvider:
     source_name = "sec-edgar"
     TICKER_INDEX_URL = "https://www.sec.gov/files/company_tickers.json"

@@ -783,12 +783,16 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/connections" href="/connections"' in dashboard_response.text
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
-        assert "/static/platform.css?v=retail-os-3" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-7" in dashboard_response.text
+        assert "/static/platform.css?v=retail-os-9" in dashboard_response.text
+        assert "/static/vendor/lightweight-charts.standalone.production.js?v=5.0.9" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-9" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-8" not in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
         assert app_js_response.status_code == 200
         assert "renderCurrentPage" in app_js_response.text
+        assert 'fetchJson("/api/auth/session")' in app_js_response.text
+        assert "const landing = await fetchJson" in app_js_response.text
         assert "renderData" in app_js_response.text
         assert "renderIdeas" in app_js_response.text
         assert "renderStrategies" in app_js_response.text
@@ -855,7 +859,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-7" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-9" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
@@ -3619,3 +3623,46 @@ def test_v1_social_evidence_contract_and_filters() -> None:
         trader_payload = trader_response.json()
         assert trader_payload["count"] > 0
         assert all(item["trader_slug"] == first["trader_slug"] for item in trader_payload["evidence"])
+
+
+def test_market_candles_endpoint_returns_real_ohlcv_contract(monkeypatch) -> None:
+    with build_client() as client:
+        service = client.app.state.bot_society_service
+
+        def fake_fetch_candles(asset: str, *, timeframe: str, limit: int) -> dict:
+            assert asset == "BTC"
+            assert timeframe == "1h"
+            assert limit == 120
+            return {
+                "source": "binance-spot",
+                "delayed": False,
+                "candles": [
+                    {"time": 1778140800, "open": 100.0, "high": 106.0, "low": 98.0, "close": 104.0, "volume": 1250.5},
+                    {"time": 1778144400, "open": 104.0, "high": 109.0, "low": 102.0, "close": 108.0, "volume": 980.25},
+                ],
+            }
+
+        monkeypatch.setattr(service.market_candle_provider, "fetch_candles", fake_fetch_candles)
+        response = client.get("/api/v1/markets/BTC/candles?timeframe=1h&limit=120")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "live"
+    assert payload["source"] == "binance-spot"
+    assert payload["delayed"] is False
+    assert payload["candles"][1]["close"] == 108.0
+
+
+
+def test_market_candles_endpoint_returns_503_when_provider_is_unavailable(monkeypatch) -> None:
+    with build_client() as client:
+        service = client.app.state.bot_society_service
+
+        def unavailable_provider(asset: str, *, timeframe: str, limit: int) -> dict:
+            raise RuntimeError("Binance candle data is temporarily unavailable.")
+
+        monkeypatch.setattr(service.market_candle_provider, "fetch_candles", unavailable_provider)
+        response = client.get("/api/v1/markets/BTC/candles?timeframe=1h&limit=120")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Binance candle data is temporarily unavailable."

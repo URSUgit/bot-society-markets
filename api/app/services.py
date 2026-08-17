@@ -32,6 +32,8 @@ from .models import (
     AlertRuleCreate,
     AssetHistoryEnvelope,
     AssetHistoryPoint,
+    MarketCandle,
+    MarketCandlesSnapshot,
     AssetSnapshot,
     BillingCheckoutSessionRequest,
     BillingPlanView,
@@ -214,6 +216,7 @@ from .providers import (
     FredMacroProvider,
     HyperliquidMarketProvider,
     KalshiSignalProvider,
+    MarketCandleProvider,
     PolymarketPredictionMarketIntelProvider,
     PolymarketSignalProvider,
     PolymarketWalletProvider,
@@ -380,6 +383,15 @@ class BotSocietyService:
             symbols=self.settings.tracked_equity_symbols,
             feed=self.settings.alpaca_feed,
             base_url=self.settings.alpaca_data_base_url,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
+        self.market_candle_provider = MarketCandleProvider(
+            binance_base_url=self.settings.binance_api_base_url,
+            binance_quote_asset=self.settings.binance_quote_asset,
+            alpaca_api_key=self.settings.alpaca_api_key,
+            alpaca_api_secret=self.settings.alpaca_api_secret,
+            alpaca_feed=self.settings.alpaca_feed,
+            alpaca_base_url=self.settings.alpaca_data_base_url,
             timeout_seconds=self.settings.outbound_timeout_seconds,
         )
         self.sec_edgar_provider = SecEdgarProvider(
@@ -3602,6 +3614,22 @@ class BotSocietyService:
             asset=asset.upper(),
             points=[AssetHistoryPoint(time=row["as_of"], value=float(row["price"])) for row in rows],
         )
+
+    def get_market_candles(self, asset: str, *, timeframe: str, limit: int) -> MarketCandlesSnapshot:
+        result = self.market_candle_provider.fetch_candles(asset, timeframe=timeframe, limit=limit)
+        candles = [MarketCandle(**row) for row in result["candles"]]
+        if not candles:
+            raise ValueError(f"No real candle data is available for {asset.upper()}.")
+        return MarketCandlesSnapshot(
+            asset=asset.upper(),
+            timeframe=timeframe,
+            source=str(result["source"]),
+            as_of=to_timestamp(datetime.now(timezone.utc)),
+            status="live",
+            delayed=bool(result.get("delayed", False)),
+            candles=candles,
+        )
+
 
     def get_macro_snapshot(self, repository: BotSocietyRepository | None = None) -> MacroSnapshot:
         if self._cache_is_fresh(self.macro_snapshot_cache, ttl_seconds=300):

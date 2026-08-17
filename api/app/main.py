@@ -18,6 +18,7 @@ from .models import (
     AlertInbox,
     AlertRuleCreate,
     AssetHistoryEnvelope,
+    MarketCandlesSnapshot,
     AssetSnapshot,
     AuthForgotPasswordRequest,
     AuthForgotPasswordResponse,
@@ -592,6 +593,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/assets/{asset}/history", response_model=AssetHistoryEnvelope)
     def asset_history(asset: str, request: Request) -> AssetHistoryEnvelope:
         return run_validated(lambda: get_service(request).get_asset_history(asset))
+
+    @app.get("/api/v1/markets/{asset}/candles", response_model=MarketCandlesSnapshot)
+    @app.get("/api/markets/{asset}/candles", response_model=MarketCandlesSnapshot)
+    def market_candles(
+        asset: str,
+        request: Request,
+        timeframe: str = Query(default="1h", pattern="^(1m|5m|15m|1h|4h|1d)$"),
+        limit: int = Query(default=300, ge=50, le=1000),
+    ) -> MarketCandlesSnapshot:
+        try:
+            return get_service(request).get_market_candles(asset, timeframe=timeframe, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/v1/macro", response_model=MacroSnapshot)
     @app.get("/api/macro", response_model=MacroSnapshot)
