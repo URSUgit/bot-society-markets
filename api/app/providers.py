@@ -238,8 +238,8 @@ class MarketCandleProvider:
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 rows = json.loads(response.read().decode("utf-8"))
-        except Exception as exc:
-            raise RuntimeError("Binance candle data is temporarily unavailable.") from exc
+        except Exception:
+            return self._fetch_coinbase(asset, timeframe=timeframe, limit=limit)
         candles = [
             {
                 "time": int(row[0]) // 1000,
@@ -253,6 +253,55 @@ class MarketCandleProvider:
             if isinstance(row, list) and len(row) >= 6
         ]
         return {"source": "binance-spot", "delayed": False, "candles": candles}
+
+    def _fetch_coinbase(self, asset: str, *, timeframe: str, limit: int) -> dict:
+        granularities = {
+            "1m": 60,
+            "5m": 300,
+            "15m": 900,
+            "1h": 3600,
+            "4h": 3600,
+            "1d": 86400,
+        }
+        params = urlencode({"granularity": str(granularities[timeframe])})
+        request = Request(
+            f"https://api.exchange.coinbase.com/products/{self.crypto_assets[asset]}-USD/candles?{params}",
+            headers={"Accept": "application/json", "User-Agent": "BITprivat/1.0"},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                rows = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError("Crypto candle data is temporarily unavailable.") from exc
+        candles = sorted(
+            [
+                {
+                    "time": int(row[0]),
+                    "open": float(row[3]),
+                    "high": float(row[2]),
+                    "low": float(row[1]),
+                    "close": float(row[4]),
+                    "volume": float(row[5]),
+                }
+                for row in rows
+                if isinstance(row, list) and len(row) >= 6
+            ],
+            key=lambda candle: candle["time"],
+        )
+        if timeframe == "4h":
+            aggregated: list[dict] = []
+            for candle in candles:
+                bucket_time = candle["time"] - (candle["time"] % 14400)
+                if aggregated and aggregated[-1]["time"] == bucket_time:
+                    bucket = aggregated[-1]
+                    bucket["high"] = max(bucket["high"], candle["high"])
+                    bucket["low"] = min(bucket["low"], candle["low"])
+                    bucket["close"] = candle["close"]
+                    bucket["volume"] += candle["volume"]
+                else:
+                    aggregated.append({**candle, "time": bucket_time})
+            candles = aggregated
+        return {"source": "coinbase-exchange", "delayed": False, "candles": candles[-limit:]}
 
     def _fetch_alpaca(self, asset: str, *, timeframe: str, limit: int) -> dict:
         if not self.alpaca_api_key or not self.alpaca_api_secret:

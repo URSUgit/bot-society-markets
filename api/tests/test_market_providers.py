@@ -347,6 +347,50 @@ def test_market_candle_provider_parses_binance_klines(monkeypatch: pytest.Monkey
     assert "interval=1h" in requested_urls[0]
 
 
+
+def test_market_candle_provider_falls_back_to_coinbase(monkeypatch: pytest.MonkeyPatch) -> None:
+    coinbase_payload = [
+        [1778144400, 102.0, 109.0, 104.0, 108.0, 980.25],
+        [1778140800, 98.0, 106.0, 100.0, 104.0, 1250.5],
+    ]
+    requested_urls: list[str] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(coinbase_payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        requested_urls.append(request.full_url)
+        if "api.binance.com" in request.full_url:
+            raise OSError("Binance is unavailable from this region")
+        return FakeResponse()
+
+    monkeypatch.setattr("api.app.providers.urlopen", fake_urlopen)
+    provider = MarketCandleProvider(
+        binance_base_url="https://api.binance.com",
+        binance_quote_asset="USDT",
+        alpaca_api_key=None,
+        alpaca_api_secret=None,
+        alpaca_feed="iex",
+        alpaca_base_url="https://data.alpaca.markets",
+    )
+
+    result = provider.fetch_candles("BTC", timeframe="1h", limit=200)
+
+    assert result["source"] == "coinbase-exchange"
+    assert result["delayed"] is False
+    assert result["candles"][0]["time"] == 1778140800
+    assert result["candles"][1]["close"] == 108.0
+    assert "symbol=BTCUSDT" in requested_urls[0]
+    assert "/products/BTC-USD/candles?granularity=3600" in requested_urls[1]
+
+
 def test_market_candle_provider_parses_alpaca_bars(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {
         "bars": [
