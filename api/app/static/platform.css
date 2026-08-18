@@ -2120,12 +2120,40 @@ body[data-experience="pro"] .pro-grid {
   white-space: nowrap;
 }
 
-.trade-terminal {
+.trade-workspace {
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  width: 100%;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
+}
+
+.page-root.paper-workspace-root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 20px 0 48px;
+}
+
+.paper-workspace-root > .page-header {
+  align-items: center;
+  padding-inline: clamp(16px, 2vw, 28px);
+  margin-bottom: 16px;
+}
+
+.paper-workspace-root > .page-header .page-heading h1 {
+  font-size: clamp(22px, 2.2vw, 30px);
+  line-height: 1.1;
+}
+
+.paper-workspace-root > .page-header .page-heading > p:last-child {
+  max-width: 680px;
+  margin-top: 5px;
+}
+
+.paper-workspace-root > .trade-session-strip {
+  margin-inline: clamp(16px, 2vw, 28px);
+  border-radius: 4px;
 }
 
 .trade-terminal-bar {

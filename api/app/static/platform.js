@@ -1776,7 +1776,7 @@ function renderPaper(payload) {
   return `
     ${pageHeader("Trading workspace", `${state.tradeAsset} intelligent terminal`, "Real market data, technical context, evidence markers, and paper-only execution in one workspace.", `<button class="button secondary" type="button" data-trade-intelligence>Analyze evidence</button><button class="button" type="button" data-preview-order data-asset="${escapeHtml(state.tradeAsset)}">New paper order</button>`)}
     <section class="trade-session-strip" aria-label="Global market sessions">${renderTradingSessionStrip()}</section>
-    <section class="trade-terminal">
+    <section class="trade-workspace">
       <header class="trade-terminal-bar">
         <form id="trade-symbol-form" class="trade-symbol-form">
           <label for="trade-symbol-input">Symbol</label>
@@ -2005,6 +2005,7 @@ async function renderCurrentPage(force = false) {
       learn: renderLearn,
       settings: renderSettings,
     };
+    root.classList.toggle("paper-workspace-root", state.page === "paper");
     root.innerHTML = renderers[state.page](payload);
     updateMarketSessionTimers();
     if (state.page === "paper") {
