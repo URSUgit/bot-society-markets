@@ -2005,7 +2005,6 @@ async function renderCurrentPage(force = false) {
       learn: renderLearn,
       settings: renderSettings,
     };
-    root.classList.toggle("paper-workspace-root", state.page === "paper");
     root.innerHTML = renderers[state.page](payload);
     updateMarketSessionTimers();
     if (state.page === "paper") {
