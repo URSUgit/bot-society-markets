@@ -2503,6 +2503,275 @@ body[data-experience="pro"] .pro-grid {
   padding: 8px 0;
 }
 
+.exchange-directory {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.exchange-directory-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.exchange-directory-head .panel-title {
+  max-width: 760px;
+}
+
+.exchange-directory-summary {
+  flex: 0 0 auto;
+  min-width: 150px;
+  text-align: right;
+}
+
+.exchange-directory-summary strong,
+.exchange-directory-summary span {
+  display: block;
+}
+
+.exchange-directory-summary strong {
+  font: 700 24px/1.1 var(--font-numeric);
+}
+
+.exchange-directory-summary span {
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.exchange-directory-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 210px) minmax(170px, 230px) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas-subtle);
+}
+
+.exchange-directory-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.exchange-directory-controls input,
+.exchange-directory-controls select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.exchange-directory-controls input:focus,
+.exchange-directory-controls select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.exchange-directory-controls output {
+  align-self: center;
+  min-width: 72px;
+  color: var(--ink-muted);
+  font: 700 11px/1.2 var(--font-numeric);
+  text-align: right;
+}
+
+.exchange-table {
+  min-width: 0;
+}
+
+.exchange-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(150px, .9fr) minmax(180px, 1fr) minmax(135px, .7fr) minmax(120px, auto);
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.exchange-row:last-of-type {
+  border-bottom: 0;
+}
+
+.exchange-row-head {
+  min-height: 34px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: var(--canvas-subtle);
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.exchange-row > * {
+  min-width: 0;
+}
+
+.exchange-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exchange-name i {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--canvas-subtle);
+  color: var(--ink-soft);
+  font: 800 10px/1 var(--font-numeric);
+  font-style: normal;
+}
+
+.exchange-name strong,
+.exchange-name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exchange-name small,
+.exchange-row > span:not(.status-chip) {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.exchange-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.exchange-actions .button {
+  min-height: 32px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.exchange-directory-note,
+.exchange-directory-empty {
+  margin: 0;
+  padding: 14px 20px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.exchange-directory-note {
+  border-top: 1px solid var(--line);
+  background: var(--canvas-subtle);
+}
+
+.exchange-directory-empty {
+  text-align: center;
+}
+
+[data-exchange-row][hidden],
+.exchange-directory-empty[hidden] {
+  display: none !important;
+}
+
+
+@media (max-width: 880px) {
+  .exchange-directory-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(145px, .55fr) minmax(165px, .65fr);
+  }
+
+  .exchange-directory-controls output {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .exchange-row-head {
+    display: none;
+  }
+
+  .exchange-row {
+    grid-template-columns: minmax(180px, 1.2fr) minmax(130px, .7fr) minmax(160px, 1fr) auto;
+  }
+
+  .exchange-row > .status-chip {
+    grid-column: 2;
+  }
+
+  .exchange-actions {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+  }
+}
+
+@media (max-width: 620px) {
+  .exchange-directory-head {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .exchange-directory-summary {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .exchange-directory-controls {
+    grid-template-columns: 1fr;
+    padding: 12px 16px;
+  }
+
+  .exchange-directory-controls output {
+    grid-column: auto;
+  }
+
+  .exchange-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+
+  .exchange-name {
+    grid-column: 1 / -1;
+  }
+
+  .exchange-row > span:nth-child(2),
+  .exchange-row > span:nth-child(3),
+  .exchange-row > .status-chip {
+    grid-column: 1;
+  }
+
+  .exchange-actions {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    align-self: center;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .exchange-actions .button {
+    justify-content: center;
+  }
+}
+
+
 @media (max-width: 1180px) {
   .trade-session-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));

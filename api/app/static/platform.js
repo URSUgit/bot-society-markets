@@ -251,6 +251,137 @@ const MARKET_SESSIONS = [
   },
 ];
 
+const EXCHANGE_DIRECTORY = [
+  ["alpaca", "Alpaca", "broker"],
+  ["apex", "Apex", "dex"],
+  ["aster", "Aster", "dex"],
+  ["backpack", "Backpack"],
+  ["bequant", "Bequant"],
+  ["bigone", "BigONE"],
+  ["binance", "Binance"],
+  ["binancecoinm", "Binance COIN-M"],
+  ["binanceus", "Binance US"],
+  ["binanceusdm", "Binance USD-M"],
+  ["bingx", "BingX"],
+  ["bit2c", "Bit2C"],
+  ["bitbank", "bitbank"],
+  ["bitbns", "Bitbns"],
+  ["bitfinex", "Bitfinex"],
+  ["bitflyer", "bitFlyer"],
+  ["bitget", "Bitget"],
+  ["bithumb", "Bithumb"],
+  ["bitmart", "BitMart"],
+  ["bitmex", "BitMEX"],
+  ["bitopro", "BitoPro"],
+  ["bitrue", "Bitrue"],
+  ["bitso", "Bitso"],
+  ["bitstamp", "Bitstamp"],
+  ["bitteam", "BIT.TEAM"],
+  ["bittrade", "BitTrade"],
+  ["bitvavo", "Bitvavo"],
+  ["blockchaincom", "Blockchain.com"],
+  ["blofin", "BloFin"],
+  ["btcbox", "BtcBox"],
+  ["btcmarkets", "BTC Markets"],
+  ["btcturk", "BTCTurk"],
+  ["bullish", "Bullish"],
+  ["bybit", "Bybit"],
+  ["bybiteu", "Bybit EU"],
+  ["bydfi", "BYDFi"],
+  ["cex", "CEX.IO"],
+  ["coinbase", "Coinbase International"],
+  ["coincheck", "Coincheck"],
+  ["coinex", "CoinEx"],
+  ["coinmate", "CoinMate"],
+  ["coinone", "CoinOne"],
+  ["coinsph", "Coins.ph"],
+  ["coinspot", "CoinSpot"],
+  ["cryptocom", "Crypto.com"],
+  ["cryptomus", "Cryptomus"],
+  ["deepcoin", "DeepCoin"],
+  ["delta", "Delta Exchange"],
+  ["deribit", "Deribit"],
+  ["derive", "Derive", "dex"],
+  ["digifinex", "DigiFinex"],
+  ["dydx", "dYdX", "dex"],
+  ["exmo", "EXMO"],
+  ["extended", "Extended", "dex"],
+  ["fmfwio", "FMFW.io"],
+  ["foxbit", "Foxbit"],
+  ["gate", "Gate"],
+  ["gateeu", "Gate EU"],
+  ["gemini", "Gemini"],
+  ["grvt", "GRVT", "dex"],
+  ["hashkey", "HashKey Global"],
+  ["hibachi", "Hibachi", "dex"],
+  ["hitbtc", "HitBTC"],
+  ["hollaex", "HollaEx"],
+  ["htx", "HTX"],
+  ["hyperliquid", "Hyperliquid", "dex"],
+  ["independentreserve", "Independent Reserve"],
+  ["indodax", "INDODAX"],
+  ["kraken", "Kraken"],
+  ["krakenfutures", "Kraken Futures"],
+  ["kucoin", "KuCoin"],
+  ["kucoineu", "KuCoin EU"],
+  ["kucoinfutures", "KuCoin Futures"],
+  ["latoken", "Latoken"],
+  ["lbank", "LBank"],
+  ["lighter", "Lighter", "dex"],
+  ["luno", "Luno"],
+  ["mercado", "Mercado Bitcoin"],
+  ["mexc", "MEXC Trade"],
+  ["mudrex", "Mudrex"],
+  ["myokx", "MyOKX (EEA)"],
+  ["nado", "Nado", "dex"],
+  ["ndax", "NDAX"],
+  ["okx", "OKX"],
+  ["okxus", "OKX (US)"],
+  ["onetrading", "One Trading"],
+  ["p2b", "P2B"],
+  ["pacifica", "Pacifica", "dex"],
+  ["paradex", "Paradex", "dex"],
+  ["paymium", "Paymium"],
+  ["phemex", "Phemex"],
+  ["poloniex", "Poloniex"],
+  ["tokocrypto", "Tokocrypto"],
+  ["toobit", "Toobit"],
+  ["upbit", "Upbit"],
+  ["weex", "WEEX"],
+  ["whitebit", "WhiteBIT"],
+  ["woo", "WOO X"],
+  ["woofipro", "WOOFi Pro", "dex"],
+  ["xt", "XT"],
+  ["zaif", "Zaif"],
+  ["zebpay", "ZebPay"],
+  ["kalshi", "Kalshi", "prediction"],
+  ["limitless", "Limitless", "prediction"],
+  ["myriad", "Myriad", "prediction"],
+  ["polymarket", "Polymarket", "prediction"],
+  ["interactivebrokers", "Interactive Brokers", "broker"],
+  ["oanda", "OANDA", "broker"],
+  ["tradier", "Tradier", "broker"],
+  ["tastytrade", "tastytrade", "broker"],
+  ["tradestation", "TradeStation", "broker"],
+  ["schwab", "Charles Schwab", "broker"],
+].map(([id, name, type = "cex"]) => ({ id, name, type }));
+
+const EXCHANGE_NATIVE_ADAPTERS = new Set(["alpaca", "binance", "coinbase", "hyperliquid", "interactivebrokers"]);
+const EXCHANGE_DOCS = {
+  alpaca: "https://docs.alpaca.markets/",
+  binance: "https://developers.binance.com/docs",
+  coinbase: "https://docs.cdp.coinbase.com/exchange/docs/welcome",
+  hyperliquid: "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api",
+  interactivebrokers: "https://www.interactivebrokers.com/campus/ibkr-api-page/",
+  oanda: "https://developer.oanda.com/rest-live-v20/introduction/",
+  tradier: "https://documentation.tradier.com/",
+  tastytrade: "https://developer.tastytrade.com/",
+  tradestation: "https://api.tradestation.com/docs/",
+  schwab: "https://developer.schwab.com/",
+};
+const EXCHANGE_CATALOG_DOCS = "https://github.com/ccxt/ccxt/wiki/Exchange-Markets";
+
+
 const state = {
   page: ROUTES[window.location.pathname] || "home",
   dashboard: null,
@@ -1930,21 +2061,111 @@ async function openWalletIntelligence(target) {
     target.textContent = originalText;
   }
 }
+function exchangeTypeLabel(type) {
+  return ({ cex: "Centralized exchange", dex: "Decentralized exchange", prediction: "Prediction market", broker: "Broker API" })[type] || "Exchange API";
+}
+
+function exchangeMarketLabel(type) {
+  return ({ cex: "Crypto spot / derivatives", dex: "On-chain spot / derivatives", prediction: "Event contracts", broker: "Equities / options / multi-asset" })[type] || "Markets";
+}
+
+function normalizeExchangeKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function exchangeRuntimeConnector(exchange, connectors) {
+  const aliases = {
+    alpaca: ["alpaca"],
+    binance: ["binance"],
+    coinbase: ["coinbase", "coinbaseexchange"],
+    hyperliquid: ["hyperliquid"],
+    interactivebrokers: ["interactivebrokers", "ibkr"],
+  }[exchange.id] || [exchange.id];
+  return connectors.find((connector) => {
+    const connectorKey = `${normalizeExchangeKey(connector.id)} ${normalizeExchangeKey(connector.label)} ${normalizeExchangeKey(connector.source)}`;
+    return aliases.some((alias) => connectorKey.includes(normalizeExchangeKey(alias)));
+  }) || null;
+}
+
+function renderExchangeDirectory(connectors) {
+  const entries = EXCHANGE_DIRECTORY.map((exchange) => ({ ...exchange, runtime: exchangeRuntimeConnector(exchange, connectors) }));
+  const adapterCount = entries.filter((exchange) => exchange.runtime || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)).length;
+  const typeCounts = entries.reduce((counts, exchange) => ({ ...counts, [exchange.type]: (counts[exchange.type] || 0) + 1 }), {});
+  return `<section class="exchange-directory" aria-labelledby="exchange-directory-title">
+    <div class="exchange-directory-head">
+      <div class="panel-title"><p class="eyebrow">Exchange API directory</p><h2 id="exchange-directory-title">${number(entries.length)} connectable market APIs</h2><p>Search the current catalog. Native means BITprivat already has platform code for the provider; API available means the exchange exposes a usable API but still needs a dedicated adapter and security review.</p></div>
+      <div class="exchange-directory-summary"><strong>${number(adapterCount)}</strong><span>native or runtime adapters</span></div>
+    </div>
+    <div class="exchange-directory-controls">
+      <label class="exchange-search"><span>Search exchanges</span><input type="search" placeholder="Binance, Kraken, IBKR..." autocomplete="off" data-exchange-search></label>
+      <label><span>Market type</span><select data-exchange-type><option value="all">All types (${number(entries.length)})</option><option value="cex">Centralized (${number(typeCounts.cex || 0)})</option><option value="dex">Decentralized (${number(typeCounts.dex || 0)})</option><option value="prediction">Prediction (${number(typeCounts.prediction || 0)})</option><option value="broker">Brokers (${number(typeCounts.broker || 0)})</option></select></label>
+      <label><span>Integration state</span><select data-exchange-status><option value="all">All states</option><option value="ready">Native / runtime</option><option value="catalog">Adapter required</option></select></label>
+      <output data-exchange-count>${number(entries.length)} shown</output>
+    </div>
+    <div class="exchange-table" role="table" aria-label="API-connectable exchanges">
+      <div class="exchange-row exchange-row-head" role="row"><span role="columnheader">Exchange</span><span role="columnheader">Type</span><span role="columnheader">Markets</span><span role="columnheader">BITprivat state</span><span role="columnheader">Action</span></div>
+      ${entries.map((exchange) => {
+        const runtimeReady = exchange.runtime && ["live", "ready"].includes(exchange.runtime.state);
+        const adapterReady = Boolean(exchange.runtime) || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id);
+        const integrationState = adapterReady ? "ready" : "catalog";
+        const statusLabel = runtimeReady ? "Runtime ready" : adapterReady ? "Native adapter" : "API available";
+        const statusVariant = runtimeReady ? "ready" : adapterReady ? "partial" : "neutral";
+        const searchText = `${exchange.name} ${exchange.id} ${exchangeTypeLabel(exchange.type)} ${exchangeMarketLabel(exchange.type)}`.toLowerCase();
+        return `<article class="exchange-row" role="row" data-exchange-row data-exchange-type-value="${escapeHtml(exchange.type)}" data-exchange-status-value="${integrationState}" data-exchange-search-value="${escapeHtml(searchText)}"><span class="exchange-name" role="cell"><i>${escapeHtml(initials(exchange.name))}</i><span><strong>${escapeHtml(exchange.name)}</strong><small>${escapeHtml(exchange.id)}</small></span></span><span role="cell">${escapeHtml(exchangeTypeLabel(exchange.type))}</span><span role="cell">${escapeHtml(exchangeMarketLabel(exchange.type))}</span><span role="cell">${statusChip(statusLabel, statusVariant)}</span><span class="exchange-actions" role="cell">${exchange.runtime ? `<button class="text-link" type="button" data-connector-diagnostic="${escapeHtml(exchange.runtime.id)}">Diagnostics</button>` : `<button class="text-link" type="button" data-exchange-catalog-id="${escapeHtml(exchange.id)}">${adapterReady ? "Configure" : "Adapter steps"}</button>`}<a class="icon-button" href="${escapeHtml(EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHtml(exchange.name)} API documentation" title="API documentation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"></path><path d="M18 13v6H5V6h6"></path></svg></a></span></article>`;
+      }).join("")}
+    </div>
+    <div class="empty-state exchange-directory-empty" data-exchange-empty hidden><div><h3>No exchange matches</h3><p>Change the search text or filters.</p></div></div>
+    <p class="exchange-directory-note">Directory coverage follows the current CCXT exchange registry plus major brokerage APIs. Availability depends on jurisdiction, account permissions, exchange terms, and API credentials. BITprivat never asks for withdrawal permissions.</p>
+  </section>`;
+}
+
+function applyExchangeDirectoryFilters() {
+  const search = String(root.querySelector("[data-exchange-search]")?.value || "").trim().toLowerCase();
+  const type = root.querySelector("[data-exchange-type]")?.value || "all";
+  const status = root.querySelector("[data-exchange-status]")?.value || "all";
+  let visible = 0;
+  root.querySelectorAll("[data-exchange-row]").forEach((row) => {
+    const matchesSearch = !search || row.dataset.exchangeSearchValue.includes(search);
+    const matchesType = type === "all" || row.dataset.exchangeTypeValue === type;
+    const matchesStatus = status === "all" || row.dataset.exchangeStatusValue === status;
+    row.hidden = !(matchesSearch && matchesType && matchesStatus);
+    if (!row.hidden) visible += 1;
+  });
+  const count = root.querySelector("[data-exchange-count]");
+  if (count) count.textContent = `${visible} shown`;
+  const empty = root.querySelector("[data-exchange-empty]");
+  if (empty) empty.hidden = visible > 0;
+}
+
+function openExchangeCatalogItem(exchangeId) {
+  const exchange = EXCHANGE_DIRECTORY.find((item) => item.id === exchangeId);
+  if (!exchange) return;
+  const adapterReady = EXCHANGE_NATIVE_ADAPTERS.has(exchange.id);
+  const docsUrl = EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS;
+  openDrawer({
+    kicker: "Exchange API",
+    title: `${exchange.name} connection`,
+    body: `<section class="drawer-section"><div class="detail-list"><div><span>Type</span><strong>${escapeHtml(exchangeTypeLabel(exchange.type))}</strong></div><div><span>Markets</span><strong>${escapeHtml(exchangeMarketLabel(exchange.type))}</strong></div><div><span>Adapter</span><strong>${adapterReady ? "BITprivat native adapter" : "Implementation required"}</strong></div><div><span>Credential policy</span><strong>Read and trade only; withdrawals disabled</strong></div></div></section><section class="drawer-section"><h3>${adapterReady ? "Configuration path" : "Adapter implementation path"}</h3><ol class="drawer-steps">${adapterReady ? "<li>Create an exchange API key with the minimum required permissions.</li><li>Store the key and secret in the deployment secret store, never in the browser.</li><li>Run connector diagnostics before enabling authenticated calls.</li>" : "<li>Confirm the exchange is legally available for the account jurisdiction.</li><li>Implement and test a server-side adapter with rate limits, timeouts, and symbol normalization.</li><li>Add encrypted secret storage and read-only diagnostics before trading permissions.</li>"}</ol></section><section class="inline-notice"><span class="state-dot warning"></span><p>Do not enable withdrawal, transfer, or account-management permissions. Exchange API availability does not mean this adapter is production-ready.</p></section>`,
+    footer: `<a class="button secondary" href="${escapeHtml(docsUrl)}" target="_blank" rel="noopener noreferrer">Open API docs</a><button class="button" type="button" data-close-drawer>Close</button>`,
+  });
+}
 function renderConnections(payload) {
-  const p = payload.provider_status || {};
+  const providerStatus = payload.provider_status || {};
   const wallets = payload.user_profile?.wallet_connections || [];
   const readyWallets = wallets.filter((wallet) => wallet.onchain_ready);
   const connectorControl = payload.connector_control || {};
   const connectors = (connectorControl.connectors || []).filter(isMvpConnector);
   const readyConnectors = connectors.filter((connector) => connector.state === "live" || connector.state === "ready");
   const needsSetup = connectors.filter((connector) => connector.state !== "live" && connector.state !== "ready");
+  const exchangeAdapterCount = EXCHANGE_DIRECTORY.filter((exchange) => exchangeRuntimeConnector(exchange, connectors) || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)).length;
   return `
-    ${pageHeader("Connections", "Free APIs, exchanges, wallets, and intelligence feeds", "Connect only what you already have. Missing providers stay blocked until real credentials are configured, and credentials stay in secret stores.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Provider connectors</span><strong>${number(connectors.length)}</strong><small>Free/public MVP surfaces</small></article><article class="metric-card"><span>Live or ready</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Needs setup</span><strong>${number(needsSetup.length)}</strong><small>Requires real credentials or config</small></article><article class="metric-card"><span>Market mode</span><strong>${escapeHtml(p.market_provider_mode || "setup")}</strong><small>${escapeHtml(p.market_provider_source || "No source")}</small></article></section>
+    ${pageHeader("Connections", "Exchange APIs, brokers, wallets, and intelligence feeds", "Review every API-connectable venue in one directory. Runtime-ready connectors are separated from exchanges that still require an adapter, credentials, and a security review.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
+    <section class="metric-grid"><article class="metric-card"><span>Exchange APIs</span><strong>${number(EXCHANGE_DIRECTORY.length)}</strong><small>CCXT venues plus major broker APIs</small></article><article class="metric-card"><span>Native adapters</span><strong>${number(exchangeAdapterCount)}</strong><small>Implemented or represented by runtime connectors</small></article><article class="metric-card"><span>Live providers</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Needs setup</span><strong>${number(needsSetup.length)}</strong><small>Requires real credentials or configuration</small></article></section>
+    ${renderExchangeDirectory(connectors)}
     ${renderExchangeFeedsPanel()}
     <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>On-chain onboarding</h2><p>${readyWallets.length ? "Wallet-gated workspace is active with stablecoin-capable read-only connections." : "Connect a public wallet address to activate the MVP onboarding path."}</p></div>${statusChip(readyWallets.length ? "Active" : "Needed", readyWallets.length ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Use Base, Arbitrum, Polygon, Optimism, Ethereum, or Solana for stablecoin rail tracking.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</section>
-    <section class="card-grid">${connectors.map(renderConnectorCard).join("") || `<div class="empty-state"><div><h3>No MVP connectors found</h3><p>Provider configuration is unavailable. Check system status.</p><a class="button small" href="/status">Open status</a></div></div>`}</section>
-    <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Cards, onramps, broker execution, and infrastructure controls are hidden from this MVP page.</strong> API keys, database URLs, and wallet secrets belong in deployment secret stores and must never be pasted into public pages or support chat.</p></section>`;
+    <section class="panel"><div class="panel-head"><div class="panel-title"><h2>Active platform connectors</h2><p>These are the connectors currently represented by backend diagnostics and deployment configuration.</p></div>${statusChip(`${readyConnectors.length} ready`, readyConnectors.length ? "ready" : "partial")}</div><div class="card-grid">${connectors.map(renderConnectorCard).join("") || `<div class="empty-state"><div><h3>No runtime connectors found</h3><p>Provider configuration is unavailable. Check system status.</p><a class="button small" href="/status">Open status</a></div></div>`}</div></section>
+    <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Exchange API keys, database URLs, and wallet secrets belong in deployment secret stores.</strong> Never paste them into public pages or support chat. Use the minimum read/trade permissions and keep withdrawals disabled.</p></section>`;
 }
 
 function renderLearn() {
@@ -2468,7 +2689,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-exchange-catalog-id], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -2505,6 +2726,9 @@ function bindGlobalEvents() {
     }
     if (target.dataset.connectorDiagnostic) {
       openConnectorDiagnostic(target.dataset.connectorDiagnostic);
+    }
+    if (target.dataset.exchangeCatalogId) {
+      openExchangeCatalogItem(target.dataset.exchangeCatalogId);
     }
  if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
     if (target.hasAttribute("data-open-account")) openAccount();
@@ -2559,7 +2783,16 @@ function bindGlobalEvents() {
     }
   });
 
+  document.addEventListener("input", (event) => {
+    if (event.target.matches("[data-exchange-search]")) {
+      applyExchangeDirectoryFilters();
+    }
+  });
+
   document.addEventListener("change", (event) => {
+    if (event.target.matches("[data-exchange-type], [data-exchange-status]")) {
+      applyExchangeDirectoryFilters();
+    }
     if (event.target.matches("[data-setting-theme]")) {
       state.theme = event.target.checked ? "dark" : "light";
       localStorage.setItem("bp-theme", state.theme);

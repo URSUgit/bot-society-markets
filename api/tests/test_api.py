@@ -783,9 +783,9 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/connections" href="/connections"' in dashboard_response.text
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
-        assert "/static/platform.css?v=retail-os-11" in dashboard_response.text
+        assert "/static/platform.css?v=retail-os-12" in dashboard_response.text
         assert "/static/vendor/lightweight-charts.standalone.production.js?v=5.0.9" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-11" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-12" in dashboard_response.text
         assert "/static/platform.js?v=retail-os-8" not in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
@@ -822,12 +822,22 @@ def test_professional_console_pages_are_served() -> None:
         assert "Analyze with NVIDIA" in app_js_response.text
         assert "No private keys, no custody" in app_js_response.text
         assert "/legacy-dashboard" not in app_js_response.text
+        assert "EXCHANGE_DIRECTORY" in app_js_response.text
+        assert "data-exchange-search" in app_js_response.text
+        assert "data-exchange-type" in app_js_response.text
+        assert "data-exchange-status" in app_js_response.text
+        assert "data-exchange-catalog-id" in app_js_response.text
+        assert "Binance" in app_js_response.text
+        assert "Kraken" in app_js_response.text
+        assert "Interactive Brokers" in app_js_response.text
+        assert "Polymarket" in app_js_response.text
         assert "proxy returns are not verified" in app_js_response.text.lower()
 
         app_css_response = client.get("/static/platform.css")
         assert app_css_response.status_code == 200
         assert "--rail-width" in app_css_response.text
         assert ".app-drawer" in app_css_response.text
+        assert ".exchange-directory" in app_css_response.text
         assert "body[data-experience=\"pro\"]" in app_css_response.text
 
         product_routes = (
@@ -859,7 +869,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-11" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-12" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
