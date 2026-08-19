@@ -108,6 +108,44 @@ class ExchangeFeedSnapshot(BaseModel):
     feeds: list[ExchangeFeedStatus] = Field(default_factory=list)
 
 
+class ExchangeConnectionStatus(BaseModel):
+    id: str
+    label: str
+    configured: bool = False
+    can_test: bool = False
+    state: str
+    read_only: bool = True
+    supports_balances: bool = True
+    env_keys: list[str] = Field(default_factory=list)
+    docs_url: str
+    message: str
+
+
+class ExchangeAccountBalance(BaseModel):
+    asset: str
+    total: float
+    available: float
+    locked: float
+
+
+class ExchangeConnectionDiagnostic(BaseModel):
+    exchange_id: str
+    label: str
+    connected: bool
+    checked_at: str
+    account_mode: str
+    read_only: bool = True
+    balances: list[ExchangeAccountBalance] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
+    warning: str | None = None
+
+
+class ExchangeConnectionsSnapshot(BaseModel):
+    generated_at: str
+    configured_count: int = Field(ge=0)
+    connections: list[ExchangeConnectionStatus] = Field(default_factory=list)
+
+
 class EquityMarketItem(BaseModel):
     symbol: str
     as_of: str

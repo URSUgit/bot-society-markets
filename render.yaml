@@ -49,6 +49,37 @@ services:
         fromDatabase:
           name: bitprivat-db
           property: connectionString
+      - key: BSM_EXCHANGE_CONNECTION_OWNER_SLUG
+        sync: false
+      - key: BSM_BINANCE_API_KEY
+        sync: false
+      - key: BSM_BINANCE_API_SECRET
+        sync: false
+      - key: BSM_COINBASE_EXCHANGE_API_KEY
+        sync: false
+      - key: BSM_COINBASE_EXCHANGE_API_SECRET
+        sync: false
+      - key: BSM_COINBASE_EXCHANGE_PASSPHRASE
+        sync: false
+      - key: BSM_KRAKEN_API_KEY
+        sync: false
+      - key: BSM_KRAKEN_API_SECRET
+        sync: false
+      - key: BSM_OKX_API_KEY
+        sync: false
+      - key: BSM_OKX_API_SECRET
+        sync: false
+      - key: BSM_OKX_PASSPHRASE
+        sync: false
+      - key: BSM_OKX_SIMULATED_TRADING
+        value: "false"
+      - key: BSM_BYBIT_API_KEY
+        sync: false
+      - key: BSM_BYBIT_API_SECRET
+        sync: false
+      - key: BSM_BYBIT_ACCOUNT_TYPE
+        value: UNIFIED
+
       - key: NVIDIA_API_KEY
         sync: false
       - key: BSM_RSS_FEED_URLS

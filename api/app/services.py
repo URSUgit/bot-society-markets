@@ -70,6 +70,10 @@ from .models import (
     DailyMarketSummaryDelivery,
     EdgeOpportunityView,
     EdgeSnapshot,
+    ExchangeAccountBalance,
+    ExchangeConnectionDiagnostic,
+    ExchangeConnectionsSnapshot,
+    ExchangeConnectionStatus,
     ExchangeFeedSnapshot,
     EquityMarketItem,
     EquityMarketSnapshot,
@@ -198,6 +202,7 @@ from .models import (
     WalletProfileView,
     WatchlistItem,
 )
+from .exchange_connectors import ExchangeConnectionError, build_exchange_connectors
 from .market_calendar import build_market_sessions_snapshot
 from .notifications import NotificationDispatcher
 from .nvidia_nim import NvidiaNimClient
@@ -3473,6 +3478,74 @@ class BotSocietyService:
         )
         self.exchange_feed_cache = (datetime.now(timezone.utc), snapshot)
         return snapshot
+
+
+    def get_exchange_connections_snapshot(self, *, user_slug: str | None = None) -> ExchangeConnectionsSnapshot:
+        connectors = build_exchange_connectors(self.settings)
+        owner_slug = (self.settings.exchange_connection_owner_slug or "").strip().lower()
+        can_test_connections = bool(owner_slug and user_slug and user_slug.strip().lower() == owner_slug)
+        statuses = [
+            ExchangeConnectionStatus(
+                id=connector.exchange_id,
+                label=connector.label,
+                configured=connector.configured,
+                can_test=connector.configured and can_test_connections,
+                state="configured" if connector.configured else "setup_required",
+                env_keys=list(connector.env_keys),
+                docs_url=connector.docs_url,
+                message=(
+                    (
+                        "Credentials are configured server-side. Run the connection test to validate the account."
+                        if can_test_connections
+                        else "This server-side account connection is restricted to the configured owner."
+                    )
+                    if connector.configured
+                    else "Add a read-only API key in the server environment, then redeploy."
+                ),
+            )
+            for connector in connectors
+        ]
+        return ExchangeConnectionsSnapshot(
+            generated_at=to_timestamp(datetime.now(timezone.utc)),
+            configured_count=sum(1 for connector in connectors if connector.configured),
+            connections=statuses,
+        )
+
+    def test_exchange_connection(self, exchange_id: str) -> ExchangeConnectionDiagnostic:
+        connector = next(
+            (
+                item
+                for item in build_exchange_connectors(self.settings)
+                if item.exchange_id == exchange_id.strip().lower()
+            ),
+            None,
+        )
+        if connector is None:
+            raise KeyError(exchange_id)
+        if not connector.configured:
+            raise ExchangeConnectionError(
+                f"{connector.label} is not configured. Add {', '.join(connector.env_keys)} to the server environment."
+            )
+        result = connector.connection_result()
+        return ExchangeConnectionDiagnostic(
+            exchange_id=result.exchange_id,
+            label=result.label,
+            connected=result.connected,
+            checked_at=result.checked_at,
+            account_mode=result.account_mode,
+            read_only=result.read_only,
+            balances=[
+                ExchangeAccountBalance(
+                    asset=balance.asset,
+                    total=balance.total,
+                    available=balance.available,
+                    locked=balance.locked,
+                )
+                for balance in result.balances
+            ],
+            permissions=result.permissions,
+            warning=result.warning,
+        )
 
     def get_market_sessions_snapshot(self, *, force_refresh: bool = False) -> MarketSessionsSnapshot:
         if not force_refresh and self._cache_is_fresh(self.market_sessions_cache, ttl_seconds=30):

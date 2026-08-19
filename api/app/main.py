@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
 from .database import Database
+from .exchange_connectors import ExchangeConnectionError
 from .models import (
     AdvancedBacktestExport,
     AlertInbox,
@@ -48,6 +49,8 @@ from .models import (
     DashboardSnapshot,
     DailyMarketSummaryDelivery,
     EdgeSnapshot,
+    ExchangeConnectionDiagnostic,
+    ExchangeConnectionsSnapshot,
     ExchangeFeedSnapshot,
     EquityMarketSnapshot,
     OnchainActivityIntelligenceSnapshot,
@@ -529,6 +532,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/exchanges", response_model=ExchangeFeedSnapshot)
     def exchange_feeds(request: Request) -> ExchangeFeedSnapshot:
         return get_service(request).get_exchange_feed_snapshot()
+
+    @app.get("/api/v1/exchange-connections", response_model=ExchangeConnectionsSnapshot)
+    @app.get("/api/exchange-connections", response_model=ExchangeConnectionsSnapshot)
+    def exchange_connections(request: Request) -> ExchangeConnectionsSnapshot:
+        user_slug = authenticated_user_slug(request)
+        return get_service(request).get_exchange_connections_snapshot(user_slug=user_slug)
+
+    @app.post(
+        "/api/v1/exchange-connections/{exchange_id}/test",
+        response_model=ExchangeConnectionDiagnostic,
+    )
+    @app.post(
+        "/api/exchange-connections/{exchange_id}/test",
+        response_model=ExchangeConnectionDiagnostic,
+    )
+    def test_exchange_connection(request: Request, exchange_id: str) -> ExchangeConnectionDiagnostic:
+        user_slug = authenticated_user_slug(request)
+        service = get_service(request)
+        normalized_exchange_id = exchange_id.strip().lower()
+        status = next(
+            (
+                item
+                for item in service.get_exchange_connections_snapshot(user_slug=user_slug).connections
+                if item.id == normalized_exchange_id
+            ),
+            None,
+        )
+        if status is None:
+            raise HTTPException(status_code=404, detail="Exchange integration not found")
+        if status.configured and not status.can_test:
+            raise HTTPException(status_code=403, detail="Exchange account diagnostics are restricted to the configured owner")
+        try:
+            return service.test_exchange_connection(normalized_exchange_id)
+        except ExchangeConnectionError as exc:
+            status_code = 409 if "not configured" in str(exc).lower() else 502
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
     @app.get("/api/v1/markets/equities", response_model=EquityMarketSnapshot)
     @app.get("/api/markets/equities", response_model=EquityMarketSnapshot)

@@ -185,6 +185,23 @@ $env:BSM_HYPERLIQUID_TESTNET_PRIVATE_KEY = "testnet-only-private-key"
 
 You can also place runtime values in a repo-root `.env` or `.env.local` file. `.env.local` overrides `.env`.
 
+## Read-only Exchange Account Connections
+
+BITprivat can validate private account access and retrieve non-zero balances from five major exchanges. Credentials are read only by the API service and are never sent to the browser or stored in the repository. Set `BSM_EXCHANGE_CONNECTION_OWNER_SLUG` to the account slug allowed to run private diagnostics; other signed-in users cannot query the operator account's balances.
+
+Create API keys with balance/account-read permissions only. Disable withdrawals and do not grant order permissions unless a future execution feature explicitly requires them.
+
+| Exchange | Required environment variables | Optional configuration |
+| --- | --- | --- |
+| Binance | `BSM_BINANCE_API_KEY`, `BSM_BINANCE_API_SECRET` | `BSM_BINANCE_API_BASE_URL` |
+| Coinbase Exchange | `BSM_COINBASE_EXCHANGE_API_KEY`, `BSM_COINBASE_EXCHANGE_API_SECRET`, `BSM_COINBASE_EXCHANGE_PASSPHRASE` | `BSM_COINBASE_EXCHANGE_BASE_URL` |
+| Kraken | `BSM_KRAKEN_API_KEY`, `BSM_KRAKEN_API_SECRET` | `BSM_KRAKEN_API_BASE_URL` |
+| OKX | `BSM_OKX_API_KEY`, `BSM_OKX_API_SECRET`, `BSM_OKX_PASSPHRASE` | `BSM_OKX_API_BASE_URL`, `BSM_OKX_SIMULATED_TRADING` |
+| Bybit | `BSM_BYBIT_API_KEY`, `BSM_BYBIT_API_SECRET` | `BSM_BYBIT_API_BASE_URL`, `BSM_BYBIT_ACCOUNT_TYPE` |
+
+After setting the variables in Render, redeploy the API, sign in to BITprivat, open **Connections**, and use **Test connection**. The test calls the exchange's official authenticated balance endpoint with a timeout and returns account mode, observed permissions, warnings, and non-zero balances.
+
+
 ## External Market and On-chain Intelligence
 
 The read-only intelligence layer adds three providers without changing the crypto scoring pipeline:

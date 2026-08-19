@@ -111,6 +111,25 @@ class Settings:
     blockscout_api_urls: dict[str, str] = field(default_factory=dict)
     binance_api_base_url: str = "https://api.binance.com"
     binance_quote_asset: str = "USDT"
+    binance_api_key: str | None = None
+    binance_api_secret: str | None = None
+    coinbase_exchange_api_key: str | None = None
+    coinbase_exchange_api_secret: str | None = None
+    coinbase_exchange_passphrase: str | None = None
+    coinbase_exchange_base_url: str = "https://api.exchange.coinbase.com"
+    kraken_api_key: str | None = None
+    kraken_api_secret: str | None = None
+    kraken_api_base_url: str = "https://api.kraken.com"
+    okx_api_key: str | None = None
+    okx_api_secret: str | None = None
+    okx_passphrase: str | None = None
+    okx_api_base_url: str = "https://www.okx.com"
+    okx_simulated_trading: bool = False
+    bybit_api_key: str | None = None
+    bybit_api_secret: str | None = None
+    bybit_api_base_url: str = "https://api.bybit.com"
+    bybit_account_type: str = "UNIFIED"
+    exchange_connection_owner_slug: str | None = None
     fred_api_key: str | None = None
     fred_series_ids: tuple[str, ...] = ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS")
     hyperliquid_dex: str = ""
@@ -426,6 +445,27 @@ def get_settings() -> Settings:
         blockscout_api_urls=blockscout_api_urls,
         binance_api_base_url=os.getenv("BSM_BINANCE_API_BASE_URL", "https://api.binance.com"),
         binance_quote_asset=(os.getenv("BSM_BINANCE_QUOTE_ASSET") or "USDT").upper(),
+        binance_api_key=os.getenv("BSM_BINANCE_API_KEY") or None,
+        binance_api_secret=os.getenv("BSM_BINANCE_API_SECRET") or None,
+        coinbase_exchange_api_key=os.getenv("BSM_COINBASE_EXCHANGE_API_KEY") or None,
+        coinbase_exchange_api_secret=os.getenv("BSM_COINBASE_EXCHANGE_API_SECRET") or None,
+        coinbase_exchange_passphrase=os.getenv("BSM_COINBASE_EXCHANGE_PASSPHRASE") or None,
+        coinbase_exchange_base_url=os.getenv(
+            "BSM_COINBASE_EXCHANGE_BASE_URL", "https://api.exchange.coinbase.com"
+        ),
+        kraken_api_key=os.getenv("BSM_KRAKEN_API_KEY") or None,
+        kraken_api_secret=os.getenv("BSM_KRAKEN_API_SECRET") or None,
+        kraken_api_base_url=os.getenv("BSM_KRAKEN_API_BASE_URL", "https://api.kraken.com"),
+        okx_api_key=os.getenv("BSM_OKX_API_KEY") or None,
+        okx_api_secret=os.getenv("BSM_OKX_API_SECRET") or None,
+        okx_passphrase=os.getenv("BSM_OKX_PASSPHRASE") or None,
+        okx_api_base_url=os.getenv("BSM_OKX_API_BASE_URL", "https://www.okx.com"),
+        okx_simulated_trading=_env_bool("BSM_OKX_SIMULATED_TRADING", False),
+        bybit_api_key=os.getenv("BSM_BYBIT_API_KEY") or None,
+        bybit_api_secret=os.getenv("BSM_BYBIT_API_SECRET") or None,
+        bybit_api_base_url=os.getenv("BSM_BYBIT_API_BASE_URL", "https://api.bybit.com"),
+        bybit_account_type=(os.getenv("BSM_BYBIT_ACCOUNT_TYPE") or "UNIFIED").upper(),
+        exchange_connection_owner_slug=(os.getenv("BSM_EXCHANGE_CONNECTION_OWNER_SLUG") or "").strip() or None,
         fred_api_key=os.getenv("BSM_FRED_API_KEY") or None,
         fred_series_ids=fred_series_ids or ("FEDFUNDS", "DGS10", "CPIAUCSL", "WALCL", "VIXCLS"),
         tracked_wallets=tracked_wallets,

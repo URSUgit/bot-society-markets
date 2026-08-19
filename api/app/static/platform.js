@@ -366,7 +366,7 @@ const EXCHANGE_DIRECTORY = [
   ["schwab", "Charles Schwab", "broker"],
 ].map(([id, name, type = "cex"]) => ({ id, name, type }));
 
-const EXCHANGE_NATIVE_ADAPTERS = new Set(["alpaca", "binance", "coinbase", "hyperliquid", "interactivebrokers"]);
+const EXCHANGE_NATIVE_ADAPTERS = new Set(["alpaca", "binance", "coinbase", "kraken", "okx", "bybit", "hyperliquid", "interactivebrokers"]);
 const EXCHANGE_DOCS = {
   alpaca: "https://docs.alpaca.markets/",
   binance: "https://developers.binance.com/docs",
@@ -400,6 +400,8 @@ const state = {
   walletBalancesLoaded: false,
   exchangeFeeds: null,
   exchangeFeedsLoaded: false,
+  exchangeConnections: null,
+  exchangeConnectionsLoaded: false,
   equityMarkets: null,
   equityMarketsLoaded: false,
   secFilings: null,
@@ -894,6 +896,14 @@ async function loadExchangeFeeds(force = false) {
   state.exchangeFeeds = await fetchJson("/api/exchanges");
   state.exchangeFeedsLoaded = true;
   return state.exchangeFeeds;
+}
+
+
+async function loadExchangeConnections(force = false) {
+  if (state.exchangeConnectionsLoaded && !force) return state.exchangeConnections;
+  state.exchangeConnections = await fetchJson("/api/v1/exchange-connections");
+  state.exchangeConnectionsLoaded = true;
+  return state.exchangeConnections;
 }
 
 
@@ -2088,34 +2098,64 @@ function exchangeRuntimeConnector(exchange, connectors) {
 }
 
 function renderExchangeDirectory(connectors) {
-  const entries = EXCHANGE_DIRECTORY.map((exchange) => ({ ...exchange, runtime: exchangeRuntimeConnector(exchange, connectors) }));
-  const adapterCount = entries.filter((exchange) => exchange.runtime || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)).length;
+  const accountConnections = state.exchangeConnections?.connections || [];
+  const accountLookup = new Map(accountConnections.map((item) => [item.id, item]));
+  const entries = EXCHANGE_DIRECTORY.map((exchange) => ({
+    ...exchange,
+    runtime: exchangeRuntimeConnector(exchange, connectors),
+    accountConnection: accountLookup.get(exchange.id) || null,
+  }));
+  const supportedCount = entries.filter((exchange) => exchange.runtime || exchange.accountConnection || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)).length;
+  const configuredCount = accountConnections.filter((item) => item.configured).length;
   const typeCounts = entries.reduce((counts, exchange) => ({ ...counts, [exchange.type]: (counts[exchange.type] || 0) + 1 }), {});
   return `<section class="exchange-directory" aria-labelledby="exchange-directory-title">
     <div class="exchange-directory-head">
-      <div class="panel-title"><p class="eyebrow">Exchange API directory</p><h2 id="exchange-directory-title">${number(entries.length)} connectable market APIs</h2><p>Search the current catalog. Native means BITprivat already has platform code for the provider; API available means the exchange exposes a usable API but still needs a dedicated adapter and security review.</p></div>
-      <div class="exchange-directory-summary"><strong>${number(adapterCount)}</strong><span>native or runtime adapters</span></div>
+      <div class="panel-title"><p class="eyebrow">Exchange API connections</p><h2 id="exchange-directory-title">${number(entries.length)} exchange and broker APIs</h2><p>Five major exchanges now have real server-side account connectors. They validate read-only credentials and retrieve non-zero balances without exposing secrets to the browser.</p></div>
+      <div class="exchange-directory-summary"><strong>${number(configuredCount)} / 5</strong><span>authenticated connectors configured</span></div>
     </div>
     <div class="exchange-directory-controls">
-      <label class="exchange-search"><span>Search exchanges</span><input type="search" placeholder="Binance, Kraken, IBKR..." autocomplete="off" data-exchange-search></label>
-      <label><span>Market type</span><select data-exchange-type><option value="all">All types (${number(entries.length)})</option><option value="cex">Centralized (${number(typeCounts.cex || 0)})</option><option value="dex">Decentralized (${number(typeCounts.dex || 0)})</option><option value="prediction">Prediction (${number(typeCounts.prediction || 0)})</option><option value="broker">Brokers (${number(typeCounts.broker || 0)})</option></select></label>
-      <label><span>Integration state</span><select data-exchange-status><option value="all">All states</option><option value="ready">Native / runtime</option><option value="catalog">Adapter required</option></select></label>
+      <label class="exchange-search"><span>Search exchanges</span><input type="search" placeholder="Binance, Kraken, IBKR..." data-exchange-search></label>
+      <label><span>Provider type</span><select data-exchange-type><option value="all">All (${number(entries.length)})</option><option value="cex">Centralized (${number(typeCounts.cex || 0)})</option><option value="dex">Decentralized (${number(typeCounts.dex || 0)})</option><option value="prediction">Prediction (${number(typeCounts.prediction || 0)})</option><option value="broker">Broker (${number(typeCounts.broker || 0)})</option></select></label>
+      <label><span>Integration state</span><select data-exchange-status><option value="all">All states</option><option value="ready">Implemented</option><option value="catalog">Adapter required</option></select></label>
       <output data-exchange-count>${number(entries.length)} shown</output>
     </div>
     <div class="exchange-table" role="table" aria-label="API-connectable exchanges">
       <div class="exchange-row exchange-row-head" role="row"><span role="columnheader">Exchange</span><span role="columnheader">Type</span><span role="columnheader">Markets</span><span role="columnheader">BITprivat state</span><span role="columnheader">Action</span></div>
       ${entries.map((exchange) => {
-        const runtimeReady = exchange.runtime && ["live", "ready"].includes(exchange.runtime.state);
-        const adapterReady = Boolean(exchange.runtime) || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id);
-        const integrationState = adapterReady ? "ready" : "catalog";
-        const statusLabel = runtimeReady ? "Runtime ready" : adapterReady ? "Native adapter" : "API available";
-        const statusVariant = runtimeReady ? "ready" : adapterReady ? "partial" : "neutral";
-        const searchText = `${exchange.name} ${exchange.id} ${exchangeTypeLabel(exchange.type)} ${exchangeMarketLabel(exchange.type)}`.toLowerCase();
-        return `<article class="exchange-row" role="row" data-exchange-row data-exchange-type-value="${escapeHtml(exchange.type)}" data-exchange-status-value="${integrationState}" data-exchange-search-value="${escapeHtml(searchText)}"><span class="exchange-name" role="cell"><i>${escapeHtml(initials(exchange.name))}</i><span><strong>${escapeHtml(exchange.name)}</strong><small>${escapeHtml(exchange.id)}</small></span></span><span role="cell">${escapeHtml(exchangeTypeLabel(exchange.type))}</span><span role="cell">${escapeHtml(exchangeMarketLabel(exchange.type))}</span><span role="cell">${statusChip(statusLabel, statusVariant)}</span><span class="exchange-actions" role="cell">${exchange.runtime ? `<button class="text-link" type="button" data-connector-diagnostic="${escapeHtml(exchange.runtime.id)}">Diagnostics</button>` : `<button class="text-link" type="button" data-exchange-catalog-id="${escapeHtml(exchange.id)}">${adapterReady ? "Configure" : "Adapter steps"}</button>`}<a class="icon-button" href="${escapeHtml(EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHtml(exchange.name)} API documentation" title="API documentation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"></path><path d="M18 13v6H5V6h6"></path></svg></a></span></article>`;
+        const integration = exchange.accountConnection;
+        const implemented = Boolean(integration || exchange.runtime || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id));
+        const status = implemented ? "ready" : "catalog";
+        let stateLabel = "Adapter required";
+        let stateClass = "status-idle";
+        if (integration?.configured) {
+          stateLabel = integration.can_test ? "Configured" : "Owner managed";
+          stateClass = integration.can_test ? "status-ready" : "status-neutral";
+        } else if (integration) {
+          stateLabel = "Server setup";
+          stateClass = "status-warning";
+        } else if (exchange.runtime) {
+          stateLabel = exchange.runtime.configured ? "Market data live" : "Market data adapter";
+          stateClass = exchange.runtime.configured ? "status-ready" : "status-warning";
+        } else if (EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)) {
+          stateLabel = "Platform adapter";
+          stateClass = "status-warning";
+        }
+        const primaryAction = integration?.configured && integration?.can_test
+          ? `<button class="button" type="button" data-exchange-test="${escapeHtml(exchange.id)}">Test connection</button>`
+          : exchange.runtime
+            ? `<button class="button secondary" type="button" data-connector-diagnostic="${escapeHtml(exchange.runtime.id)}">Diagnostics</button>`
+            : `<button class="button secondary" type="button" data-exchange-catalog-id="${escapeHtml(exchange.id)}">${integration ? "Server setup" : implemented ? "Configure" : "Adapter steps"}</button>`;
+        return `<div class="exchange-row" role="row" data-exchange-row data-exchange-type-value="${exchange.type}" data-exchange-status-value="${status}" data-exchange-search-value="${escapeHtml(`${exchange.name} ${exchange.id} ${exchangeTypeLabel(exchange.type)} ${exchangeMarketLabel(exchange)}`.toLowerCase())}">
+          <span class="exchange-name" role="cell"><i>${escapeHtml(initials(exchange.name))}</i><span><strong>${escapeHtml(exchange.name)}</strong><small>${escapeHtml(exchange.id)}</small></span></span>
+          <span role="cell">${escapeHtml(exchangeTypeLabel(exchange.type))}</span>
+          <span role="cell">${escapeHtml(exchangeMarketLabel(exchange))}</span>
+          <span class="status-chip ${stateClass}" role="cell">${escapeHtml(stateLabel)}</span>
+          <span class="exchange-actions" role="cell">${primaryAction}<a class="button ghost" href="${escapeHtml(integration?.docs_url || EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS)}" target="_blank" rel="noreferrer">API docs</a></span>
+        </div>`;
       }).join("")}
+      <p class="exchange-directory-empty" data-exchange-empty hidden>No exchanges match these filters.</p>
     </div>
-    <div class="empty-state exchange-directory-empty" data-exchange-empty hidden><div><h3>No exchange matches</h3><p>Change the search text or filters.</p></div></div>
-    <p class="exchange-directory-note">Directory coverage follows the current CCXT exchange registry plus major brokerage APIs. Availability depends on jurisdiction, account permissions, exchange terms, and API credentials. BITprivat never asks for withdrawal permissions.</p>
+    <p class="exchange-directory-note">Authenticated connectors: Binance, Coinbase Exchange, Kraken, OKX, and Bybit. Create read-only keys, disable withdrawals, and keep secrets only in Render environment variables. ${number(supportedCount)} providers currently have an implemented account, market-data, or platform adapter.</p>
   </section>`;
 }
 
@@ -2140,14 +2180,54 @@ function applyExchangeDirectoryFilters() {
 function openExchangeCatalogItem(exchangeId) {
   const exchange = EXCHANGE_DIRECTORY.find((item) => item.id === exchangeId);
   if (!exchange) return;
-  const adapterReady = EXCHANGE_NATIVE_ADAPTERS.has(exchange.id);
-  const docsUrl = EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS;
+  const integration = (state.exchangeConnections?.connections || []).find((item) => item.id === exchange.id);
+  const runtime = exchangeRuntimeConnector(exchange, state.dashboard?.connector_control?.connectors || []);
+  if (integration) {
+    openDrawer({
+      kicker: "Authenticated exchange API",
+      title: `${exchange.name} account connection`,
+      body: `<div class="drawer-section"><h3>Real integration</h3><p>This connector signs the exchange's official private account endpoint on the BITprivat server and retrieves non-zero balances. Credentials are never returned to this browser.</p></div>
+        <div class="drawer-section"><h3>Required Render environment variables</h3><div class="code-list">${integration.env_keys.map((key) => `<code>${escapeHtml(key)}</code>`).join("")}</div></div>
+        <div class="drawer-section"><h3>Security policy</h3><ul><li>Create a dedicated read-only API key.</li><li>Disable withdrawals and transfers.</li><li>Restrict the key to the BITprivat server IP when the exchange supports it.</li><li>After adding variables in Render, redeploy the API service.</li></ul></div>
+        <div class="drawer-section"><h3>Current state</h3><p>${escapeHtml(integration.message)}</p></div>`,
+      footer: `${integration.can_test ? `<button class="button" type="button" data-exchange-test="${escapeHtml(exchange.id)}">Test connection</button>` : ""}<a class="button secondary" href="${escapeHtml(integration.docs_url)}" target="_blank" rel="noreferrer">Official API docs</a>`,
+    });
+    return;
+  }
   openDrawer({
-    kicker: "Exchange API",
-    title: `${exchange.name} connection`,
-    body: `<section class="drawer-section"><div class="detail-list"><div><span>Type</span><strong>${escapeHtml(exchangeTypeLabel(exchange.type))}</strong></div><div><span>Markets</span><strong>${escapeHtml(exchangeMarketLabel(exchange.type))}</strong></div><div><span>Adapter</span><strong>${adapterReady ? "BITprivat native adapter" : "Implementation required"}</strong></div><div><span>Credential policy</span><strong>Read and trade only; withdrawals disabled</strong></div></div></section><section class="drawer-section"><h3>${adapterReady ? "Configuration path" : "Adapter implementation path"}</h3><ol class="drawer-steps">${adapterReady ? "<li>Create an exchange API key with the minimum required permissions.</li><li>Store the key and secret in the deployment secret store, never in the browser.</li><li>Run connector diagnostics before enabling authenticated calls.</li>" : "<li>Confirm the exchange is legally available for the account jurisdiction.</li><li>Implement and test a server-side adapter with rate limits, timeouts, and symbol normalization.</li><li>Add encrypted secret storage and read-only diagnostics before trading permissions.</li>"}</ol></section><section class="inline-notice"><span class="state-dot warning"></span><p>Do not enable withdrawal, transfer, or account-management permissions. Exchange API availability does not mean this adapter is production-ready.</p></section>`,
-    footer: `<a class="button secondary" href="${escapeHtml(docsUrl)}" target="_blank" rel="noopener noreferrer">Open API docs</a><button class="button" type="button" data-close-drawer>Close</button>`,
+    kicker: "Exchange API catalog",
+    title: exchange.name,
+    body: `<div class="drawer-section"><h3>Adapter status</h3><p>${runtime ? "A BITprivat runtime data connector already represents this provider." : "This exchange exposes an API, but BITprivat does not yet ship an authenticated account adapter for it."}</p></div>
+      <div class="drawer-section"><h3>Implementation path</h3><ul><li>Confirm the official authentication and regional API domain.</li><li>Add server-side signing with timeouts and sanitized errors.</li><li>Validate read-only credentials and balances.</li><li>Add tests against recorded response shapes before enabling trading permissions.</li></ul></div>`,
+    footer: `<a class="button secondary" href="${escapeHtml(EXCHANGE_DOCS[exchange.id] || EXCHANGE_CATALOG_DOCS)}" target="_blank" rel="noreferrer">Official API docs</a><button class="button" type="button" data-close-drawer>Close</button>`,
   });
+}
+
+
+async function runExchangeConnectionTest(exchangeId) {
+  const exchange = EXCHANGE_DIRECTORY.find((item) => item.id === exchangeId);
+  if (!exchange) return;
+  openDrawer({
+    kicker: "Authenticated exchange API",
+    title: `Testing ${exchange.name}`,
+    body: `<div class="page-skeleton" aria-label="Testing exchange connection"><div class="skeleton-line wide"></div><div class="skeleton-line"></div></div>`,
+    footer: `<button class="button secondary" type="button" data-close-drawer>Close</button>`,
+  });
+  try {
+    const result = await fetchJson(`/api/v1/exchange-connections/${encodeURIComponent(exchangeId)}/test`, {
+      method: "POST",
+      timeoutMs: 20000,
+    });
+    const balances = result.balances || [];
+    document.getElementById("drawer-title").textContent = `${result.label} connected`;
+    document.getElementById("drawer-body").innerHTML = `<div class="drawer-section"><h3>Connection verified</h3><p>BITprivat authenticated successfully in ${escapeHtml(result.account_mode)} mode at ${escapeHtml(formatDate(result.checked_at))}.</p></div>
+      <div class="drawer-section"><h3>Permissions observed</h3><p>${escapeHtml((result.permissions || ["read"]).join(", "))}</p>${result.warning ? `<p class="callout danger">${escapeHtml(result.warning)}</p>` : ""}</div>
+      <div class="drawer-section"><h3>Non-zero balances</h3>${balances.length ? `<div class="balance-table"><div class="balance-row balance-row-head"><span>Asset</span><span>Total</span><span>Available</span><span>Locked</span></div>${balances.map((balance) => `<div class="balance-row"><strong>${escapeHtml(balance.asset)}</strong><span>${number(balance.total, 8)}</span><span>${number(balance.available, 8)}</span><span>${number(balance.locked, 8)}</span></div>`).join("")}</div>` : `<p>The account is connected and currently has no non-zero balances.</p>`}</div>`;
+    showToast(`${result.label} connection verified.`);
+  } catch (error) {
+    document.getElementById("drawer-title").textContent = `${exchange.name} connection failed`;
+    document.getElementById("drawer-body").innerHTML = `<div class="drawer-section"><h3>Could not authenticate</h3><p>${escapeHtml(error.message || "The exchange rejected the connection test.")}</p></div><div class="drawer-section"><h3>Check</h3><ul><li>The API key is active and read permission is enabled.</li><li>Withdrawal permission is disabled.</li><li>The correct regional API domain and server IP allowlist are configured.</li><li>Render was redeployed after environment changes.</li></ul></div>`;
+  }
 }
 function renderConnections(payload) {
   const providerStatus = payload.provider_status || {};
@@ -2207,6 +2287,11 @@ async function renderCurrentPage(force = false) {
     }
     if (state.page === "connections") {
       await loadExchangeFeeds(force);
+      if (payload.auth_session?.authenticated) {
+        await loadExchangeConnections(force);
+      } else {
+        state.exchangeConnections = { configured_count: 0, connections: [] };
+      }
     }
     if (["home", "data", "paper"].includes(state.page)) {
       await loadMarketSessions(force);
@@ -2689,7 +2774,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-exchange-catalog-id], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-exchange-catalog-id], [data-exchange-test], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -2729,6 +2814,9 @@ function bindGlobalEvents() {
     }
     if (target.dataset.exchangeCatalogId) {
       openExchangeCatalogItem(target.dataset.exchangeCatalogId);
+    }
+    if (target.dataset.exchangeTest) {
+      runExchangeConnectionTest(target.dataset.exchangeTest);
     }
  if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
     if (target.hasAttribute("data-open-account")) openAccount();

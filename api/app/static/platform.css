@@ -1746,6 +1746,69 @@ body[data-experience="pro"] .pro-grid {
   text-align: right;
 }
 
+.code-list {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 8px;
+ margin-top: 10px;
+}
+
+.code-list code {
+ max-width: 100%;
+ overflow-wrap: anywhere;
+ padding: 7px 9px;
+ border: 1px solid var(--line);
+ border-radius: 4px;
+ background: var(--canvas-subtle);
+ color: var(--ink);
+ font: 600 10px/1.3 var(--font-numeric);
+}
+
+.balance-table {
+ width: 100%;
+ margin-top: 10px;
+ overflow: hidden;
+ border: 1px solid var(--line);
+ border-radius: 6px;
+}
+
+.balance-row {
+ display: grid;
+ grid-template-columns: minmax(72px, 1fr) repeat(3, minmax(86px, 1fr));
+ gap: 12px;
+ align-items: center;
+ padding: 9px 11px;
+ border-top: 1px solid var(--line);
+ font: 500 10px/1.35 var(--font-numeric);
+}
+
+.balance-row:first-child {
+ border-top: 0;
+}
+
+.balance-row-head {
+ background: var(--canvas-subtle);
+ color: var(--ink-muted);
+ font-weight: 800;
+ text-transform: uppercase;
+}
+
+.balance-row span:not(:first-child),
+.balance-row strong:not(:first-child) {
+ text-align: right;
+}
+
+@media (max-width: 560px) {
+ .balance-table {
+  overflow-x: auto;
+ }
+
+ .balance-row {
+  min-width: 430px;
+ }
+}
+
+
 .command-palette {
   position: fixed;
   z-index: 110;

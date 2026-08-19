@@ -26,6 +26,14 @@ from fastapi.testclient import TestClient
 from api.app.config import Settings, get_settings
 from api.app.database import Database, engine_options_for_url, normalize_database_url
 from api.app.db_ops import backup_sqlite_database, copy_database
+from api.app.exchange_connectors import (
+    BinanceAccountConnector,
+    BybitAccountConnector,
+    CoinbaseExchangeAccountConnector,
+    ExchangeConnectionError,
+    KrakenAccountConnector,
+    OkxAccountConnector,
+)
 from api.app.financial_signal_extractor import FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
 from api.app.main import create_app
 from api.app.market_calendar import build_market_sessions_snapshot
@@ -783,9 +791,9 @@ def test_professional_console_pages_are_served() -> None:
         assert 'data-route="/connections" href="/connections"' in dashboard_response.text
         assert 'data-route="/learn" href="/learn"' in dashboard_response.text
         assert 'data-route="/settings" href="/settings"' in dashboard_response.text
-        assert "/static/platform.css?v=retail-os-12" in dashboard_response.text
+        assert "/static/platform.css?v=retail-os-13" in dashboard_response.text
         assert "/static/vendor/lightweight-charts.standalone.production.js?v=5.0.9" in dashboard_response.text
-        assert "/static/platform.js?v=retail-os-12" in dashboard_response.text
+        assert "/static/platform.js?v=retail-os-13" in dashboard_response.text
         assert "/static/platform.js?v=retail-os-8" not in dashboard_response.text
 
         app_js_response = client.get("/static/platform.js")
@@ -869,7 +877,7 @@ def test_professional_console_pages_are_served() -> None:
         legacy_response = client.get("/legacy-dashboard")
         assert legacy_response.status_code == 200
         assert 'class="bp-app"' in legacy_response.text
-        assert "/static/platform.js?v=retail-os-12" in legacy_response.text
+        assert "/static/platform.js?v=retail-os-13" in legacy_response.text
         assert 'id="operator-strip"' not in legacy_response.text
         assert "/static/app.js?v=pro-auth-1" not in legacy_response.text
 
@@ -3676,3 +3684,274 @@ def test_market_candles_endpoint_returns_503_when_provider_is_unavailable(monkey
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Binance candle data is temporarily unavailable."
+
+
+
+
+
+
+def test_binance_account_connector_signs_request_and_filters_zero_balances() -> None:
+    captured: dict[str, object] = {}
+
+    def requester(**kwargs):
+        captured.update(kwargs)
+        return {
+            "canTrade": True,
+            "canWithdraw": True,
+            "balances": [
+                {"asset": "BTC", "free": "0.25", "locked": "0.05"},
+                {"asset": "USDT", "free": "0", "locked": "0"},
+            ],
+        }
+
+    connector = BinanceAccountConnector(
+        api_key="binance-key",
+        api_secret="binance-secret",
+        base_url="https://api.binance.com",
+        timeout_seconds=7,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert captured["headers"]["X-MBX-APIKEY"] == "binance-key"
+    assert "/api/v3/account?" in captured["url"]
+    assert "signature=" in captured["url"]
+    assert captured["timeout_seconds"] == 7
+    assert result.connected is True
+    assert result.read_only is True
+    assert result.permissions == ["read", "trade-enabled-at-exchange"]
+    assert result.warning == "Disable withdrawal permission on this API key."
+    assert [(item.asset, item.total, item.available, item.locked) for item in result.balances] == [
+        ("BTC", 0.3, 0.25, 0.05)
+    ]
+
+
+def test_coinbase_exchange_connector_signs_request_and_parses_accounts() -> None:
+    captured: dict[str, object] = {}
+
+    def requester(**kwargs):
+        captured.update(kwargs)
+        return [
+            {"currency": "USD", "balance": "125.50", "available": "100", "hold": "25.50"},
+            {"currency": "ETH", "balance": "0", "available": "0", "hold": "0"},
+        ]
+
+    secret = base64.b64encode(b"coinbase-secret").decode()
+    connector = CoinbaseExchangeAccountConnector(
+        api_key="coinbase-key",
+        api_secret=secret,
+        passphrase="coinbase-passphrase",
+        base_url="https://api.exchange.coinbase.com",
+        timeout_seconds=8,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert captured["url"] == "https://api.exchange.coinbase.com/accounts"
+    assert captured["headers"]["CB-ACCESS-KEY"] == "coinbase-key"
+    assert captured["headers"]["CB-ACCESS-PASSPHRASE"] == "coinbase-passphrase"
+    assert captured["headers"]["CB-ACCESS-SIGN"]
+    assert [(item.asset, item.total) for item in result.balances] == [("USD", 125.5)]
+
+
+def test_kraken_account_connector_posts_signed_nonce_and_handles_exchange_errors() -> None:
+    captured: dict[str, object] = {}
+
+    def requester(**kwargs):
+        captured.update(kwargs)
+        return {"error": [], "result": {"XXBT": "0.4", "ZUSD": "0"}}
+
+    secret = base64.b64encode(b"kraken-secret").decode()
+    connector = KrakenAccountConnector(
+        api_key="kraken-key",
+        api_secret=secret,
+        base_url="https://api.kraken.com",
+        timeout_seconds=9,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://api.kraken.com/0/private/Balance"
+    assert captured["headers"]["API-Key"] == "kraken-key"
+    assert captured["headers"]["API-Sign"]
+    assert captured["body"].startswith(b"nonce=")
+    assert [(item.asset, item.total) for item in result.balances] == [("XXBT", 0.4)]
+
+    failing = KrakenAccountConnector(
+        api_key="kraken-key",
+        api_secret=secret,
+        base_url="https://api.kraken.com",
+        timeout_seconds=9,
+        requester=lambda **_: {"error": ["EAPI:Invalid key"]},
+    )
+    try:
+        failing.connection_result()
+        raise AssertionError("Expected Kraken rejection")
+    except ExchangeConnectionError as exc:
+        assert "Invalid key" in str(exc)
+        assert "kraken-secret" not in str(exc)
+
+
+def test_okx_account_connector_uses_simulated_header_and_parses_balances() -> None:
+    captured: dict[str, object] = {}
+
+    def requester(**kwargs):
+        captured.update(kwargs)
+        return {
+            "code": "0",
+            "data": [
+                {
+                    "details": [
+                        {"ccy": "USDT", "eq": "500", "availBal": "480", "frozenBal": "20"},
+                        {"ccy": "BTC", "eq": "0", "availBal": "0", "frozenBal": "0"},
+                    ]
+                }
+            ],
+        }
+
+    connector = OkxAccountConnector(
+        api_key="okx-key",
+        api_secret="okx-secret",
+        passphrase="okx-passphrase",
+        base_url="https://www.okx.com",
+        simulated=True,
+        timeout_seconds=10,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert captured["url"] == "https://www.okx.com/api/v5/account/balance"
+    assert captured["headers"]["OK-ACCESS-KEY"] == "okx-key"
+    assert captured["headers"]["OK-ACCESS-SIGN"]
+    assert captured["headers"]["x-simulated-trading"] == "1"
+    assert result.account_mode == "demo"
+    assert [(item.asset, item.total, item.available, item.locked) for item in result.balances] == [
+        ("USDT", 500.0, 480.0, 20.0)
+    ]
+
+
+def test_bybit_account_connector_signs_v5_query_and_parses_wallet() -> None:
+    captured: dict[str, object] = {}
+
+    def requester(**kwargs):
+        captured.update(kwargs)
+        return {
+            "retCode": 0,
+            "retMsg": "OK",
+            "result": {
+                "list": [
+                    {
+                        "coin": [
+                            {
+                                "coin": "USDC",
+                                "walletBalance": "220",
+                                "availableToWithdraw": "200",
+                                "locked": "20",
+                            },
+                            {"coin": "ETH", "walletBalance": "0", "availableToWithdraw": "0"},
+                        ]
+                    }
+                ]
+            },
+        }
+
+    connector = BybitAccountConnector(
+        api_key="bybit-key",
+        api_secret="bybit-secret",
+        base_url="https://api.bybit.com",
+        account_type="unified",
+        timeout_seconds=11,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert captured["url"] == "https://api.bybit.com/v5/account/wallet-balance?accountType=UNIFIED"
+    assert captured["headers"]["X-BAPI-API-KEY"] == "bybit-key"
+    assert captured["headers"]["X-BAPI-SIGN"]
+    assert result.account_mode == "unified"
+    assert [(item.asset, item.total, item.available, item.locked) for item in result.balances] == [
+        ("USDC", 220.0, 200.0, 20.0)
+    ]
+
+
+def test_exchange_connection_api_requires_authentication_and_reports_setup_state() -> None:
+    with build_client() as client:
+        anonymous_snapshot = client.get("/api/v1/exchange-connections")
+        anonymous_test = client.post("/api/v1/exchange-connections/binance/test")
+        assert anonymous_snapshot.status_code == 401
+        assert anonymous_test.status_code == 401
+
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Exchange Operator",
+                "email": "exchange-operator@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        snapshot_response = client.get("/api/v1/exchange-connections")
+        assert snapshot_response.status_code == 200
+        payload = snapshot_response.json()
+        assert payload["configured_count"] == 0
+        assert {item["id"] for item in payload["connections"]} == {
+            "binance",
+            "coinbase",
+            "kraken",
+            "okx",
+            "bybit",
+        }
+        assert all(item["read_only"] is True for item in payload["connections"])
+        assert all(item["can_test"] is False for item in payload["connections"])
+        assert all(item["state"] == "setup_required" for item in payload["connections"])
+
+        unsupported = client.post("/api/v1/exchange-connections/not-an-exchange/test")
+        assert unsupported.status_code == 404
+        unconfigured = client.post("/api/v1/exchange-connections/binance/test")
+        assert unconfigured.status_code == 409
+        assert "not configured" in unconfigured.json()["detail"].lower()
+
+
+def test_exchange_connection_api_restricts_configured_account_to_owner() -> None:
+    settings = Settings(
+        binance_api_key="configured-binance-key",
+        binance_api_secret="configured-binance-secret",
+        exchange_connection_owner_slug="account-owner",
+    )
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Different User",
+                "email": "different-user@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        snapshot = client.get("/api/v1/exchange-connections")
+        assert snapshot.status_code == 200
+        binance = next(item for item in snapshot.json()["connections"] if item["id"] == "binance")
+        assert binance["configured"] is True
+        assert binance["can_test"] is False
+        assert "restricted" in binance["message"].lower()
+
+        response = client.post("/api/v1/exchange-connections/binance/test")
+        assert response.status_code == 403
+        assert "configured owner" in response.json()["detail"].lower()
+
+
+
+def test_exchange_connection_frontend_exposes_real_test_controls() -> None:
+    with build_client() as client:
+        app_js = client.get("/static/platform.js")
+        assert app_js.status_code == 200
+        assert "/api/v1/exchange-connections" in app_js.text
+        assert "data-exchange-test" in app_js.text
+        assert "runExchangeConnectionTest" in app_js.text
+        assert "integration.env_keys" in app_js.text
+        assert "Required Render environment variables" in app_js.text
+        assert "Non-zero balances" in app_js.text
+
