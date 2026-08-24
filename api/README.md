@@ -187,7 +187,7 @@ You can also place runtime values in a repo-root `.env` or `.env.local` file. `.
 
 ## Read-only Exchange Account Connections
 
-BITprivat can validate private account access and retrieve non-zero balances from five major exchanges. Credentials are read only by the API service and are never sent to the browser or stored in the repository. Set `BSM_EXCHANGE_CONNECTION_OWNER_SLUG` to the account slug allowed to run private diagnostics; other signed-in users cannot query the operator account's balances.
+BITprivat can validate private account access and retrieve non-zero balances from five major exchanges plus Interactive Brokers. Credentials are read only by the API service and are never sent to the browser or stored in the repository. Set `BSM_EXCHANGE_CONNECTION_OWNER_SLUG` to the account slug allowed to run private diagnostics; other signed-in users cannot query the operator account's balances.
 
 Create API keys with balance/account-read permissions only. Disable withdrawals and do not grant order permissions unless a future execution feature explicitly requires them.
 
@@ -198,8 +198,9 @@ Create API keys with balance/account-read permissions only. Disable withdrawals 
 | Kraken | `BSM_KRAKEN_API_KEY`, `BSM_KRAKEN_API_SECRET` | `BSM_KRAKEN_API_BASE_URL` |
 | OKX | `BSM_OKX_API_KEY`, `BSM_OKX_API_SECRET`, `BSM_OKX_PASSPHRASE` | `BSM_OKX_API_BASE_URL`, `BSM_OKX_SIMULATED_TRADING` |
 | Bybit | `BSM_BYBIT_API_KEY`, `BSM_BYBIT_API_SECRET` | `BSM_BYBIT_API_BASE_URL`, `BSM_BYBIT_ACCOUNT_TYPE` |
+| Interactive Brokers | `BSM_IBKR_CONNECTION_MODE`, `BSM_IBKR_CLIENT_PORTAL_BASE_URL`, `BSM_IBKR_ACCOUNT_ID` | `BSM_IBKR_READ_ONLY`, `BSM_IBKR_LIVE_TRADING_ENABLED`, `BSM_IBKR_MARKET_DATA_SUBSCRIBED` |
 
-After setting the variables in Render, redeploy the API, sign in to BITprivat, open **Connections**, and use **Test connection**. The test calls the exchange's official authenticated balance endpoint with a timeout and returns account mode, observed permissions, warnings, and non-zero balances.
+After setting the variables in Render or your local `.env`, redeploy the API, sign in to BITprivat, open **Connections**, and use **Test connection**. For Interactive Brokers, the API server must be able to reach the Client Portal Gateway URL you configure. The test calls the provider's official authenticated account endpoint with a timeout and returns account mode, observed permissions, warnings, and non-zero balances.
 
 
 ## External Market and On-chain Intelligence

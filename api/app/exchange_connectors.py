@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import ssl
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -69,10 +70,11 @@ def _request_json(
     headers: dict[str, str] | None = None,
     body: bytes | None = None,
     timeout_seconds: int = 10,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> Any:
     request = Request(url, data=body, headers=headers or {}, method=method)
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:
+        with urlopen(request, timeout=timeout_seconds, context=ssl_context) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = ""
@@ -447,4 +449,3 @@ def build_exchange_connectors(settings: Any, *, requester: JsonRequester = _requ
             **common,
         ),
     ]
-

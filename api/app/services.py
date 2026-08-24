@@ -203,6 +203,7 @@ from .models import (
     WatchlistItem,
 )
 from .exchange_connectors import ExchangeConnectionError, build_exchange_connectors
+from .ibkr_connectors import InteractiveBrokersClientPortalConnector
 from .market_calendar import build_market_sessions_snapshot
 from .notifications import NotificationDispatcher
 from .nvidia_nim import NvidiaNimClient
@@ -3480,8 +3481,23 @@ class BotSocietyService:
         return snapshot
 
 
-    def get_exchange_connections_snapshot(self, *, user_slug: str | None = None) -> ExchangeConnectionsSnapshot:
+    def _build_exchange_account_connectors(self) -> list[Any]:
         connectors = build_exchange_connectors(self.settings)
+        connectors.append(
+            InteractiveBrokersClientPortalConnector(
+                connection_mode=self.settings.ibkr_connection_mode,
+                account_id=self.settings.ibkr_account_id,
+                client_portal_base_url=self.settings.ibkr_client_portal_base_url,
+                read_only=self.settings.ibkr_read_only,
+                live_trading_enabled=self.settings.ibkr_live_trading_enabled,
+                market_data_subscribed=self.settings.ibkr_market_data_subscribed,
+                timeout_seconds=self.settings.outbound_timeout_seconds,
+            )
+        )
+        return connectors
+
+    def get_exchange_connections_snapshot(self, *, user_slug: str | None = None) -> ExchangeConnectionsSnapshot:
+        connectors = self._build_exchange_account_connectors()
         owner_slug = (self.settings.exchange_connection_owner_slug or "").strip().lower()
         can_test_connections = bool(owner_slug and user_slug and user_slug.strip().lower() == owner_slug)
         statuses = [
@@ -3515,7 +3531,7 @@ class BotSocietyService:
         connector = next(
             (
                 item
-                for item in build_exchange_connectors(self.settings)
+                for item in self._build_exchange_account_connectors()
                 if item.exchange_id == exchange_id.strip().lower()
             ),
             None,

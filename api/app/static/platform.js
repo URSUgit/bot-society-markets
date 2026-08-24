@@ -2110,8 +2110,8 @@ function renderExchangeDirectory(connectors) {
   const typeCounts = entries.reduce((counts, exchange) => ({ ...counts, [exchange.type]: (counts[exchange.type] || 0) + 1 }), {});
   return `<section class="exchange-directory" aria-labelledby="exchange-directory-title">
     <div class="exchange-directory-head">
-      <div class="panel-title"><p class="eyebrow">Exchange API connections</p><h2 id="exchange-directory-title">${number(entries.length)} exchange and broker APIs</h2><p>Five major exchanges now have real server-side account connectors. They validate read-only credentials and retrieve non-zero balances without exposing secrets to the browser.</p></div>
-      <div class="exchange-directory-summary"><strong>${number(configuredCount)} / 5</strong><span>authenticated connectors configured</span></div>
+      <div class="panel-title"><p class="eyebrow">Exchange API connections</p><h2 id="exchange-directory-title">${number(entries.length)} exchange and broker APIs</h2><p>Five major exchanges plus Interactive Brokers now have real server-side account connectors. They validate read-only credentials and retrieve non-zero balances without exposing secrets to the browser.</p></div>
+      <div class="exchange-directory-summary"><strong>${number(configuredCount)} / ${number(accountConnections.length)}</strong><span>authenticated connectors configured</span></div>
     </div>
     <div class="exchange-directory-controls">
       <label class="exchange-search"><span>Search exchanges</span><input type="search" placeholder="Binance, Kraken, IBKR..." data-exchange-search></label>
@@ -2155,7 +2155,7 @@ function renderExchangeDirectory(connectors) {
       }).join("")}
       <p class="exchange-directory-empty" data-exchange-empty hidden>No exchanges match these filters.</p>
     </div>
-    <p class="exchange-directory-note">Authenticated connectors: Binance, Coinbase Exchange, Kraken, OKX, and Bybit. Create read-only keys, disable withdrawals, and keep secrets only in Render environment variables. ${number(supportedCount)} providers currently have an implemented account, market-data, or platform adapter.</p>
+    <p class="exchange-directory-note">Authenticated connectors: Binance, Coinbase Exchange, Kraken, OKX, Bybit, and Interactive Brokers. Create read-only keys, disable withdrawals, and keep secrets only in Render environment variables. ${number(supportedCount)} providers currently have an implemented account, market-data, or platform adapter.</p>
   </section>`;
 }
 

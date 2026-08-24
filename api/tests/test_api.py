@@ -34,6 +34,7 @@ from api.app.exchange_connectors import (
     KrakenAccountConnector,
     OkxAccountConnector,
 )
+from api.app.ibkr_connectors import InteractiveBrokersClientPortalConnector
 from api.app.financial_signal_extractor import FINANCIAL_SIGNAL_EXTRACTION_SYSTEM_PROMPT
 from api.app.main import create_app
 from api.app.market_calendar import build_market_sessions_snapshot
@@ -3875,6 +3876,57 @@ def test_bybit_account_connector_signs_v5_query_and_parses_wallet() -> None:
     ]
 
 
+def test_interactive_brokers_client_portal_connector_reads_gateway_accounts_and_summary() -> None:
+    captured: list[dict[str, object]] = []
+
+    def requester(**kwargs):
+        captured.append(kwargs)
+        url = kwargs["url"]
+        if url.endswith("/iserver/auth/status"):
+            return {"authenticated": True, "connected": True}
+        if url.endswith("/portfolio/accounts"):
+            return [{"accountId": "U1234567", "displayName": "Paper"}]
+        if url.endswith("/portfolio/U1234567/summary"):
+            return {
+                "NetLiquidation": {"amount": 12500.5, "currency": "USD", "isNull": False},
+                "AvailableFunds": {"amount": 8300.0, "currency": "USD", "isNull": False},
+                "BuyingPower": {"amount": 16600.0, "currency": "USD", "isNull": False},
+                "CashBalance": {"amount": 4200.0, "currency": "USD", "isNull": False},
+                "ExcessLiquidity": {"amount": 9100.0, "currency": "USD", "isNull": False},
+            }
+        if url.endswith("/portfolio/U1234567/positions/0"):
+            return [{"conid": 123, "position": 3}, {"conid": 456, "position": 1}]
+        raise AssertionError(f"Unexpected IBKR URL: {url}")
+
+    connector = InteractiveBrokersClientPortalConnector(
+        connection_mode="client_portal",
+        account_id="U1234567",
+        client_portal_base_url="https://localhost:5000/v1/api",
+        read_only=True,
+        live_trading_enabled=False,
+        market_data_subscribed=False,
+        timeout_seconds=12,
+        requester=requester,
+    )
+    result = connector.connection_result()
+
+    assert result.exchange_id == "interactivebrokers"
+    assert result.label == "Interactive Brokers"
+    assert result.account_mode == "client_portal"
+    assert result.read_only is True
+    assert "portfolio.read" in result.permissions
+    assert [(item.asset, item.total, item.available, item.locked) for item in result.balances] == [
+        ("BUYING_POWER", 16600.0, 16600.0, 0.0),
+        ("NET_LIQUIDATION", 12500.5, 12500.5, 0.0),
+        ("EXCESS_LIQUIDITY", 9100.0, 9100.0, 0.0),
+        ("AVAILABLE_FUNDS", 8300.0, 8300.0, 0.0),
+        ("CASH_BALANCE", 4200.0, 4200.0, 0.0),
+        ("POSITIONS", 2.0, 2.0, 0.0),
+    ]
+    assert len(captured) == 4
+    assert all("ssl_context" in item for item in captured)
+
+
 def test_exchange_connection_api_requires_authentication_and_reports_setup_state() -> None:
     with build_client() as client:
         anonymous_snapshot = client.get("/api/v1/exchange-connections")
@@ -3902,6 +3954,7 @@ def test_exchange_connection_api_requires_authentication_and_reports_setup_state
             "kraken",
             "okx",
             "bybit",
+            "interactivebrokers",
         }
         assert all(item["read_only"] is True for item in payload["connections"])
         assert all(item["can_test"] is False for item in payload["connections"])
@@ -3954,4 +4007,3 @@ def test_exchange_connection_frontend_exposes_real_test_controls() -> None:
         assert "integration.env_keys" in app_js.text
         assert "Required Render environment variables" in app_js.text
         assert "Non-zero balances" in app_js.text
-
