@@ -217,6 +217,33 @@ users_table = Table(
     Column("is_demo_user", Boolean, nullable=False, default=False, server_default=text("false")),
 )
 
+teams_table = Table(
+    "teams",
+    metadata,
+    Column("slug", String(120), primary_key=True),
+    Column("name", String(255), nullable=False),
+    Column("kind", String(16), nullable=False, default="team", server_default="team"),
+    Column("description", Text),
+    Column("owner_user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("join_code", String(32), nullable=False, unique=True),
+    Column("is_public", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+)
+
+team_memberships_table = Table(
+    "team_memberships",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("team_slug", String(120), ForeignKey("teams.slug", ondelete="CASCADE"), nullable=False),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("role", String(16), nullable=False, default="member", server_default="member"),
+    Column("is_active", Boolean, nullable=False, default=True, server_default=text("true")),
+    Column("joined_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    UniqueConstraint("team_slug", "user_slug", name="uq_team_memberships_team_user"),
+)
+
 billing_customers_table = Table(
     "billing_customers",
     metadata,
@@ -652,6 +679,9 @@ Index(
 Index("idx_user_auth_profiles_onboarding", user_auth_profiles_table.c.onboarding_stage, user_auth_profiles_table.c.updated_at.desc())
 Index("idx_password_reset_tokens_user_expires", password_reset_tokens_table.c.user_slug, password_reset_tokens_table.c.expires_at.desc())
 Index("idx_pipeline_runs_started_at", pipeline_runs_table.c.started_at.desc())
+Index("idx_teams_owner_updated", teams_table.c.owner_user_slug, teams_table.c.updated_at.desc())
+Index("idx_team_memberships_user_updated", team_memberships_table.c.user_slug, team_memberships_table.c.updated_at.desc())
+Index("idx_team_memberships_team_active", team_memberships_table.c.team_slug, team_memberships_table.c.is_active, team_memberships_table.c.updated_at.desc())
 Index("idx_billing_customers_user_provider", billing_customers_table.c.user_slug, billing_customers_table.c.provider)
 Index(
     "idx_billing_subscriptions_user_provider",

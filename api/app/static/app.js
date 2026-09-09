@@ -4772,16 +4772,18 @@ function renderSavedStrategies(strategies) {
   list.innerHTML = strategies.map((strategy) => {
     const config = strategy.config || {};
     const description = strategy.description || `${config.asset || "Asset"} ${config.strategy_id || "strategy"} research candidate`;
+    const statusLabel = strategy.is_active ? "Active" : "Inactive";
     return `
       <li class="strategy-vault-item">
         <div>
           <strong>${escapeHtml(strategy.name)}</strong>
           <p>${escapeHtml(description)}</p>
-          <small>${escapeHtml(config.asset)} · ${config.lookback_years || "n/a"}y · ${escapeHtml(config.history_source_mode || "auto")} · updated ${fmtRelativeTime(strategy.updated_at)}</small>
+          <small>${escapeHtml(config.asset)} · ${config.lookback_years || "n/a"}y · ${escapeHtml(config.history_source_mode || "auto")} · ${statusLabel} · updated ${fmtRelativeTime(strategy.updated_at)}</small>
         </div>
         <div class="workspace-actions strategy-vault-actions">
           <button class="button secondary small-button" type="button" data-load-strategy-id="${strategy.id}">Load</button>
           <button class="button primary small-button" type="button" data-run-strategy-id="${strategy.id}">Backtest</button>
+          <button class="button tertiary small-button" type="button" data-deploy-strategy-id="${strategy.id}">Deploy</button>
         </div>
       </li>
     `;
@@ -6011,6 +6013,34 @@ function renderOnboardingPanel(authSession, profile) {
   }
 }
 
+async function deploySavedStrategy(strategyId) {
+  const button = document.querySelector(`[data-deploy-strategy-id="${strategyId}"]`);
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const deployment = await fetchJson(`/api/v1/strategies/${strategyId}/deploy`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    if (deployment.backtest_run?.result) {
+      renderSimulationResult(deployment.backtest_run.result);
+      await refreshSimulationContext(deployment.backtest_run.result.asset);
+    }
+    await Promise.all([loadSavedStrategies(), loadSavedBacktests(), loadDashboard({ silent: true })]);
+    const orderLabel = deployment.paper_order
+      ? `Paper order #${deployment.paper_order.id} opened for ${deployment.paper_order.asset}.`
+      : "Backtest completed, but paper order placement was not opened.";
+    setStatus(`Deployed strategy "${deployment.strategy.name}". ${orderLabel}`);
+  } catch (error) {
+    setStatus(`Strategy deploy failed: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 function renderMfaPanel(authSession, profile) {
   const summary = document.getElementById("mfa-summary");
   const statusPill = document.getElementById("mfa-status-pill");
@@ -7159,11 +7189,15 @@ function bindForms() {
       }
       const loadButton = event.target.closest("[data-load-strategy-id]");
       const runButton = event.target.closest("[data-run-strategy-id]");
+      const deployButton = event.target.closest("[data-deploy-strategy-id]");
       if (loadButton) {
         loadSavedStrategyIntoForm(loadButton.dataset.loadStrategyId);
       }
       if (runButton) {
         await runSavedStrategyBacktest(runButton.dataset.runStrategyId);
+      }
+      if (deployButton) {
+        await deploySavedStrategy(deployButton.dataset.deployStrategyId);
       }
     });
   }

@@ -163,11 +163,15 @@ from .models import (
     BacktestRunView,
     StrategyBacktestRequest,
     StrategyCreateRequest,
+    StrategyDeploymentView,
     StrategyUpdateRequest,
     StrategyView,
     Summary,
     SystemPulseSnapshot,
     RiskCheckStatus,
+    TeamCreateRequest,
+    TeamJoinRequest,
+    TeamMembership,
     TradingOrderRequest,
     TradingOrderPreview,
     TradingRiskCheckItem,
@@ -2572,6 +2576,74 @@ class BotSocietyService:
             raise ValueError("Unable to record backtest run")
         return self._backtest_run_view_from_row(row)
 
+    def deploy_strategy(self, user_slug: str, strategy_id: int) -> StrategyDeploymentView:
+        repository = BotSocietyRepository(self.database)
+        existing = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not existing:
+            raise ValueError("Strategy not found")
+
+        deployed_at = self._now()
+        if not bool(existing.get("is_active")):
+            repository.update_strategy(user_slug, strategy_id, {"is_active": True, "updated_at": deployed_at})
+
+        strategy_row = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not strategy_row:
+            raise ValueError("Strategy not found")
+
+        strategy_view = self._strategy_view_from_row(strategy_row)
+        backtest_run = self.run_strategy_backtest(user_slug, strategy_id)
+        summary = backtest_run.summary
+        total_return = float(summary.get("total_return") or 0.0)
+        benchmark_return = float(summary.get("benchmark_total_return") or 0.0)
+        win_rate = float(summary.get("win_rate") or 0.0)
+        config = strategy_view.config
+        base_notional = float(config.starting_capital) * float(config.creator_max_exposure)
+        performance_scale = clamp(0.35 + max(-0.15, total_return - benchmark_return) * 1.8 + win_rate * 0.2, 0.25, 1.0)
+        deployment_notional = round(min(self.settings.paper_starting_balance * 0.25, max(100.0, base_notional * performance_scale)), 2)
+
+        paper_order: TradingOrderView | None = None
+        deployed = False
+        message = (
+            f"Strategy {strategy_view.name} backtested on {backtest_run.asset} and is ready for paper deployment."
+        )
+        try:
+            paper_order = self.place_trading_order(
+                user_slug,
+                TradingOrderRequest(
+                    venue="paper",
+                    asset=config.asset,
+                    side="buy",
+                    order_type="market",
+                    notional_usd=deployment_notional,
+                    is_paper=True,
+                    client_order_id=f"strategy-{strategy_id}-{backtest_run.id}-deploy",
+                ),
+            )
+            deployed = True
+            message = (
+                f"Strategy {strategy_view.name} backtested on {backtest_run.asset} and opened a paper order "
+                f"for {paper_order.asset}."
+            )
+        except Exception as exc:
+            message = (
+                f"Strategy {strategy_view.name} backtested on {backtest_run.asset} but paper deployment was "
+                f"not opened: {exc}"
+            )
+
+        refreshed_row = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
+        if not refreshed_row:
+            raise ValueError("Strategy not found")
+
+        return StrategyDeploymentView(
+            strategy=self._strategy_view_from_row(refreshed_row),
+            backtest_run=backtest_run,
+            paper_order=paper_order,
+            deployed=deployed,
+            deployed_at=deployed_at,
+            deployment_notional_usd=deployment_notional,
+            message=message,
+        )
+
     def list_backtest_runs(
         self,
         user_slug: str,
@@ -3990,8 +4062,17 @@ class BotSocietyService:
             "max_open_exposure_usd": round(max_open_exposure, 2),
             "daily_loss_limit_usd": round(daily_loss_limit, 2),
         }
-        live_trading_blocked = not payload.is_paper or payload.venue not in {"paper", "internal"}
-        execution_mode = "internal-paper" if not live_trading_blocked else "blocked-live"
+        live_venue = payload.venue in {"interactivebrokers", "ibkr"}
+        live_trading_allowed = (
+            live_venue
+            and not payload.is_paper
+            and self.settings.ibkr_connection_mode in {"client_portal", "tws_gateway"}
+            and bool(self.settings.ibkr_account_id)
+            and self.settings.ibkr_live_trading_enabled
+            and not self.settings.ibkr_read_only
+        )
+        live_trading_blocked = (not payload.is_paper or live_venue) and not live_trading_allowed
+        execution_mode = "ibkr-live" if live_trading_allowed else ("internal-paper" if not live_trading_blocked else "blocked-live")
         checks: list[TradingRiskCheckItem] = []
         blockers: list[str] = []
         warnings: list[str] = []
@@ -4027,9 +4108,10 @@ class BotSocietyService:
             label="Live execution gate",
             status="blocked" if live_trading_blocked else "pass",
             detail=(
-                "Live execution is disabled. Use venue=paper and is_paper=true."
+                "Live IBKR execution is disabled. Set BSM_IBKR_CONNECTION_MODE=client_portal or tws_gateway, "
+                "BSM_IBKR_ACCOUNT_ID, BSM_IBKR_READ_ONLY=false, and BSM_IBKR_LIVE_TRADING_ENABLED=true."
                 if live_trading_blocked
-                else "Order is scoped to the internal paper ledger; no live venue will receive it."
+                else "Order is scoped to the live IBKR session; the paper ledger will not receive it."
             ),
             unit="mode",
         )
@@ -4195,11 +4277,13 @@ class BotSocietyService:
             risk_limits=risk_limits,
             risk=risk,
             message=(
-                "Paper order preview passed risk checks. Submit to create an internal paper fill."
+                "Live IBKR order preview passed risk checks. Submit to route the order to IBKR."
+                if approved and live_trading_allowed
+                else "Paper order preview passed risk checks. Submit to create an internal paper fill."
                 if approved
                 else f"Order blocked by {len(blockers)} control or risk check(s)."
             ),
-            next_action="submit_paper_order" if approved else "resolve_blockers",
+            next_action="submit_live_order" if approved and live_trading_allowed else ("submit_paper_order" if approved else "resolve_blockers"),
         )
 
     def check_trading_risk(self, user_slug: str, payload: TradingOrderRequest) -> TradingRiskCheckResult:
@@ -4224,6 +4308,19 @@ class BotSocietyService:
             "risk_checks": [check.model_dump() for check in preview.risk.checks],
             "client_order_id": payload.client_order_id,
         }
+        live_venue = payload.venue in {"interactivebrokers", "ibkr"} and not payload.is_paper
+        if live_venue:
+            return self._place_live_ibkr_order(
+                repository=repository,
+                user_slug=user_slug,
+                payload=payload,
+                preview=preview,
+                quantity=quantity,
+                notional=notional,
+                fee=fee,
+                now=now,
+                metadata=metadata,
+            )
         order_id = repository.create_order(
             {
                 "user_slug": user_slug,
@@ -4254,6 +4351,106 @@ class BotSocietyService:
             raise ValueError("Unable to record paper order")
         self._clear_live_caches()
         return self._trading_order_view_from_row(row)
+
+    def _place_live_ibkr_order(
+        self,
+        *,
+        repository: BotSocietyRepository,
+        user_slug: str,
+        payload: TradingOrderRequest,
+        preview: TradingOrderPreview,
+        quantity: float,
+        notional: float,
+        fee: float,
+        now: str,
+        metadata: dict[str, object | None],
+    ) -> TradingOrderView:
+        if payload.order_type != "market":
+            raise ValueError("Live IBKR test orders currently support market orders only")
+        if payload.side not in {"buy", "long"}:
+            raise ValueError("Live IBKR test orders currently support buy/long orders only")
+        if not self.settings.ibkr_live_trading_enabled or self.settings.ibkr_read_only:
+            raise ValueError(
+                "Live IBKR trading is disabled. Enable BSM_IBKR_LIVE_TRADING_ENABLED and set BSM_IBKR_READ_ONLY=false first."
+            )
+
+        connector = self._build_ibkr_connector()
+        order_result = connector.place_market_order(
+            symbol=payload.asset,
+            side="BUY",
+            quantity=quantity,
+            account_id=self.settings.ibkr_account_id,
+        )
+        broker_status_detail = order_result.get("status_detail") if isinstance(order_result, dict) else None
+        broker_status = str(order_result.get("order_status") if isinstance(order_result, dict) else "").strip()
+        if not broker_status and isinstance(broker_status_detail, dict):
+            broker_status = str(broker_status_detail.get("status") or broker_status_detail.get("order_status") or "").strip()
+        normalized_status = self._normalize_trading_order_status(broker_status)
+        if normalized_status == "rejected":
+            raise ValueError(f"IBKR rejected the order for {payload.asset}")
+
+        filled_quantity = round(quantity, 8) if normalized_status == "filled" else 0.0
+        avg_fill_price = None
+        if isinstance(broker_status_detail, dict):
+            avg_fill_price = (
+                broker_status_detail.get("average_price")
+                or broker_status_detail.get("avgFillPrice")
+                or broker_status_detail.get("avg_fill_price")
+            )
+        avg_fill_price = round(float(avg_fill_price or preview.estimated_fill_price or preview.reference_price or 0.0), 8) or None
+        submission_metadata = {
+            **metadata,
+            "live_broker": "interactivebrokers",
+            "broker_account_id": order_result.get("account_id") if isinstance(order_result, dict) else None,
+            "broker_conid": order_result.get("conid") if isinstance(order_result, dict) else None,
+            "broker_order_id": order_result.get("order_id") if isinstance(order_result, dict) else None,
+            "broker_order_status": broker_status or None,
+            "broker_status_detail": broker_status_detail,
+            "broker_submission": order_result.get("submission") if isinstance(order_result, dict) else None,
+        }
+        order_id = repository.create_order(
+            {
+                "user_slug": user_slug,
+                "prediction_id": payload.prediction_id,
+                "venue": "interactivebrokers",
+                "asset": payload.asset,
+                "side": payload.side,
+                "order_type": payload.order_type,
+                "is_paper": False,
+                "quantity": round(quantity, 8),
+                "notional_usd": round(notional, 2),
+                "price": preview.reference_price,
+                "status": normalized_status,
+                "filled_quantity": filled_quantity,
+                "avg_fill_price": avg_fill_price,
+                "fee": round(fee, 2),
+                "fee_currency": "USD",
+                "exchange_order_id": f"ibkr-{order_result.get('order_id') or now.replace(':', '').replace('-', '').replace('Z', '')}",
+                "rejection_reason": None,
+                "submitted_at": now,
+                "filled_at": now if normalized_status == "filled" else None,
+                "cancelled_at": None,
+                "metadata_json": self._encode_json_payload(submission_metadata),
+            }
+        )
+        row = repository.get_order(user_slug, order_id)
+        if not row:
+            raise ValueError("Unable to record live IBKR order")
+        self._clear_live_caches()
+        return self._trading_order_view_from_row(row)
+
+    @staticmethod
+    def _normalize_trading_order_status(status: str | None) -> str:
+        normalized = str(status or "").strip().lower()
+        if "reject" in normalized or "error" in normalized:
+            return "rejected"
+        if "cancel" in normalized:
+            return "cancelled"
+        if "fill" in normalized:
+            return "filled"
+        if "submit" in normalized or "pre" in normalized or "open" in normalized:
+            return "open"
+        return "open"
 
     def list_trading_orders(
         self,
@@ -5121,6 +5318,10 @@ class BotSocietyService:
             self._to_user_wallet_connection(row)
             for row in active_repository.list_user_wallet_connections(user_slug)
         ]
+        teams = [
+            self._to_team_membership(row, include_join_code=str(row.get("role") or "member") in {"owner", "admin"})
+            for row in active_repository.list_user_teams(user_slug)
+        ]
         alert_inbox = alert_inbox or self.get_alert_inbox(user_slug)
         return UserProfile(
             slug=user["slug"],
@@ -5135,10 +5336,86 @@ class BotSocietyService:
             recent_alerts=alert_inbox.alerts,
             notification_channels=notification_channels,
             wallet_connections=wallet_connections,
+            teams=teams,
             unread_alert_count=alert_inbox.unread_count,
             security=self._to_security_snapshot(auth_profile),
             onboarding=self._to_onboarding_snapshot(auth_profile, wallet_connections=wallet_connections),
         )
+
+    def create_team(self, user_slug: str, payload: TeamCreateRequest) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError("Unable to create a team without an account")
+        name = payload.name.strip()
+        if len(name) < 2:
+            raise ValueError("Team name is required")
+        now = self._now()
+        team_slug = self._generate_team_slug(repository, name)
+        join_code = self._generate_team_join_code(repository)
+        repository.create_team(
+            {
+                "slug": team_slug,
+                "name": name,
+                "kind": payload.kind if payload.kind in {"team", "clan"} else "team",
+                "description": payload.description,
+                "owner_user_slug": user_slug,
+                "join_code": join_code,
+                "is_public": payload.is_public,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        repository.upsert_team_membership(
+            {
+                "team_slug": team_slug,
+                "user_slug": user_slug,
+                "role": "owner",
+                "is_active": True,
+                "joined_at": now,
+                "updated_at": now,
+            }
+        )
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
+
+    def join_team(self, user_slug: str, payload: TeamJoinRequest) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        team = None
+        if payload.team_slug:
+            team = repository.get_team(payload.team_slug)
+        if not team and payload.join_code:
+            team = repository.get_team_by_join_code(payload.join_code)
+        if not team:
+            raise ValueError("Team not found")
+        if not bool(team.get("is_public", True)) and str(team["owner_user_slug"]) != user_slug:
+            raise ValueError("This clan is private. Ask the owner for access.")
+        now = self._now()
+        membership = repository.get_team_membership(str(team["slug"]), user_slug)
+        repository.upsert_team_membership(
+            {
+                "team_slug": str(team["slug"]),
+                "user_slug": user_slug,
+                "role": "owner" if str(team["owner_user_slug"]) == user_slug else str(membership.get("role") or "member") if membership else "member",
+                "is_active": True,
+                "joined_at": membership.get("joined_at") if membership and membership.get("joined_at") else now,
+                "updated_at": now,
+            }
+        )
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
+
+    def leave_team(self, user_slug: str, team_slug: str) -> UserProfile:
+        repository = BotSocietyRepository(self.database)
+        team = repository.get_team(team_slug)
+        if not team:
+            raise ValueError("Team not found")
+        if str(team["owner_user_slug"]) == user_slug:
+            raise ValueError("Transfer ownership before leaving your team or clan")
+        updated = repository.leave_team(team_slug, user_slug, updated_at=self._now())
+        if updated == 0:
+            raise ValueError("Team membership not found")
+        self._clear_live_caches()
+        return self.get_user_profile(user_slug)
 
     def get_notification_health(self, user_slug: str) -> NotificationHealthSnapshot:
         repository = BotSocietyRepository(self.database)
@@ -10255,6 +10532,17 @@ class BotSocietyService:
             )
         return self.demo_wallet_provider
 
+    def _build_ibkr_connector(self) -> InteractiveBrokersClientPortalConnector:
+        return InteractiveBrokersClientPortalConnector(
+            connection_mode=self.settings.ibkr_connection_mode,
+            account_id=self.settings.ibkr_account_id,
+            client_portal_base_url=self.settings.ibkr_client_portal_base_url,
+            read_only=self.settings.ibkr_read_only,
+            live_trading_enabled=self.settings.ibkr_live_trading_enabled,
+            market_data_subscribed=self.settings.ibkr_market_data_subscribed,
+            timeout_seconds=self.settings.outbound_timeout_seconds,
+        )
+
     def _build_social_discovery_provider(self):
         if self.settings.social_discovery_provider == "youtube":
             return YouTubeSocialDiscoveryProvider(
@@ -12574,6 +12862,43 @@ class BotSocietyService:
             suffix += 1
             candidate = f"{base[:72]}-{suffix}"
         return candidate
+
+    def _generate_team_slug(self, repository: BotSocietyRepository, name: str) -> str:
+        base = SLUG_RE.sub("-", name.strip().lower()).strip("-") or "team"
+        candidate = base[:80]
+        suffix = 1
+        while repository.get_team(candidate):
+            suffix += 1
+            candidate = f"{base[:72]}-{suffix}"
+        return candidate
+
+    def _generate_team_join_code(self, repository: BotSocietyRepository) -> str:
+        for _ in range(20):
+            join_code = secrets.token_hex(3).upper()
+            if not repository.get_team_by_join_code(join_code):
+                return join_code
+        raise ValueError("Unable to allocate a unique team join code")
+
+    @staticmethod
+    def _to_team_membership(row: dict[str, object], *, include_join_code: bool = False) -> TeamMembership:
+        role = str(row.get("role") or "member")
+        if role not in {"owner", "admin", "member"}:
+            role = "member"
+        kind = str(row.get("kind") or "team")
+        if kind not in {"team", "clan"}:
+            kind = "team"
+        return TeamMembership(
+            team_slug=str(row["team_slug"]),
+            name=str(row["name"]),
+            kind=kind,
+            description=str(row["description"]) if row.get("description") else None,
+            role=role,
+            member_count=int(row.get("member_count") or 0),
+            join_code=str(row["join_code"]) if include_join_code and row.get("join_code") else None,
+            is_public=bool(row.get("is_public", True)),
+            created_at=str(row["created_at"]),
+            updated_at=str(row.get("membership_updated_at") or row.get("updated_at") or row["created_at"]),
+        )
 
     def _session_expires_at(self) -> str:
         return to_timestamp(datetime.now(timezone.utc) + timedelta(hours=self.settings.session_ttl_hours))

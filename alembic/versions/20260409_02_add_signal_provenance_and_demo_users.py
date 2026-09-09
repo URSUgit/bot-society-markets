@@ -47,7 +47,7 @@ def upgrade() -> None:
     op.execute(
         users.update()
         .where(users.c.slug == "demo-operator")
-        .values(is_demo_user=sa.true())
+        .values(is_demo_user=True)
     )
 
 

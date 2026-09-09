@@ -44,6 +44,8 @@ KycStatus = Literal["not_started", "pending", "approved", "rejected"]
 UiTheme = Literal["day", "night"]
 UiLanguage = Literal["en", "ro"]
 WorkspaceMode = Literal["simple", "pro"]
+TeamKind = Literal["team", "clan"]
+TeamRole = Literal["owner", "admin", "member"]
 
 
 class Summary(BaseModel):
@@ -1095,6 +1097,16 @@ class BacktestRunView(BaseModel):
     error_message: str | None = None
 
 
+class StrategyDeploymentView(BaseModel):
+    strategy: StrategyView
+    backtest_run: BacktestRunView
+    paper_order: TradingOrderView | None = None
+    deployed: bool
+    deployed_at: str
+    deployment_notional_usd: float = Field(ge=0)
+    message: str
+
+
 class NotificationChannel(BaseModel):
     id: int
     user_slug: str
@@ -2071,6 +2083,48 @@ class WatchlistItem(BaseModel):
     change_24h: float | None = None
 
 
+class TeamMembership(BaseModel):
+    team_slug: str
+    name: str
+    kind: TeamKind = "team"
+    description: str | None = None
+    role: TeamRole = "member"
+    member_count: int = Field(ge=0)
+    join_code: str | None = None
+    is_public: bool = True
+    created_at: str
+    updated_at: str
+
+
+class TeamCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    kind: TeamKind = "team"
+    description: str | None = Field(default=None, max_length=500)
+    is_public: bool = True
+
+    @model_validator(mode="after")
+    def normalize_fields(self) -> "TeamCreateRequest":
+        self.name = re.sub(r"\s+", " ", self.name).strip()
+        if self.description is not None:
+            self.description = re.sub(r"\s+", " ", self.description).strip() or None
+        return self
+
+
+class TeamJoinRequest(BaseModel):
+    team_slug: str | None = Field(default=None, min_length=2, max_length=120)
+    join_code: str | None = Field(default=None, min_length=4, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_identifier(self) -> "TeamJoinRequest":
+        if not self.team_slug and not self.join_code:
+            raise ValueError("team_slug or join_code is required")
+        if self.team_slug is not None:
+            self.team_slug = re.sub(r"[^a-z0-9_-]", "", self.team_slug.strip().lower())
+        if self.join_code is not None:
+            self.join_code = re.sub(r"[^A-Za-z0-9]", "", self.join_code.strip()).upper()
+        return self
+
+
 class AlertRule(BaseModel):
     id: int
     user_slug: str
@@ -2379,6 +2433,7 @@ class UserProfile(BaseModel):
     recent_alerts: list[AlertDelivery]
     notification_channels: list[NotificationChannel] = Field(default_factory=list)
     wallet_connections: list[UserWalletConnection] = Field(default_factory=list)
+    teams: list[TeamMembership] = Field(default_factory=list)
     unread_alert_count: int = Field(ge=0)
     security: UserSecuritySnapshot | None = None
     onboarding: AuthOnboardingSnapshot | None = None

@@ -963,6 +963,61 @@ def test_user_workspace_mutations() -> None:
         assert any(rule["asset"] == "BTC" for rule in alert_response.json()["alert_rules"])
 
 
+def test_team_and_clan_workflow() -> None:
+    with build_client() as client:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Clan Captain",
+                "email": "clan-captain@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        create_response = client.post(
+            "/api/me/teams",
+            json={
+                "name": "Alpha Desk",
+                "kind": "clan",
+                "description": "Shared research and trading workspace",
+                "is_public": True,
+            },
+        )
+        assert create_response.status_code == 200
+        created_team = create_response.json()["teams"][0]
+        assert created_team["name"] == "Alpha Desk"
+        assert created_team["kind"] == "clan"
+        assert created_team["role"] == "owner"
+        assert created_team["join_code"]
+
+        logout_response = client.post("/api/auth/logout")
+        assert logout_response.status_code == 200
+
+        joiner_response = client.post(
+            "/api/auth/register",
+            json={
+                "display_name": "Clan Member",
+                "email": "clan-member@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert joiner_response.status_code == 200
+
+        join_response = client.post(
+            "/api/me/teams/join",
+            json={"join_code": created_team["join_code"]},
+        )
+        assert join_response.status_code == 200
+        joined_profile = join_response.json()
+        assert any(team["team_slug"] == created_team["team_slug"] for team in joined_profile["teams"])
+
+        leave_response = client.post(f"/api/me/teams/{created_team['team_slug']}/leave")
+        assert leave_response.status_code == 200
+        left_profile = leave_response.json()
+        assert all(team["team_slug"] != created_team["team_slug"] for team in left_profile["teams"])
+
+
 def test_social_trader_discovery_follow_and_diversify_flow() -> None:
     with build_client() as client:
         initial_response = client.get("/api/social-trading")
@@ -2547,6 +2602,47 @@ def test_ibkr_gateway_configuration_is_paper_first_and_guarded() -> None:
         assert check_lookup["ibkr_live_trading_gate"]["status"] == "blocked"
 
 
+def test_ibkr_client_portal_live_order_submission_confirms_reply_messages() -> None:
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            {"authenticated": True, "connected": True},
+            {"status": "initialized"},
+            {"accounts": [{"accountId": "DU1234567"}], "selectedAccount": "DU1234567"},
+            [{"conid": "265598", "symbol": "AAPL", "companyName": "APPLE INC"}],
+            [{"id": "reply-1", "message": ["Confirm order"], "messageIds": ["o163"], "isSuppressed": False}],
+            [{"order_id": "987654", "order_status": "Submitted", "encrypt_message": "1"}],
+            {"status": "Submitted", "average_price": "200.10"},
+        ]
+    )
+
+    def fake_requester(**kwargs: object) -> object:
+        calls.append(dict(kwargs))
+        return next(responses)
+
+    connector = InteractiveBrokersClientPortalConnector(
+        connection_mode="client_portal",
+        account_id="DU1234567",
+        client_portal_base_url="https://ibkr.example/v1/api",
+        read_only=False,
+        live_trading_enabled=True,
+        market_data_subscribed=True,
+        timeout_seconds=10,
+        requester=fake_requester,
+    )
+
+    result = connector.place_market_order(symbol="AAPL", side="BUY", quantity=2.0)
+    assert result["account_id"] == "DU1234567"
+    assert result["conid"] == 265598
+    assert result["order_id"] == "987654"
+    assert result["order_status"] == "Submitted"
+    assert len(calls) == 7
+    assert str(calls[3]["url"]).endswith("/iserver/secdef/search?symbol=AAPL&secType=STK")
+    assert str(calls[4]["url"]).endswith("/iserver/account/DU1234567/orders")
+    assert str(calls[5]["url"]).endswith("/iserver/reply/reply-1")
+    assert str(calls[6]["url"]).endswith("/iserver/account/order/status/987654")
+
+
 def test_trading_preview_and_risk_check_gate_orders() -> None:
     with build_client() as client:
         register_response = client.post(
@@ -2641,7 +2737,7 @@ def test_trading_preview_and_risk_check_gate_orders() -> None:
         live_risk = live_risk_response.json()
         assert live_risk["approved"] is False
         assert live_risk["live_trading_blocked"] is True
-        assert "Live execution is disabled" in " ".join(live_risk["blockers"])
+        assert any("IBKR" in blocker or "Live execution" in blocker for blocker in live_risk["blockers"])
 
 
 def test_trading_order_contract_records_internal_paper_order() -> None:
@@ -2706,7 +2802,7 @@ def test_trading_order_contract_records_internal_paper_order() -> None:
             },
         )
         assert live_response.status_code == 400
-        assert "Live execution is disabled" in live_response.json()["detail"]
+        assert "IBKR" in live_response.json()["detail"]
 
         audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
         assert audit_response.status_code == 200
@@ -2846,6 +2942,18 @@ def test_strategy_lab_persists_strategies_and_backtest_runs() -> None:
         assert run_detail_response.status_code == 200
         assert run_detail_response.json()["summary"]["final_equity"] == run_payload["summary"]["final_equity"]
 
+        deploy_response = client.post(f"/api/v1/strategies/{strategy['id']}/deploy", json={})
+        assert deploy_response.status_code == 200
+        deploy_payload = deploy_response.json()
+        assert deploy_payload["strategy"]["id"] == strategy["id"]
+        assert deploy_payload["backtest_run"]["id"] >= run_payload["id"]
+        assert deploy_payload["message"]
+        assert isinstance(deploy_payload["deployment_notional_usd"], (int, float))
+        assert deploy_payload["deployed"] in {True, False}
+        if deploy_payload["paper_order"] is not None:
+            assert deploy_payload["paper_order"]["venue"] == "paper"
+            assert deploy_payload["paper_order"]["asset"] == "BTC"
+
         delete_response = client.delete(f"/api/v1/strategies/{strategy['id']}")
         assert delete_response.status_code == 200
         assert delete_response.json()["is_active"] is False
@@ -2861,8 +2969,99 @@ def test_strategy_lab_persists_strategies_and_backtest_runs() -> None:
             "strategy.create",
             "strategy.update",
             "strategy.backtest_run",
+            "strategy.deploy",
             "strategy.delete",
         }.issubset(actions)
+
+
+def test_live_ibkr_trading_route_uses_live_connector_when_enabled() -> None:
+    settings = Settings(
+        ibkr_connection_mode="client_portal",
+        ibkr_account_id="DU1234567",
+        ibkr_client_portal_base_url="https://ibkr.example/v1/api",
+        ibkr_read_only=False,
+        ibkr_live_trading_enabled=True,
+        paper_execution_provider="internal",
+        simulation_live_history=False,
+    )
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Live Trader",
+                "email": "live-trader@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        service = client.app.state.bot_society_service
+        fake_preview = SimpleNamespace(
+            preview_id="preview-live-1",
+            generated_at="2026-08-26T10:00:00Z",
+            user_slug=register_response.json()["user"]["slug"],
+            venue="interactivebrokers",
+            asset="AAPL",
+            side="buy",
+            order_type="market",
+            is_paper=False,
+            execution_mode="ibkr-live",
+            reference_price=200.0,
+            estimated_fill_price=200.15,
+            quantity=2.0,
+            notional_usd=400.0,
+            estimated_fee=1.0,
+            estimated_total_cost=401.0,
+            estimated_slippage_bps=0.0,
+            fee_bps=0.0,
+            cash_balance=None,
+            open_exposure=None,
+            equity=None,
+            risk_limits={"max_single_order_usd": 1000.0},
+            risk=SimpleNamespace(approved=True, live_trading_blocked=False, execution_mode="ibkr-live", blockers=[], warnings=[], checks=[]),
+            message="Live IBKR order preview passed risk checks. Submit to route the order to IBKR.",
+            next_action="submit_live_order",
+        )
+
+        class FakeIbkrConnector:
+            def place_market_order(self, **kwargs: object) -> dict[str, object]:
+                assert kwargs["symbol"] == "AAPL"
+                assert kwargs["side"] == "BUY"
+                assert kwargs["account_id"] == "DU1234567"
+                return {
+                    "account_id": "DU1234567",
+                    "conid": 265598,
+                    "symbol": "AAPL",
+                    "order_id": "987654",
+                    "order_status": "Submitted",
+                    "submission": [{"order_id": "987654", "order_status": "Submitted", "encrypt_message": "1"}],
+                    "status_detail": {"status": "Submitted", "average_price": "200.10"},
+                }
+
+        with patch.object(service, "preview_trading_order", return_value=fake_preview), patch.object(
+            service, "_build_ibkr_connector", return_value=FakeIbkrConnector()
+        ):
+            response = client.post(
+                "/api/v1/trading/orders",
+                json={
+                    "venue": "interactivebrokers",
+                    "asset": "AAPL",
+                    "side": "buy",
+                    "order_type": "market",
+                    "notional_usd": 400,
+                    "is_paper": False,
+                    "client_order_id": "live-trade-1",
+                },
+            )
+
+        assert response.status_code == 200
+        order = response.json()
+        assert order["venue"] == "interactivebrokers"
+        assert order["is_paper"] is False
+        assert order["status"] == "open"
+        assert order["exchange_order_id"].startswith("ibkr-")
+        assert order["metadata"]["live_broker"] == "interactivebrokers"
+        assert order["metadata"]["broker_order_id"] == "987654"
 
 
 def test_hyperliquid_and_venue_provider_metadata() -> None:

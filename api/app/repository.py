@@ -31,6 +31,8 @@ from .database import (
     social_trader_events_table,
     social_traders_table,
     strategies_table,
+    team_memberships_table,
+    teams_table,
     trader_intelligence_profiles_table,
     trader_intelligence_runs_table,
     trader_intelligence_sources_table,
@@ -593,6 +595,102 @@ class BotSocietyRepository:
         stmt = update(users_table).where(users_table.c.slug == user_slug).values(**payload)
         with self.database.connect() as connection:
             connection.execute(stmt)
+
+    def create_team(self, payload: dict[str, Any]) -> None:
+        with self.database.connect() as connection:
+            connection.execute(teams_table.insert().values(**payload))
+
+    def get_team(self, team_slug: str) -> dict[str, Any] | None:
+        stmt = select(teams_table).where(teams_table.c.slug == team_slug)
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def get_team_by_join_code(self, join_code: str) -> dict[str, Any] | None:
+        stmt = select(teams_table).where(func.upper(teams_table.c.join_code) == join_code.upper())
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def list_user_teams(self, user_slug: str) -> list[dict[str, Any]]:
+        member_counts = (
+            select(
+                team_memberships_table.c.team_slug,
+                func.count().label("member_count"),
+            )
+            .where(team_memberships_table.c.is_active.is_(True))
+            .group_by(team_memberships_table.c.team_slug)
+            .subquery()
+        )
+        stmt = (
+            select(
+                teams_table.c.slug.label("team_slug"),
+                teams_table.c.name,
+                teams_table.c.kind,
+                teams_table.c.description,
+                teams_table.c.join_code,
+                teams_table.c.is_public,
+                teams_table.c.created_at,
+                teams_table.c.updated_at,
+                team_memberships_table.c.role,
+                team_memberships_table.c.joined_at,
+                team_memberships_table.c.updated_at.label("membership_updated_at"),
+                func.coalesce(member_counts.c.member_count, 0).label("member_count"),
+            )
+            .join(team_memberships_table, team_memberships_table.c.team_slug == teams_table.c.slug)
+            .outerjoin(member_counts, member_counts.c.team_slug == teams_table.c.slug)
+            .where(
+                and_(
+                    team_memberships_table.c.user_slug == user_slug,
+                    team_memberships_table.c.is_active.is_(True),
+                )
+            )
+            .order_by(desc(teams_table.c.updated_at), teams_table.c.name)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def get_team_membership(self, team_slug: str, user_slug: str) -> dict[str, Any] | None:
+        stmt = (
+            select(team_memberships_table)
+            .where(
+                and_(
+                    team_memberships_table.c.team_slug == team_slug,
+                    team_memberships_table.c.user_slug == user_slug,
+                )
+            )
+            .limit(1)
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def upsert_team_membership(self, payload: dict[str, Any]) -> None:
+        stmt = self.database.upsert_insert(team_memberships_table).values(**payload)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[team_memberships_table.c.team_slug, team_memberships_table.c.user_slug],
+            set_={
+                "role": stmt.excluded.role,
+                "is_active": stmt.excluded.is_active,
+                "joined_at": stmt.excluded.joined_at,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        with self.database.connect() as connection:
+            connection.execute(stmt)
+
+    def leave_team(self, team_slug: str, user_slug: str, *, updated_at: str) -> int:
+        stmt = (
+            update(team_memberships_table)
+            .where(
+                and_(
+                    team_memberships_table.c.team_slug == team_slug,
+                    team_memberships_table.c.user_slug == user_slug,
+                    team_memberships_table.c.is_active.is_(True),
+                )
+            )
+            .values(is_active=False, updated_at=updated_at)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
 
     def get_user_auth_profile(self, user_slug: str) -> dict[str, Any] | None:
         stmt = select(user_auth_profiles_table).where(user_auth_profiles_table.c.user_slug == user_slug)

@@ -705,6 +705,45 @@ async function loginPlatformUser(form) {
   await refreshDashboardAfterMutation("Signed in.");
 }
 
+async function createPlatformTeam(form) {
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  if (!name) throw new Error("Team name is required.");
+  await fetchJson("/api/me/teams", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      kind: String(data.get("kind") || "team"),
+      description: String(data.get("description") || "").trim() || null,
+      is_public: data.get("is_public") !== null,
+    }),
+  });
+  await refreshDashboardAfterMutation("Team created.");
+}
+
+async function joinPlatformTeam(form) {
+  const data = new FormData(form);
+  const teamSlug = String(data.get("team_slug") || "").trim();
+  const joinCode = String(data.get("join_code") || "").trim();
+  if (!teamSlug && !joinCode) throw new Error("Enter a team slug or join code.");
+  await fetchJson("/api/me/teams/join", {
+    method: "POST",
+    body: JSON.stringify({
+      team_slug: teamSlug || null,
+      join_code: joinCode || null,
+    }),
+  });
+  await refreshDashboardAfterMutation("Joined team.");
+}
+
+async function leavePlatformTeam(teamSlug) {
+  if (!teamSlug) throw new Error("Team slug is required.");
+  await fetchJson(`/api/me/teams/${encodeURIComponent(teamSlug)}/leave`, {
+    method: "POST",
+  });
+  await refreshDashboardAfterMutation("Left team.");
+}
+
 function isEvmChain(chain) {
   return new Set(["ethereum", "arbitrum", "base", "polygon", "optimism", "bsc", "avalanche"]).has(String(chain || "").toLowerCase());
 }
@@ -2232,6 +2271,7 @@ async function runExchangeConnectionTest(exchangeId) {
 function renderConnections(payload) {
   const providerStatus = payload.provider_status || {};
   const wallets = payload.user_profile?.wallet_connections || [];
+  const teams = payload.user_profile?.teams || [];
   const readyWallets = wallets.filter((wallet) => wallet.onchain_ready);
   const connectorControl = payload.connector_control || {};
   const connectors = (connectorControl.connectors || []).filter(isMvpConnector);
@@ -2240,9 +2280,10 @@ function renderConnections(payload) {
   const exchangeAdapterCount = EXCHANGE_DIRECTORY.filter((exchange) => exchangeRuntimeConnector(exchange, connectors) || EXCHANGE_NATIVE_ADAPTERS.has(exchange.id)).length;
   return `
     ${pageHeader("Connections", "Exchange APIs, brokers, wallets, and intelligence feeds", "Review every API-connectable venue in one directory. Runtime-ready connectors are separated from exchanges that still require an adapter, credentials, and a security review.", `<a class="button secondary" href="/status">System status</a><button class="button" type="button" data-open-account>Account and wallet</button>`)}
-    <section class="metric-grid"><article class="metric-card"><span>Exchange APIs</span><strong>${number(EXCHANGE_DIRECTORY.length)}</strong><small>CCXT venues plus major broker APIs</small></article><article class="metric-card"><span>Native adapters</span><strong>${number(exchangeAdapterCount)}</strong><small>Implemented or represented by runtime connectors</small></article><article class="metric-card"><span>Live providers</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Needs setup</span><strong>${number(needsSetup.length)}</strong><small>Requires real credentials or configuration</small></article></section>
+    <section class="metric-grid"><article class="metric-card"><span>Exchange APIs</span><strong>${number(EXCHANGE_DIRECTORY.length)}</strong><small>CCXT venues plus major broker APIs</small></article><article class="metric-card"><span>Native adapters</span><strong>${number(exchangeAdapterCount)}</strong><small>Implemented or represented by runtime connectors</small></article><article class="metric-card"><span>Live providers</span><strong>${number(readyConnectors.length)}</strong><small>Provider-backed, no demo fallback</small></article><article class="metric-card"><span>Teams and clans</span><strong>${number(teams.length)}</strong><small>Shared workspaces connected to this account</small></article></section>
     ${renderExchangeDirectory(connectors)}
     ${renderExchangeFeedsPanel()}
+    <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>Team workspace</h2><p>${teams.length ? "Your shared workspaces are visible here with invite codes for the owner or admin." : "Create a team or clan from the account drawer to make shared workspace management visible here."}</p></div>${statusChip(teams.length ? `${teams.length} joined` : "Needed", teams.length ? "ready" : "blocked")}</div>${teams.length ? `<div class="compact-list">${teams.map(renderTeamCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No teams or clans yet</h3><p>Use the account drawer to create a team or join with a slug or invite code.</p><button class="button small" type="button" data-open-account>Open account</button></div></div>`}</section>
     <section class="panel" style="margin-bottom:16px"><div class="panel-head"><div class="panel-title"><h2>On-chain onboarding</h2><p>${readyWallets.length ? "Wallet-gated workspace is active with stablecoin-capable read-only connections." : "Connect a public wallet address to activate the MVP onboarding path."}</p></div>${statusChip(readyWallets.length ? "Active" : "Needed", readyWallets.length ? "ready" : "blocked")}</div>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<div class="empty-state"><div><h3>No wallet connected</h3><p>Use Base, Arbitrum, Polygon, Optimism, Ethereum, or Solana for stablecoin rail tracking.</p><button class="button small" type="button" data-open-account>Connect wallet</button></div></div>`}</section>
     <section class="panel"><div class="panel-head"><div class="panel-title"><h2>Active platform connectors</h2><p>These are the connectors currently represented by backend diagnostics and deployment configuration.</p></div>${statusChip(`${readyConnectors.length} ready`, readyConnectors.length ? "ready" : "partial")}</div><div class="card-grid">${connectors.map(renderConnectorCard).join("") || `<div class="empty-state"><div><h3>No runtime connectors found</h3><p>Provider configuration is unavailable. Check system status.</p><a class="button small" href="/status">Open status</a></div></div>`}</div></section>
     <section class="inline-notice" style="margin-top:16px"><span class="state-dot warning"></span><p><strong>Exchange API keys, database URLs, and wallet secrets belong in deployment secret stores.</strong> Never paste them into public pages or support chat. Use the minimum read/trade permissions and keep withdrawals disabled.</p></section>`;
@@ -2605,6 +2646,14 @@ function openLesson(lessonId) {
   openDrawer({ kicker: lesson.duration, title: lesson.title, body: `<section class="drawer-section"><p>${escapeHtml(content)}</p></section><div class="inline-notice"><span class="state-dot warning"></span><p>This educational content is general information, not personal investment advice.</p></div>`, footer: `<button class="button" type="button" data-close-drawer>Finish lesson</button>` });
 }
 
+function renderTeamCompact(team) {
+  const joinCode = team.join_code ? `<small>Code ${escapeHtml(team.join_code)}</small>` : "";
+  const leaveAction = team.role === "owner"
+    ? `<span class="status-chip">Owner</span>`
+    : `<button class="text-link" type="button" data-leave-team="${escapeHtml(team.team_slug)}">Leave</button>`;
+  return `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(team.name)}</strong><span>${escapeHtml((team.kind || "team").toUpperCase())} · ${escapeHtml(team.role)} · ${number(team.member_count || 0)} member(s)</span>${joinCode}</span>${leaveAction}</div>`;
+}
+
 async function openAccount() {
   if (state.dashboard?.auth_session?.authenticated) {
     try {
@@ -2616,6 +2665,7 @@ async function openAccount() {
   const session = state.dashboard?.auth_session || {};
   const profile = state.dashboard?.user_profile || {};
   const wallets = profile.wallet_connections || [];
+  const teams = profile.teams || [];
   const onboarding = profile.onboarding || session.onboarding || {};
   const nextActions = onboarding.next_actions || [];
   const walletReady = Boolean(onboarding.onchain_onboarding_ready);
@@ -2626,13 +2676,33 @@ async function openAccount() {
     ["Account", session.authenticated ? "Ready" : "Needed", session.authenticated ? "ready" : "blocked"],
     ["Read-only wallet", walletReady ? "Ready" : wallets.length ? "Tracked" : "Needed", walletReady ? "ready" : wallets.length ? "partial" : "blocked"],
     ["Stablecoin balances", balanceReady ? "Real data" : balanceSnapshot?.provider_configured ? "Blocked" : "Setup needed", balanceReady ? "ready" : "blocked"],
+    ["Team / clan", teams.length ? `${teams.length} joined` : "Needed", teams.length ? "ready" : "partial"],
     ["Risk disclosure", riskAccepted ? "Accepted" : "Needed", riskAccepted ? "ready" : "blocked"],
     ["Trading mode", "Paper-first", "paper"],
   ];
+  const teamPanel = session.authenticated
+    ? `
+      <section class="drawer-section">
+        <h3>Teams and clans</h3>
+        <form class="stack-form" id="platform-team-create-form">
+          <label><span>Name</span><input name="name" type="text" maxlength="120" required></label>
+          <label><span>Kind</span><select name="kind"><option value="team">Team</option><option value="clan">Clan</option></select></label>
+          <label><span>Description</span><textarea name="description" maxlength="500" placeholder="Shared research, execution, or signal workspace"></textarea></label>
+          <label class="setting-row"><span class="setting-copy"><strong>Public workspace</strong><span>Visible to members through invite code.</span></span><input name="is_public" type="checkbox" checked></label>
+          <button class="button" type="submit">Create team</button>
+        </form>
+        <form class="stack-form" id="platform-team-join-form" style="margin-top:12px">
+          <label><span>Team slug</span><input name="team_slug" type="text" maxlength="120" placeholder="alpha-desk"></label>
+          <label><span>Join code</span><input name="join_code" type="text" maxlength="32" placeholder="A1B2C3"></label>
+          <button class="button secondary" type="submit">Join team</button>
+        </form>
+        <div class="compact-list" style="margin-top:12px">${teams.length ? teams.map(renderTeamCompact).join("") : `<p class="muted-copy">No teams or clans joined yet.</p>`}</div>
+      </section>`
+    : "";
   openDrawer({
     kicker: session.authenticated ? "On-chain workspace" : "On-chain onboarding",
     title: session.user?.display_name || profile.display_name || "Create account and connect wallet",
-    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Guest access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Research")}</strong></div><div><span>Wallets</span><strong>${wallets.length} connected</strong></div><div><span>Cards</span><strong>Later release</strong></div></div></section><section class="drawer-section"><h3>MVP onboarding</h3><div class="compact-list">${stepRows.map((step) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(step[0])}</strong><span>${escapeHtml(step[1])}</span></span>${statusChip(step[1], step[2])}</div>`).join("")}</div>${nextActions.length ? `<div class="inline-notice" style="margin-top:12px"><span class="state-dot warning"></span><p>${escapeHtml(nextActions[0])}</p></div>` : ""}</section>${session.authenticated ? "" : `<section class="drawer-section"><h3>Create account</h3><form class="stack-form" id="platform-register-form"><label><span>Name</span><input name="display_name" type="text" autocomplete="name" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="12" required></label><button class="button" type="submit">Create account</button></form></section><section class="drawer-section"><h3>Sign in</h3><form class="stack-form" id="platform-login-form"><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label><button class="button secondary" type="submit">Sign in</button></form></section>`}<section class="drawer-section"><h3>Connect read-only wallet</h3><form class="stack-form" id="platform-wallet-form"><label><span>Chain</span><select name="chain"><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="polygon">Polygon</option><option value="optimism">Optimism</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option><option value="bitcoin">Bitcoin</option></select></label><label><span>Provider</span><select name="provider"><option value="metamask">MetaMask</option><option value="walletconnect">WalletConnect</option><option value="coinbase">Coinbase Wallet</option><option value="phantom">Phantom</option><option value="ledger">Ledger</option></select></label><label><span>Address</span><input name="address" type="text" maxlength="128" placeholder="Auto-filled for browser EVM wallets"></label><label><span>Label</span><input name="label" type="text" maxlength="64" placeholder="Main USDC wallet"></label><button class="button" type="submit">Connect wallet</button></form><div class="card-meta"><span>USDC</span><span>USDT</span><span>EURC</span><span>Base</span><span>Arbitrum</span><span>Solana</span></div><p class="muted-copy">Read-only wallet tracking only. No private keys, no custody, no stablecoin transfer button, and no card checkout in this MVP.</p></section>${session.authenticated && !riskAccepted ? `<section class="drawer-section"><h3>Risk disclosure</h3><p class="muted-copy">Paper trading, signal research, and wallet tracking are informational tools. They are not investment advice, live execution, custody, or guaranteed returns.</p><button class="button" type="button" data-accept-risk>Accept risk disclosure</button></section>` : ""}<section class="drawer-section"><h3>Connected wallets</h3>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<p class="muted-copy">No wallets connected yet.</p>`}</section>`,
+    body: `<section class="drawer-section"><div class="detail-list"><div><span>Authentication</span><strong>${session.authenticated ? "Signed in" : "Guest access"}</strong></div><div><span>Tier</span><strong>${escapeHtml(profile.tier || "Research")}</strong></div><div><span>Wallets</span><strong>${wallets.length} connected</strong></div><div><span>Teams</span><strong>${teams.length} joined</strong></div></div></section><section class="drawer-section"><h3>MVP onboarding</h3><div class="compact-list">${stepRows.map((step) => `<div class="compact-item"><span class="compact-copy"><strong>${escapeHtml(step[0])}</strong><span>${escapeHtml(step[1])}</span></span>${statusChip(step[1], step[2])}</div>`).join("")}</div>${nextActions.length ? `<div class="inline-notice" style="margin-top:12px"><span class="state-dot warning"></span><p>${escapeHtml(nextActions[0])}</p></div>` : ""}</section>${session.authenticated ? "" : `<section class="drawer-section"><h3>Create account</h3><form class="stack-form" id="platform-register-form"><label><span>Name</span><input name="display_name" type="text" autocomplete="name" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="12" required></label><button class="button" type="submit">Create account</button></form></section><section class="drawer-section"><h3>Sign in</h3><form class="stack-form" id="platform-login-form"><label><span>Email</span><input name="email" type="email" autocomplete="email" required></label><label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label><button class="button secondary" type="submit">Sign in</button></form></section>`}<section class="drawer-section"><h3>Connect read-only wallet</h3><form class="stack-form" id="platform-wallet-form"><label><span>Chain</span><select name="chain"><option value="base">Base</option><option value="arbitrum">Arbitrum</option><option value="polygon">Polygon</option><option value="optimism">Optimism</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option><option value="bitcoin">Bitcoin</option></select></label><label><span>Provider</span><select name="provider"><option value="metamask">MetaMask</option><option value="walletconnect">WalletConnect</option><option value="coinbase">Coinbase Wallet</option><option value="phantom">Phantom</option><option value="ledger">Ledger</option></select></label><label><span>Address</span><input name="address" type="text" maxlength="128" placeholder="Auto-filled for browser EVM wallets"></label><label><span>Label</span><input name="label" type="text" maxlength="64" placeholder="Main USDC wallet"></label><button class="button" type="submit">Connect wallet</button></form><div class="card-meta"><span>USDC</span><span>USDT</span><span>EURC</span><span>Base</span><span>Arbitrum</span><span>Solana</span></div><p class="muted-copy">Read-only wallet tracking only. No private keys, no custody, no stablecoin transfer button, and no card checkout in this MVP.</p></section>${teamPanel}${session.authenticated && !riskAccepted ? `<section class="drawer-section"><h3>Risk disclosure</h3><p class="muted-copy">Paper trading, signal research, and wallet tracking are informational tools. They are not investment advice, live execution, custody, or guaranteed returns.</p><button class="button" type="button" data-accept-risk>Accept risk disclosure</button></section>` : ""}<section class="drawer-section"><h3>Connected wallets</h3>${wallets.length ? `<div class="compact-list">${wallets.map(renderWalletCompact).join("")}</div>` : `<p class="muted-copy">No wallets connected yet.</p>`}</section>`,
     footer: `<a class="button secondary" href="/connections">API connections</a><button class="button" type="button" data-close-drawer>Close</button>`,
   });
 }
@@ -2774,7 +2844,7 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-exchange-catalog-id], [data-exchange-test], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order]");
+    const target = event.target.closest("[data-command-url], [data-open-dataset], [data-open-asset], [data-add-idea], [data-promote-idea], [data-run-backtest], [data-open-template], [data-open-trader], [data-preview-order], [data-social-method], [data-open-license], [data-connection-detail], [data-connector-diagnostic], [data-exchange-catalog-id], [data-exchange-test], [data-open-lesson], [data-open-account], [data-accept-risk], [data-send-daily-summary], [data-close-drawer], [data-retry-page], [data-data-filter], [data-wallet-activity], [data-wallet-intelligence], [data-sec-intelligence], [data-trade-timeframe], [data-trade-view], [data-trade-intelligence], [data-place-paper-order], [data-leave-team]");
     if (!target) return;
     if (target.dataset.commandUrl) window.location.href = target.dataset.commandUrl;
     if (target.dataset.openDataset) openDataset(target.dataset.openDataset);
@@ -2817,6 +2887,9 @@ function bindGlobalEvents() {
     }
     if (target.dataset.exchangeTest) {
       runExchangeConnectionTest(target.dataset.exchangeTest);
+    }
+    if (target.dataset.leaveTeam) {
+      leavePlatformTeam(target.dataset.leaveTeam).catch((error) => showToast(error.message || "Unable to leave team."));
     }
  if (target.dataset.openLesson) openLesson(target.dataset.openLesson);
     if (target.hasAttribute("data-open-account")) openAccount();
@@ -2865,6 +2938,14 @@ function bindGlobalEvents() {
       if (event.target.id === "platform-wallet-form") {
         event.preventDefault();
         await connectPlatformWallet(event.target);
+      }
+      if (event.target.id === "platform-team-create-form") {
+        event.preventDefault();
+        await createPlatformTeam(event.target);
+      }
+      if (event.target.id === "platform-team-join-form") {
+        event.preventDefault();
+        await joinPlatformTeam(event.target);
       }
     } catch (error) {
       showToast(error.message || "Account action failed.");

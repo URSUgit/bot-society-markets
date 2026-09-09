@@ -96,10 +96,13 @@ from .models import (
     SimulationRunResult,
     StrategyBacktestRequest,
     StrategyCreateRequest,
+    StrategyDeploymentView,
     StrategyUpdateRequest,
     StrategyView,
     Summary,
     SystemPulseEnvelope,
+    TeamCreateRequest,
+    TeamJoinRequest,
     TradingOrderRequest,
     TradingOrderPreview,
     TradingRiskCheckResult,
@@ -1044,6 +1047,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return profile
 
+    @app.post("/api/v1/me/teams", response_model=UserProfile)
+    @app.post("/api/me/teams", response_model=UserProfile)
+    def create_team(payload: TeamCreateRequest, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).create_team(user_slug, payload))
+        audit_event(
+            request,
+            action="workspace.team_create",
+            resource_type="team",
+            actor_user_slug=user_slug,
+            after_state=payload.model_dump(),
+        )
+        return profile
+
+    @app.post("/api/v1/me/teams/join", response_model=UserProfile)
+    @app.post("/api/me/teams/join", response_model=UserProfile)
+    def join_team(payload: TeamJoinRequest, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).join_team(user_slug, payload))
+        audit_event(
+            request,
+            action="workspace.team_join",
+            resource_type="team",
+            actor_user_slug=user_slug,
+            after_state=payload.model_dump(),
+        )
+        return profile
+
+    @app.post("/api/v1/me/teams/{team_slug}/leave", response_model=UserProfile)
+    @app.post("/api/me/teams/{team_slug}/leave", response_model=UserProfile)
+    def leave_team(team_slug: str, request: Request) -> UserProfile:
+        user_slug = authenticated_user_slug(request)
+        profile = run_validated(lambda: get_service(request).leave_team(user_slug, team_slug))
+        audit_event(
+            request,
+            action="workspace.team_leave",
+            resource_type="team",
+            resource_id=team_slug,
+            actor_user_slug=user_slug,
+        )
+        return profile
+
     @app.get("/api/v1/me/billing", response_model=BillingSnapshot)
     @app.get("/api/me/billing", response_model=BillingSnapshot)
     def me_billing(request: Request) -> BillingSnapshot:
@@ -1487,6 +1532,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
         return run
+
+    @app.post("/api/v1/strategies/{strategy_id}/deploy", response_model=StrategyDeploymentView)
+    @app.post("/api/strategies/{strategy_id}/deploy", response_model=StrategyDeploymentView)
+    def deploy_strategy(strategy_id: int, request: Request) -> StrategyDeploymentView:
+        user_slug = authenticated_user_slug(request)
+        deployment = run_validated(lambda: get_service(request).deploy_strategy(user_slug, strategy_id))
+        audit_event(
+            request,
+            action="strategy.deploy",
+            resource_type="strategy",
+            resource_id=str(deployment.strategy.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "name": deployment.strategy.name,
+                "asset": deployment.strategy.config.asset,
+                "strategy_id": deployment.strategy.config.strategy_id,
+                "deployed": deployment.deployed,
+                "paper_order_id": deployment.paper_order.id if deployment.paper_order else None,
+            },
+        )
+        return deployment
 
     @app.post("/api/v1/me/notification-channels", response_model=UserProfile)
     @app.post("/api/me/notification-channels", response_model=UserProfile)
