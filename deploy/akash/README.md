@@ -405,6 +405,13 @@ Update the existing deployment through the crypto wallet CLI path:
 .\deploy\akash\trigger-github-cli-deploy.ps1 -Mode update -ConfirmSpend
 ```
 
+`update` mode is now resilient to stale deployment metadata. If the saved
+`AKASH_CLI_DSEQ` points to a closed deployment, the workflow first searches for
+another active lease owned by the deploy wallet. If no active lease exists, it
+falls back to a fresh `create` run and writes the new DSEQ/provider to the
+GitHub Actions summary. Copy that new DSEQ back into the `AKASH_CLI_DSEQ` secret
+when you want later updates to target it directly.
+
 If Neon/Postgres is temporarily blocked, the same CLI lane can render the
 single-service SQLite SDL:
 

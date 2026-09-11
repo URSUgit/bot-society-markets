@@ -445,11 +445,17 @@ resolve_latest_active_lease() {
   lease_count="$(jq -r '(.leases // []) | length' <<<"$leases_json")"
   if [ "$lease_count" = "0" ]; then
     echo "$leases_json" | jq '.'
+    if [ "$(bool_env "${AKASH_CLI_ALLOW_MISSING_ACTIVE_LEASE:-false}")" = "true" ]; then
+      return 1
+    fi
     fail "No active Akash lease was found for deploy wallet $AKASH_OWNER_ADDRESS. Create a new deployment in Akash Console or retry create mode after providers are bidding."
   fi
 
   if ! hydrate_resolved_lease_from_json "$leases_json" "${AKASH_PROVIDER:-}"; then
     echo "$leases_json" | jq '.'
+    if [ "$(bool_env "${AKASH_CLI_ALLOW_MISSING_ACTIVE_LEASE:-false}")" = "true" ]; then
+      return 1
+    fi
     fail "Could not parse an active Akash lease for deploy wallet $AKASH_OWNER_ADDRESS."
   fi
 
@@ -683,7 +689,16 @@ manifest_deployment() {
 
 update_deployment() {
   render_sdl
-  resolve_existing_or_latest_lease "${AKASH_DSEQ:-}"
+  if ! AKASH_CLI_ALLOW_MISSING_ACTIVE_LEASE=true resolve_existing_or_latest_lease "${AKASH_DSEQ:-}"; then
+    if [ "$(bool_env "${AKASH_CLI_UPDATE_CREATE_ON_MISSING:-true}")" = "true" ]; then
+      log "No active Akash lease is available for update; creating a fresh deployment instead."
+      AKASH_CLI_MODE="create"
+      unset AKASH_DSEQ
+      create_deployment
+      return
+    fi
+    fail "No active Akash lease is available for update and create fallback is disabled."
+  fi
   AKASH_DSEQ="$RESOLVED_DSEQ"
 
   log "Updating deployment hash for DSEQ $AKASH_DSEQ"

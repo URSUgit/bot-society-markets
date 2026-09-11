@@ -203,7 +203,7 @@ jobs:
           missing=()
           [ -z "$AKASH_CLI_MNEMONIC" ] && missing+=("AKASH_CLI_MNEMONIC")
 
-          if { [ "${{ steps.options.outputs.mode }}" = "update" ] || [ "${{ steps.options.outputs.mode }}" = "manifest" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
+          if { [ "${{ steps.options.outputs.mode }}" = "manifest" ] || [ "${{ steps.options.outputs.mode }}" = "close" ]; } && [ -z "$AKASH_CLI_DSEQ" ]; then
             missing+=("AKASH_CLI_DSEQ")
           fi
           if { [ "${{ steps.options.outputs.mode }}" != "status" ] && [ "${{ steps.options.outputs.mode }}" != "close" ]; } && [ "${{ steps.options.outputs.database_mode }}" != "sqlite" ] && [ -z "$BSM_DATABASE_URL" ]; then
