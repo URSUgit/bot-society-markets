@@ -412,6 +412,10 @@ falls back to a fresh `create` run and writes the new DSEQ/provider to the
 GitHub Actions summary. Copy that new DSEQ back into the `AKASH_CLI_DSEQ` secret
 when you want later updates to target it directly.
 
+Fresh create mode polls for open bids every few seconds and accepts one as soon
+as it appears. This avoids the common failure where providers bid quickly, the
+workflow waits too long, and every bid is closed before lease creation.
+
 If Neon/Postgres is temporarily blocked, the same CLI lane can render the
 single-service SQLite SDL:
 

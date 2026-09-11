@@ -255,6 +255,7 @@ jobs:
           BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS: ${{ vars.BSM_SOCIAL_DISCOVERY_INTERVAL_SECONDS || '1800' }}
           AKASH_EXTRA_ACCEPT_HOSTS: ${{ vars.AKASH_EXTRA_ACCEPT_HOSTS }}
           AKASH_BID_WAIT_SECONDS: ${{ vars.AKASH_BID_WAIT_SECONDS || '120' }}
+          AKASH_BID_POLL_SECONDS: ${{ vars.AKASH_BID_POLL_SECONDS || '8' }}
           IMAGE_REF: ${{ steps.options.outputs.image_ref }}
           WITH_WORKER: ${{ steps.options.outputs.with_worker }}
         run: |

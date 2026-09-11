@@ -257,6 +257,62 @@ select_open_bid_provider() {
   ' <<<"$bids_json"
 }
 
+wait_for_open_bids() {
+  local dseq="$1"
+  local wait_seconds="${AKASH_BID_WAIT_SECONDS:-120}"
+  local poll_seconds="${AKASH_BID_POLL_SECONDS:-8}"
+  local deadline=$((SECONDS + wait_seconds))
+  local bids_json
+  local bid_count
+
+  log "Polling up to ${wait_seconds}s for marketplace bids" >&2
+  while true; do
+    bids_json="$(provider-services query market bid list \
+      --owner "$AKASH_OWNER_ADDRESS" \
+      --dseq "$dseq" \
+      --state open \
+      "${AKASH_QUERY_FLAGS[@]}")"
+    bid_count="$(jq -r '(.bids // []) | length' <<<"$bids_json")"
+
+    if [ "$bid_count" != "0" ]; then
+      log "Found $bid_count open bid(s) for DSEQ $dseq" >&2
+      printf '%s\n' "$bids_json"
+      return 0
+    fi
+
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      printf '%s\n' "$bids_json"
+      return 1
+    fi
+
+    sleep "$poll_seconds"
+  done
+}
+
+print_closed_bid_summary() {
+  local dseq="$1"
+  local closed_json
+  closed_json="$(provider-services query market bid list \
+    --owner "$AKASH_OWNER_ADDRESS" \
+    --dseq "$dseq" \
+    --state closed \
+    "${AKASH_QUERY_FLAGS[@]}")"
+  jq '
+    {
+      closed_bid_count: ((.bids // []) | length),
+      sample:
+        ((.bids // [])
+          | map({
+              provider: (.bid.bid_id.provider // .bid.id.provider // .bid.provider // .bid_id.provider // null),
+              denom: (.bid.price.denom // null),
+              amount: (.bid.price.amount // null),
+              reclamation_window: (.bid.reclamation_window // null)
+            })
+          | .[0:8])
+    }
+  ' <<<"$closed_json"
+}
+
 render_sdl() {
   if [ -z "${IMAGE_REF:-}" ]; then
     fail "IMAGE_REF is required for manifest/create/update CLI deploys."
@@ -621,20 +677,33 @@ create_deployment() {
     log "Deployment created with DSEQ $dseq"
   fi
 
-  log "Waiting ${AKASH_BID_WAIT_SECONDS}s for marketplace bids"
-  sleep "$AKASH_BID_WAIT_SECONDS"
-
   local bids_json
-  bids_json="$(provider-services query market bid list --owner "$AKASH_OWNER_ADDRESS" --dseq "$dseq" --state open "${AKASH_QUERY_FLAGS[@]}")"
+  if ! bids_json="$(wait_for_open_bids "$dseq")"; then
+    echo "$bids_json" | jq '.'
+    log "Closed bid diagnostic for DSEQ $dseq"
+    print_closed_bid_summary "$dseq"
+    fail "No eligible open bid was available for DSEQ $dseq. Providers may have bid and expired before selection, or the selected provider filter was too narrow."
+  fi
 
   local provider
   provider="${AKASH_CLI_CREATE_PROVIDER:-}"
   if [ -z "$provider" ]; then
-    local exclude_providers="${AKASH_CLI_EXCLUDE_PROVIDERS:-}"
-    if [ -z "$exclude_providers" ] && [ -n "${AKASH_PROVIDER:-}" ]; then
-      exclude_providers="$AKASH_PROVIDER"
+    if [ -n "${AKASH_PROVIDER:-}" ]; then
+      local configured_provider_bid
+      configured_provider_bid="$(select_bid_field "$bids_json" "$AKASH_PROVIDER" provider)"
+      if [ -n "$configured_provider_bid" ] && [ "$configured_provider_bid" != "null" ]; then
+        provider="$AKASH_PROVIDER"
+        log "Using configured provider from open bids: $provider"
+      else
+        log "Configured provider did not submit an open bid; selecting another eligible provider."
+      fi
     fi
+  else
+    log "Using explicitly requested create provider $provider"
+  fi
 
+  if [ -z "$provider" ]; then
+    local exclude_providers="${AKASH_CLI_EXCLUDE_PROVIDERS:-}"
     local bid_count
     bid_count="$(jq -r '(.bids // []) | length' <<<"$bids_json")"
     if [ -n "$exclude_providers" ]; then
@@ -643,8 +712,6 @@ create_deployment() {
       log "Selecting provider from $bid_count open bid(s)."
     fi
     provider="$(select_open_bid_provider "$bids_json" "$exclude_providers")"
-  else
-    log "Using explicitly requested create provider $provider"
   fi
 
   if [ -z "$provider" ]; then
