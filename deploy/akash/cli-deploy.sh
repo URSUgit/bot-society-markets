@@ -385,6 +385,97 @@ resolve_lease_from_active() {
   fi
 }
 
+get_active_leases_json() {
+  local leases_json
+  leases_json="$(provider-services query market lease list \
+    --owner "$AKASH_OWNER_ADDRESS" \
+    --state active \
+    "${AKASH_QUERY_FLAGS[@]}")"
+
+  if [ "$(jq -r '(.leases // []) | length' <<<"$leases_json")" != "0" ]; then
+    printf '%s\n' "$leases_json"
+    return
+  fi
+
+  local rest_api="${AKASH_REST_API:-https://api.akashnet.net}"
+  local rest_json
+  rest_json="$(curl -fsS --get \
+    "${rest_api%/}/akash/market/v1beta5/leases/list" \
+    --data-urlencode "filters.owner=$AKASH_OWNER_ADDRESS" \
+    --data-urlencode "filters.state=active" \
+    --data-urlencode "pagination.limit=50")"
+  log "Queried active leases through Akash v1beta5 REST fallback" >&2
+  printf '%s\n' "$rest_json"
+}
+
+hydrate_resolved_lease_from_json() {
+  local leases_json="$1"
+  local preferred_provider="${2:-}"
+  local selected
+  selected="$(jq -c --arg provider "$preferred_provider" '
+    def lease_provider:
+      .lease.lease_id.provider // .lease.id.provider // .lease_id.provider // .bid_id.provider // empty;
+    def lease_dseq:
+      .lease.lease_id.dseq // .lease.id.dseq // .lease_id.dseq // .bid_id.dseq // empty;
+    def lease_gseq:
+      .lease.lease_id.gseq // .lease.id.gseq // .lease_id.gseq // .bid_id.gseq // "1";
+    def lease_oseq:
+      .lease.lease_id.oseq // .lease.id.oseq // .lease_id.oseq // .bid_id.oseq // "1";
+    ((.leases // []) | map(select(($provider == "") or (lease_provider == $provider))) | .[0])
+      // ((.leases // [])[0])
+      // empty
+  ' <<<"$leases_json")"
+
+  if [ -z "$selected" ] || [ "$selected" = "null" ]; then
+    return 1
+  fi
+
+  RESOLVED_DSEQ="$(jq -r '.lease.lease_id.dseq // .lease.id.dseq // .lease_id.dseq // .bid_id.dseq // empty' <<<"$selected")"
+  RESOLVED_PROVIDER="$(jq -r '.lease.lease_id.provider // .lease.id.provider // .lease_id.provider // .bid_id.provider // empty' <<<"$selected")"
+  RESOLVED_GSEQ="$(jq -r '.lease.lease_id.gseq // .lease.id.gseq // .lease_id.gseq // .bid_id.gseq // "1"' <<<"$selected")"
+  RESOLVED_OSEQ="$(jq -r '.lease.lease_id.oseq // .lease.id.oseq // .lease_id.oseq // .bid_id.oseq // "1"' <<<"$selected")"
+
+  [ -n "$RESOLVED_DSEQ" ] && [ -n "$RESOLVED_PROVIDER" ]
+}
+
+resolve_latest_active_lease() {
+  local leases_json
+  leases_json="$(get_active_leases_json)"
+  local lease_count
+  lease_count="$(jq -r '(.leases // []) | length' <<<"$leases_json")"
+  if [ "$lease_count" = "0" ]; then
+    echo "$leases_json" | jq '.'
+    fail "No active Akash lease was found for deploy wallet $AKASH_OWNER_ADDRESS. Create a new deployment in Akash Console or retry create mode after providers are bidding."
+  fi
+
+  if ! hydrate_resolved_lease_from_json "$leases_json" "${AKASH_PROVIDER:-}"; then
+    echo "$leases_json" | jq '.'
+    fail "Could not parse an active Akash lease for deploy wallet $AKASH_OWNER_ADDRESS."
+  fi
+
+  log "Discovered active Akash lease DSEQ $RESOLVED_DSEQ with provider $RESOLVED_PROVIDER"
+}
+
+resolve_existing_or_latest_lease() {
+  local requested_dseq="${1:-}"
+  if [ -n "$requested_dseq" ]; then
+    local leases_json
+    leases_json="$(get_active_lease_json "$requested_dseq")"
+    local lease_count
+    lease_count="$(jq -r '(.leases // []) | length' <<<"$leases_json")"
+    if [ "$lease_count" != "0" ] && hydrate_resolved_lease_from_json "$leases_json" "${AKASH_PROVIDER:-}"; then
+      log "Using configured active Akash lease DSEQ $RESOLVED_DSEQ with provider $RESOLVED_PROVIDER"
+      return
+    fi
+    log "Configured DSEQ $requested_dseq has no active lease; discovering current active lease for this deploy wallet."
+  else
+    log "AKASH_DSEQ is not set; discovering current active lease for this deploy wallet."
+  fi
+
+  resolve_latest_active_lease
+}
+
+
 write_result_env() {
   local dseq="$1"
   local provider="${2:-}"
@@ -591,12 +682,9 @@ manifest_deployment() {
 }
 
 update_deployment() {
-  if [ -z "${AKASH_DSEQ:-}" ]; then
-    fail "AKASH_DSEQ is required for update mode."
-  fi
-
   render_sdl
-  resolve_lease_from_active "$AKASH_DSEQ"
+  resolve_existing_or_latest_lease "${AKASH_DSEQ:-}"
+  AKASH_DSEQ="$RESOLVED_DSEQ"
 
   log "Updating deployment hash for DSEQ $AKASH_DSEQ"
   provider-services tx deployment update "$AKASH_SDL_PATH" \
