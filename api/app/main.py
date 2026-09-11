@@ -95,7 +95,11 @@ from .models import (
     SimulationRequest,
     SimulationRunResult,
     StrategyBacktestRequest,
+    StrategyBotControlRequest,
+    StrategyBotDeploymentView,
+    StrategyBotSnapshot,
     StrategyCreateRequest,
+    StrategyDeploymentRequest,
     StrategyDeploymentView,
     StrategyUpdateRequest,
     StrategyView,
@@ -1369,6 +1373,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return order
 
+    @app.get("/api/v1/trading/bots", response_model=StrategyBotSnapshot)
+    @app.get("/api/trading/bots", response_model=StrategyBotSnapshot)
+    def strategy_bot_snapshot(request: Request) -> StrategyBotSnapshot:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).get_strategy_bot_snapshot(user_slug))
+
+    @app.get("/api/v1/trading/bots/{deployment_id}", response_model=StrategyBotDeploymentView)
+    @app.get("/api/trading/bots/{deployment_id}", response_model=StrategyBotDeploymentView)
+    def get_strategy_bot_deployment(deployment_id: int, request: Request) -> StrategyBotDeploymentView:
+        user_slug = authenticated_user_slug(request)
+        return run_validated(lambda: get_service(request).get_strategy_bot_deployment(user_slug, deployment_id))
+
+    def control_strategy_bot(deployment_id: int, action: str, payload: StrategyBotControlRequest | None, request: Request) -> StrategyBotDeploymentView:
+        user_slug = authenticated_user_slug(request)
+        deployment = run_validated(lambda: get_service(request).control_strategy_bot(user_slug, deployment_id, action, payload))
+        audit_event(
+            request,
+            action=f"strategy_bot.{action}",
+            resource_type="strategy_deployment",
+            resource_id=str(deployment.id),
+            actor_user_slug=user_slug,
+            after_state={
+                "status": deployment.status,
+                "kill_switch_active": deployment.kill_switch_active,
+                "reason": payload.reason if payload else None,
+            },
+        )
+        return deployment
+
+    @app.post("/api/v1/trading/bots/{deployment_id}/pause", response_model=StrategyBotDeploymentView)
+    @app.post("/api/trading/bots/{deployment_id}/pause", response_model=StrategyBotDeploymentView)
+    def pause_strategy_bot(
+        deployment_id: int,
+        request: Request,
+        payload: StrategyBotControlRequest | None = None,
+    ) -> StrategyBotDeploymentView:
+        return control_strategy_bot(deployment_id, "pause", payload, request)
+
+    @app.post("/api/v1/trading/bots/{deployment_id}/resume", response_model=StrategyBotDeploymentView)
+    @app.post("/api/trading/bots/{deployment_id}/resume", response_model=StrategyBotDeploymentView)
+    def resume_strategy_bot(
+        deployment_id: int,
+        request: Request,
+        payload: StrategyBotControlRequest | None = None,
+    ) -> StrategyBotDeploymentView:
+        return control_strategy_bot(deployment_id, "resume", payload, request)
+
+    @app.post("/api/v1/trading/bots/{deployment_id}/kill", response_model=StrategyBotDeploymentView)
+    @app.post("/api/trading/bots/{deployment_id}/kill", response_model=StrategyBotDeploymentView)
+    def kill_strategy_bot(
+        deployment_id: int,
+        request: Request,
+        payload: StrategyBotControlRequest | None = None,
+    ) -> StrategyBotDeploymentView:
+        return control_strategy_bot(deployment_id, "kill", payload, request)
+
     @app.get("/api/v1/simulation/config", response_model=SimulationConfig)
     @app.get("/api/simulation/config", response_model=SimulationConfig)
     def simulation_config(request: Request) -> SimulationConfig:
@@ -1535,9 +1595,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/v1/strategies/{strategy_id}/deploy", response_model=StrategyDeploymentView)
     @app.post("/api/strategies/{strategy_id}/deploy", response_model=StrategyDeploymentView)
-    def deploy_strategy(strategy_id: int, request: Request) -> StrategyDeploymentView:
+    def deploy_strategy(
+        strategy_id: int,
+        request: Request,
+        payload: StrategyDeploymentRequest | None = None,
+    ) -> StrategyDeploymentView:
         user_slug = authenticated_user_slug(request)
-        deployment = run_validated(lambda: get_service(request).deploy_strategy(user_slug, strategy_id))
+        deployment = run_validated(lambda: get_service(request).deploy_strategy(user_slug, strategy_id, payload))
         audit_event(
             request,
             action="strategy.deploy",
@@ -1550,6 +1614,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "strategy_id": deployment.strategy.config.strategy_id,
                 "deployed": deployment.deployed,
                 "paper_order_id": deployment.paper_order.id if deployment.paper_order else None,
+                "deployment_id": deployment.deployment_id,
+                "status": deployment.status,
+                "execution_mode": deployment.execution_mode,
+                "venue": deployment.venue,
             },
         )
         return deployment

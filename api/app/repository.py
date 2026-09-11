@@ -30,6 +30,8 @@ from .database import (
     social_trader_allocations_table,
     social_trader_events_table,
     social_traders_table,
+    strategy_deployment_events_table,
+    strategy_deployments_table,
     strategies_table,
     team_memberships_table,
     teams_table,
@@ -545,6 +547,86 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
+
+    def create_strategy_deployment(self, payload: dict[str, Any]) -> int:
+        stmt = strategy_deployments_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def get_strategy_deployment(self, user_slug: str, deployment_id: int) -> dict[str, Any] | None:
+        stmt = (
+            select(
+                strategy_deployments_table,
+                strategies_table.c.name.label("strategy_name"),
+                strategies_table.c.description.label("strategy_description"),
+                strategies_table.c.config_json.label("strategy_config_json"),
+            )
+            .join(strategies_table, strategies_table.c.id == strategy_deployments_table.c.strategy_id)
+            .where(
+                and_(
+                    strategy_deployments_table.c.user_slug == user_slug,
+                    strategy_deployments_table.c.id == deployment_id,
+                )
+            )
+        )
+        with self.database.connect() as connection:
+            return self._row(connection.execute(stmt))
+
+    def list_strategy_deployments(self, user_slug: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                strategy_deployments_table,
+                strategies_table.c.name.label("strategy_name"),
+                strategies_table.c.description.label("strategy_description"),
+                strategies_table.c.config_json.label("strategy_config_json"),
+            )
+            .join(strategies_table, strategies_table.c.id == strategy_deployments_table.c.strategy_id)
+            .where(strategy_deployments_table.c.user_slug == user_slug)
+            .order_by(desc(strategy_deployments_table.c.updated_at), desc(strategy_deployments_table.c.id))
+            .limit(limit)
+        )
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
+
+    def update_strategy_deployment(self, user_slug: str, deployment_id: int, payload: dict[str, Any]) -> int:
+        if not payload:
+            return 0
+        stmt = (
+            update(strategy_deployments_table)
+            .where(
+                and_(
+                    strategy_deployments_table.c.user_slug == user_slug,
+                    strategy_deployments_table.c.id == deployment_id,
+                )
+            )
+            .values(**payload)
+        )
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            return max(0, result.rowcount or 0)
+
+    def create_strategy_deployment_event(self, payload: dict[str, Any]) -> int:
+        stmt = strategy_deployment_events_table.insert().values(**payload)
+        with self.database.connect() as connection:
+            result = connection.execute(stmt)
+            inserted = result.inserted_primary_key[0] if result.inserted_primary_key else None
+            return int(inserted or 0)
+
+    def list_strategy_deployment_events(
+        self,
+        user_slug: str,
+        *,
+        deployment_id: int | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        stmt = select(strategy_deployment_events_table).where(strategy_deployment_events_table.c.user_slug == user_slug)
+        if deployment_id is not None:
+            stmt = stmt.where(strategy_deployment_events_table.c.deployment_id == deployment_id)
+        stmt = stmt.order_by(desc(strategy_deployment_events_table.c.created_at), desc(strategy_deployment_events_table.c.id)).limit(limit)
+        with self.database.connect() as connection:
+            return self._rows(connection.execute(stmt))
 
     def get_latest_pipeline_run(self) -> dict[str, Any] | None:
         stmt = select(pipeline_runs_table).order_by(desc(pipeline_runs_table.c.started_at), desc(pipeline_runs_table.c.id)).limit(1)

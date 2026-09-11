@@ -161,9 +161,15 @@ from .models import (
     SimulationStrategyResult,
     SimulationTradeView,
     BacktestRunView,
+    StrategyBotControlRequest,
+    StrategyBotDeploymentView,
+    StrategyBotEventView,
+    StrategyBotSnapshot,
     StrategyBacktestRequest,
     StrategyCreateRequest,
+    StrategyDeploymentRequest,
     StrategyDeploymentView,
+    StrategyDeploymentStatus,
     StrategyUpdateRequest,
     StrategyView,
     Summary,
@@ -2576,7 +2582,13 @@ class BotSocietyService:
             raise ValueError("Unable to record backtest run")
         return self._backtest_run_view_from_row(row)
 
-    def deploy_strategy(self, user_slug: str, strategy_id: int) -> StrategyDeploymentView:
+    def deploy_strategy(
+        self,
+        user_slug: str,
+        strategy_id: int,
+        payload: StrategyDeploymentRequest | None = None,
+    ) -> StrategyDeploymentView:
+        request = payload or StrategyDeploymentRequest()
         repository = BotSocietyRepository(self.database)
         existing = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
         if not existing:
@@ -2599,36 +2611,112 @@ class BotSocietyService:
         config = strategy_view.config
         base_notional = float(config.starting_capital) * float(config.creator_max_exposure)
         performance_scale = clamp(0.35 + max(-0.15, total_return - benchmark_return) * 1.8 + win_rate * 0.2, 0.25, 1.0)
-        deployment_notional = round(min(self.settings.paper_starting_balance * 0.25, max(100.0, base_notional * performance_scale)), 2)
+        calculated_notional = min(self.settings.paper_starting_balance * 0.25, max(100.0, base_notional * performance_scale))
+        deployment_notional = round(min(float(request.max_notional_usd), calculated_notional) if request.max_notional_usd else calculated_notional, 2)
 
         paper_order: TradingOrderView | None = None
         deployed = False
-        message = (
-            f"Strategy {strategy_view.name} backtested on {backtest_run.asset} and is ready for paper deployment."
-        )
-        try:
-            paper_order = self.place_trading_order(
-                user_slug,
-                TradingOrderRequest(
-                    venue="paper",
-                    asset=config.asset,
-                    side="buy",
-                    order_type="market",
-                    notional_usd=deployment_notional,
-                    is_paper=True,
-                    client_order_id=f"strategy-{strategy_id}-{backtest_run.id}-deploy",
-                ),
+        status: StrategyDeploymentStatus = "active"
+        message = f"Strategy {strategy_view.name} backtested on {backtest_run.asset} and is active in {request.execution_mode} mode."
+        blockers: list[str] = []
+        metadata = {
+            "total_return": total_return,
+            "benchmark_return": benchmark_return,
+            "win_rate": win_rate,
+            "requested": request.model_dump(mode="json"),
+            "deployment_notional_usd": deployment_notional,
+        }
+
+        if win_rate < request.min_backtest_win_rate:
+            status = "blocked"
+            message = (
+                f"Strategy {strategy_view.name} is blocked: backtest win rate {win_rate:.0%} is below "
+                f"the deployment minimum of {request.min_backtest_win_rate:.0%}."
             )
+            blockers.append(message)
+        elif request.place_initial_order:
+            try:
+                order_venue = request.venue
+                is_paper = request.execution_mode == "paper"
+                if request.execution_mode == "live" and order_venue in {"paper", "internal"}:
+                    order_venue = "interactivebrokers"
+                paper_order = self.place_trading_order(
+                    user_slug,
+                    TradingOrderRequest(
+                        venue=order_venue,
+                        asset=config.asset,
+                        side="buy",
+                        order_type="market",
+                        notional_usd=deployment_notional,
+                        is_paper=is_paper,
+                        client_order_id=f"strategy-{strategy_id}-{backtest_run.id}-deploy",
+                    ),
+                )
+                deployed = True
+                message = (
+                    f"Strategy {strategy_view.name} is active and opened an initial "
+                    f"{'paper' if paper_order.is_paper else 'live'} order for {paper_order.asset}."
+                )
+            except Exception as exc:
+                status = "blocked"
+                message = (
+                    f"Strategy {strategy_view.name} backtested on {backtest_run.asset} but deployment order "
+                    f"was blocked: {exc}"
+                )
+                blockers.append(str(exc))
+        else:
             deployed = True
-            message = (
-                f"Strategy {strategy_view.name} backtested on {backtest_run.asset} and opened a paper order "
-                f"for {paper_order.asset}."
-            )
-        except Exception as exc:
-            message = (
-                f"Strategy {strategy_view.name} backtested on {backtest_run.asset} but paper deployment was "
-                f"not opened: {exc}"
-            )
+            message = f"Strategy {strategy_view.name} is active with initial order disabled."
+
+        deployment_id = repository.create_strategy_deployment(
+            {
+                "user_slug": user_slug,
+                "strategy_id": strategy_id,
+                "status": status,
+                "execution_mode": request.execution_mode,
+                "venue": "paper" if request.execution_mode == "paper" and request.venue in {"paper", "internal"} else request.venue,
+                "max_notional_usd": request.max_notional_usd,
+                "max_position_pct": request.max_position_pct,
+                "daily_loss_limit_pct": request.daily_loss_limit_pct,
+                "max_open_positions": request.max_open_positions,
+                "min_backtest_win_rate": request.min_backtest_win_rate,
+                "kill_switch_active": status in {"blocked", "killed"},
+                "last_backtest_run_id": backtest_run.id,
+                "last_order_id": paper_order.id if paper_order else None,
+                "message": message,
+                "metadata_json": self._encode_json_payload({**metadata, "blockers": blockers}),
+                "created_at": deployed_at,
+                "updated_at": self._now(),
+                "stopped_at": deployed_at if status == "blocked" else None,
+            }
+        )
+        self._record_strategy_deployment_event(
+            repository,
+            deployment_id=deployment_id,
+            user_slug=user_slug,
+            event_type="backtest.complete",
+            severity="info",
+            message=(
+                f"Backtest recorded for {backtest_run.asset}: return {total_return:.2%}, "
+                f"benchmark {benchmark_return:.2%}, win rate {win_rate:.0%}."
+            ),
+            payload={"backtest_run_id": backtest_run.id, "summary": summary},
+        )
+        self._record_strategy_deployment_event(
+            repository,
+            deployment_id=deployment_id,
+            user_slug=user_slug,
+            event_type="deployment.status",
+            severity="error" if status == "blocked" else "info",
+            message=message,
+            payload={
+                "status": status,
+                "execution_mode": request.execution_mode,
+                "venue": request.venue,
+                "order_id": paper_order.id if paper_order else None,
+                "blockers": blockers,
+            },
+        )
 
         refreshed_row = repository.get_strategy(user_slug, strategy_id, include_inactive=True)
         if not refreshed_row:
@@ -2642,7 +2730,121 @@ class BotSocietyService:
             deployed_at=deployed_at,
             deployment_notional_usd=deployment_notional,
             message=message,
+            deployment_id=deployment_id,
+            status=status,
+            execution_mode=request.execution_mode,
+            venue="paper" if request.execution_mode == "paper" and request.venue in {"paper", "internal"} else request.venue,
         )
+
+    def get_strategy_bot_snapshot(self, user_slug: str) -> StrategyBotSnapshot:
+        repository = BotSocietyRepository(self.database)
+        if not repository.get_user(user_slug):
+            raise ValueError(f"User {user_slug} is not available")
+
+        deployments = [
+            self._strategy_bot_deployment_view_from_row(
+                repository,
+                row,
+                include_events=True,
+            )
+            for row in repository.list_strategy_deployments(user_slug, limit=50)
+        ]
+        recent_orders = self.list_trading_orders(user_slug, limit=12)
+        active_count = sum(1 for deployment in deployments if deployment.status == "active")
+        paused_count = sum(1 for deployment in deployments if deployment.status == "paused")
+        killed_count = sum(1 for deployment in deployments if deployment.status == "killed")
+        blocked_count = sum(1 for deployment in deployments if deployment.status == "blocked")
+        if deployments:
+            summary = (
+                f"{active_count} active, {paused_count} paused, {blocked_count} blocked, "
+                f"{killed_count} killed strategy bot deployment(s)."
+            )
+        else:
+            summary = "No deployed strategy bots yet. Deploy a saved strategy from the Strategies page."
+        return StrategyBotSnapshot(
+            generated_at=self._now(),
+            user_slug=user_slug,
+            active_count=active_count,
+            paused_count=paused_count,
+            killed_count=killed_count,
+            blocked_count=blocked_count,
+            deployments=deployments,
+            recent_orders=recent_orders,
+            venues=self.get_paper_venues().venues,
+            summary=summary,
+        )
+
+    def get_strategy_bot_deployment(self, user_slug: str, deployment_id: int) -> StrategyBotDeploymentView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_strategy_deployment(user_slug, deployment_id)
+        if not row:
+            raise ValueError("Strategy bot deployment not found")
+        return self._strategy_bot_deployment_view_from_row(repository, row, include_events=True)
+
+    def control_strategy_bot(
+        self,
+        user_slug: str,
+        deployment_id: int,
+        action: str,
+        payload: StrategyBotControlRequest | None = None,
+    ) -> StrategyBotDeploymentView:
+        repository = BotSocietyRepository(self.database)
+        row = repository.get_strategy_deployment(user_slug, deployment_id)
+        if not row:
+            raise ValueError("Strategy bot deployment not found")
+
+        normalized_action = action.strip().lower()
+        if normalized_action not in {"pause", "resume", "kill"}:
+            raise ValueError("Unsupported strategy bot control action")
+        current_status = str(row.get("status") or "active")
+        reason = (payload.reason if payload else None) or f"Manual {normalized_action} from control panel."
+        now = self._now()
+        updates: dict[str, object | None]
+        severity = "info"
+        if normalized_action == "pause":
+            if current_status == "killed":
+                raise ValueError("Killed strategy bots cannot be paused")
+            updates = {
+                "status": "paused",
+                "kill_switch_active": False,
+                "message": f"Paused: {reason}",
+                "updated_at": now,
+                "stopped_at": None,
+            }
+        elif normalized_action == "resume":
+            if current_status == "killed":
+                raise ValueError("Killed strategy bots cannot be resumed. Deploy the strategy again.")
+            updates = {
+                "status": "active",
+                "kill_switch_active": False,
+                "message": f"Resumed: {reason}",
+                "updated_at": now,
+                "stopped_at": None,
+            }
+        else:
+            severity = "warn"
+            updates = {
+                "status": "killed",
+                "kill_switch_active": True,
+                "message": f"Kill switch active: {reason}",
+                "updated_at": now,
+                "stopped_at": now,
+            }
+
+        repository.update_strategy_deployment(user_slug, deployment_id, updates)
+        self._record_strategy_deployment_event(
+            repository,
+            deployment_id=deployment_id,
+            user_slug=user_slug,
+            event_type=f"control.{normalized_action}",
+            severity=severity,
+            message=str(updates["message"]),
+            payload={"previous_status": current_status, "reason": reason},
+        )
+        updated = repository.get_strategy_deployment(user_slug, deployment_id)
+        if not updated:
+            raise ValueError("Strategy bot deployment not found")
+        return self._strategy_bot_deployment_view_from_row(repository, updated, include_events=True)
 
     def list_backtest_runs(
         self,
@@ -12996,4 +13198,98 @@ class BotSocietyService:
             filled_at=row.get("filled_at"),
             cancelled_at=row.get("cancelled_at"),
             metadata=metadata_payload if isinstance(metadata_payload, dict) else None,
+        )
+
+    def _record_strategy_deployment_event(
+        self,
+        repository: BotSocietyRepository,
+        *,
+        deployment_id: int,
+        user_slug: str,
+        event_type: str,
+        severity: str,
+        message: str,
+        payload: dict[str, object] | None = None,
+    ) -> int:
+        return repository.create_strategy_deployment_event(
+            {
+                "deployment_id": deployment_id,
+                "user_slug": user_slug,
+                "event_type": event_type,
+                "severity": severity,
+                "message": message,
+                "payload_json": self._encode_json_payload(payload),
+                "created_at": self._now(),
+            }
+        )
+
+    def _strategy_bot_event_view_from_row(self, row: dict) -> StrategyBotEventView:
+        payload = self._decode_json_payload(row.get("payload_json"))
+        return StrategyBotEventView(
+            id=int(row["id"]),
+            deployment_id=int(row["deployment_id"]),
+            event_type=str(row["event_type"]),
+            severity=str(row["severity"]),
+            message=str(row["message"]),
+            payload=payload if isinstance(payload, dict) else None,
+            created_at=str(row["created_at"]),
+        )
+
+    def _strategy_bot_deployment_view_from_row(
+        self,
+        repository: BotSocietyRepository,
+        row: dict,
+        *,
+        include_events: bool = False,
+    ) -> StrategyBotDeploymentView:
+        metadata = self._decode_json_payload(row.get("metadata_json"))
+        config_payload = self._decode_json_payload(row.get("strategy_config_json"))
+        asset = "Asset"
+        if isinstance(config_payload, dict):
+            asset = str(config_payload.get("asset") or asset).upper()
+        status = str(row.get("status") or "active")
+        if status not in {"active", "paused", "stopped", "killed", "blocked"}:
+            status = "blocked"
+        execution_mode = str(row.get("execution_mode") or "paper")
+        if execution_mode not in {"paper", "live"}:
+            execution_mode = "paper"
+        last_order = None
+        if row.get("last_order_id") is not None:
+            order_row = repository.get_order(str(row["user_slug"]), int(row["last_order_id"]))
+            if order_row:
+                last_order = self._trading_order_view_from_row(order_row)
+        events = []
+        if include_events:
+            events = [
+                self._strategy_bot_event_view_from_row(event)
+                for event in repository.list_strategy_deployment_events(
+                    str(row["user_slug"]),
+                    deployment_id=int(row["id"]),
+                    limit=8,
+                )
+            ]
+        return StrategyBotDeploymentView(
+            id=int(row["id"]),
+            user_slug=str(row["user_slug"]),
+            strategy_id=int(row["strategy_id"]),
+            strategy_name=str(row.get("strategy_name") or f"Strategy #{row['strategy_id']}"),
+            asset=asset,
+            status=status,
+            execution_mode=execution_mode,
+            venue=str(row.get("venue") or "paper"),
+            max_notional_usd=float(row["max_notional_usd"]) if row.get("max_notional_usd") is not None else None,
+            max_position_pct=float(row.get("max_position_pct") or 0.25),
+            daily_loss_limit_pct=float(row.get("daily_loss_limit_pct") or 0.05),
+            max_open_positions=int(row.get("max_open_positions") or 1),
+            min_backtest_win_rate=float(row.get("min_backtest_win_rate") or 0.45),
+            kill_switch_active=bool(row.get("kill_switch_active")),
+            last_backtest_run_id=int(row["last_backtest_run_id"]) if row.get("last_backtest_run_id") is not None else None,
+            last_order_id=int(row["last_order_id"]) if row.get("last_order_id") is not None else None,
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+            stopped_at=row.get("stopped_at"),
+            message=str(row.get("message") or ""),
+            metadata=metadata if isinstance(metadata, dict) else None,
+            last_order=last_order,
+            recent_events=events,
         )

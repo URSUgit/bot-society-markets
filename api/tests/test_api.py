@@ -2974,6 +2974,196 @@ def test_strategy_lab_persists_strategies_and_backtest_runs() -> None:
         }.issubset(actions)
 
 
+def test_strategy_bot_deployment_snapshot_and_controls() -> None:
+    settings = Settings(simulation_live_history=False)
+    strategy_config = {
+        "asset": "BTC",
+        "history_source_mode": "local",
+        "lookback_years": 1,
+        "strategy_id": "custom_creator",
+        "custom_strategy_name": "Control Bot",
+        "starting_capital": 10000,
+        "fee_bps": 8,
+        "fast_window": 2,
+        "slow_window": 4,
+        "mean_window": 3,
+        "breakout_window": 4,
+        "creator_trend_weight": 1.0,
+        "creator_mean_reversion_weight": 0.5,
+        "creator_breakout_weight": 0.8,
+        "creator_entry_score": 0.45,
+        "creator_exit_score": 0.25,
+        "creator_max_exposure": 0.5,
+        "creator_pullback_entry_pct": 0.02,
+        "creator_stop_loss_pct": 0.08,
+        "creator_take_profit_pct": 0.2,
+    }
+
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Bot Operator",
+                "email": "bot-operator@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+        user_slug = register_response.json()["user"]["slug"]
+
+        create_response = client.post(
+            "/api/v1/strategies",
+            json={"name": "Control Bot", "description": "Operator-controlled strategy bot.", "config": strategy_config},
+        )
+        assert create_response.status_code == 200
+        strategy = create_response.json()
+
+        deploy_response = client.post(
+            f"/api/v1/strategies/{strategy['id']}/deploy",
+            json={
+                "execution_mode": "paper",
+                "venue": "paper",
+                "place_initial_order": False,
+                "max_notional_usd": 750,
+                "max_position_pct": 0.2,
+                "daily_loss_limit_pct": 0.04,
+                "max_open_positions": 2,
+                "min_backtest_win_rate": 0,
+                "notes": "Control test deployment.",
+            },
+        )
+        assert deploy_response.status_code == 200
+        deploy_payload = deploy_response.json()
+        deployment_id = deploy_payload["deployment_id"]
+        assert deployment_id >= 1
+        assert deploy_payload["status"] == "active"
+        assert deploy_payload["execution_mode"] == "paper"
+        assert deploy_payload["venue"] == "paper"
+        assert deploy_payload["deployed"] is True
+        assert deploy_payload["paper_order"] is None
+
+        snapshot_response = client.get("/api/v1/trading/bots")
+        assert snapshot_response.status_code == 200
+        snapshot = snapshot_response.json()
+        assert snapshot["user_slug"] == user_slug
+        assert snapshot["active_count"] == 1
+        assert snapshot["deployments"][0]["id"] == deployment_id
+        assert snapshot["deployments"][0]["strategy_name"] == "Control Bot"
+        assert snapshot["deployments"][0]["asset"] == "BTC"
+        assert snapshot["deployments"][0]["max_notional_usd"] == 750
+        assert snapshot["deployments"][0]["recent_events"]
+        assert snapshot["venues"]
+
+        pause_response = client.post(
+            f"/api/v1/trading/bots/{deployment_id}/pause",
+            json={"reason": "Operator review before market open."},
+        )
+        assert pause_response.status_code == 200
+        assert pause_response.json()["status"] == "paused"
+        assert pause_response.json()["kill_switch_active"] is False
+
+        resume_response = client.post(
+            f"/api/v1/trading/bots/{deployment_id}/resume",
+            json={"reason": "Review complete."},
+        )
+        assert resume_response.status_code == 200
+        assert resume_response.json()["status"] == "active"
+
+        kill_response = client.post(
+            f"/api/v1/trading/bots/{deployment_id}/kill",
+            json={"reason": "Emergency stop test."},
+        )
+        assert kill_response.status_code == 200
+        killed = kill_response.json()
+        assert killed["status"] == "killed"
+        assert killed["kill_switch_active"] is True
+        assert killed["stopped_at"]
+        assert killed["recent_events"][0]["event_type"] == "control.kill"
+
+        resume_killed_response = client.post(
+            f"/api/v1/trading/bots/{deployment_id}/resume",
+            json={"reason": "Should require redeploy."},
+        )
+        assert resume_killed_response.status_code == 400
+        assert "cannot be resumed" in resume_killed_response.json()["detail"]
+
+        audit_response = client.get("/api/v1/system/audit", params={"actor_user_slug": user_slug})
+        assert audit_response.status_code == 200
+        actions = {entry["action"] for entry in audit_response.json()["audit_logs"]}
+        assert {"strategy_bot.pause", "strategy_bot.resume", "strategy_bot.kill"}.issubset(actions)
+
+
+def test_live_strategy_bot_deployment_is_persisted_as_blocked_when_gate_closed() -> None:
+    settings = Settings(simulation_live_history=False)
+    strategy_config = {
+        "asset": "BTC",
+        "history_source_mode": "local",
+        "lookback_years": 1,
+        "strategy_id": "custom_creator",
+        "custom_strategy_name": "Live Gate",
+        "starting_capital": 10000,
+        "fee_bps": 8,
+        "fast_window": 2,
+        "slow_window": 4,
+        "mean_window": 3,
+        "breakout_window": 4,
+        "creator_trend_weight": 1.0,
+        "creator_mean_reversion_weight": 0.5,
+        "creator_breakout_weight": 0.8,
+        "creator_entry_score": 0.45,
+        "creator_exit_score": 0.25,
+        "creator_max_exposure": 0.5,
+        "creator_pullback_entry_pct": 0.02,
+        "creator_stop_loss_pct": 0.08,
+        "creator_take_profit_pct": 0.2,
+    }
+
+    with build_client(settings) as client:
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "display_name": "Live Gate Operator",
+                "email": "live-gate-operator@example.com",
+                "password": "SuperSecure123",
+            },
+        )
+        assert register_response.status_code == 200
+
+        create_response = client.post(
+            "/api/v1/strategies",
+            json={"name": "Live Gate", "description": "Live gate blocked strategy bot.", "config": strategy_config},
+        )
+        assert create_response.status_code == 200
+        strategy = create_response.json()
+
+        deploy_response = client.post(
+            f"/api/v1/strategies/{strategy['id']}/deploy",
+            json={
+                "execution_mode": "live",
+                "venue": "interactivebrokers",
+                "place_initial_order": True,
+                "max_notional_usd": 100,
+                "min_backtest_win_rate": 0,
+            },
+        )
+        assert deploy_response.status_code == 200
+        deploy_payload = deploy_response.json()
+        assert deploy_payload["status"] == "blocked"
+        assert deploy_payload["execution_mode"] == "live"
+        assert deploy_payload["venue"] == "interactivebrokers"
+        assert deploy_payload["deployed"] is False
+        assert "blocked" in deploy_payload["message"].lower()
+
+        snapshot_response = client.get("/api/v1/trading/bots")
+        assert snapshot_response.status_code == 200
+        snapshot = snapshot_response.json()
+        assert snapshot["blocked_count"] == 1
+        deployment = snapshot["deployments"][0]
+        assert deployment["kill_switch_active"] is True
+        assert deployment["recent_events"][0]["severity"] == "error"
+        assert deployment["metadata"]["blockers"]
+
+
 def test_live_ibkr_trading_route_uses_live_connector_when_enabled() -> None:
     settings = Settings(
         ibkr_connection_mode="client_portal",

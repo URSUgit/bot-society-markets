@@ -652,6 +652,43 @@ backtest_runs_table = Table(
     Column("error_message", Text),
 )
 
+strategy_deployments_table = Table(
+    "strategy_deployments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("strategy_id", Integer, ForeignKey("strategies.id", ondelete="CASCADE"), nullable=False),
+    Column("status", String(32), nullable=False, default="active", server_default="active"),
+    Column("execution_mode", String(16), nullable=False, default="paper", server_default="paper"),
+    Column("venue", String(64), nullable=False, default="paper", server_default="paper"),
+    Column("max_notional_usd", Float),
+    Column("max_position_pct", Float, nullable=False, default=0.25, server_default="0.25"),
+    Column("daily_loss_limit_pct", Float, nullable=False, default=0.05, server_default="0.05"),
+    Column("max_open_positions", Integer, nullable=False, default=1, server_default="1"),
+    Column("min_backtest_win_rate", Float, nullable=False, default=0.45, server_default="0.45"),
+    Column("kill_switch_active", Boolean, nullable=False, default=False, server_default=text("false")),
+    Column("last_backtest_run_id", Integer, ForeignKey("backtest_runs.id", ondelete="SET NULL")),
+    Column("last_order_id", Integer, ForeignKey("orders.id", ondelete="SET NULL")),
+    Column("message", Text, nullable=False),
+    Column("metadata_json", Text),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    Column("stopped_at", String(64)),
+)
+
+strategy_deployment_events_table = Table(
+    "strategy_deployment_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("deployment_id", Integer, ForeignKey("strategy_deployments.id", ondelete="CASCADE"), nullable=False),
+    Column("user_slug", String(120), ForeignKey("users.slug", ondelete="CASCADE"), nullable=False),
+    Column("event_type", String(64), nullable=False),
+    Column("severity", String(16), nullable=False, default="info", server_default="info"),
+    Column("message", Text, nullable=False),
+    Column("payload_json", Text),
+    Column("created_at", String(64), nullable=False),
+)
+
 Index("idx_market_snapshots_asset_as_of", market_snapshots_table.c.asset, market_snapshots_table.c.as_of.desc())
 Index("idx_macro_snapshots_series_date", macro_snapshots_table.c.series_id, macro_snapshots_table.c.observation_date.desc())
 Index("idx_signals_source_type_observed_at", signals_table.c.source_type, signals_table.c.observed_at.desc())
@@ -714,6 +751,11 @@ Index("idx_audit_logs_action_created", audit_logs_table.c.action, audit_logs_tab
 Index("idx_strategies_user_updated", strategies_table.c.user_slug, strategies_table.c.updated_at.desc())
 Index("idx_backtest_runs_user_completed", backtest_runs_table.c.user_slug, backtest_runs_table.c.completed_at.desc())
 Index("idx_backtest_runs_strategy_completed", backtest_runs_table.c.strategy_id, backtest_runs_table.c.completed_at.desc())
+Index("idx_strategy_deployments_user_updated", strategy_deployments_table.c.user_slug, strategy_deployments_table.c.updated_at.desc())
+Index("idx_strategy_deployments_status_updated", strategy_deployments_table.c.status, strategy_deployments_table.c.updated_at.desc())
+Index("idx_strategy_deployments_strategy_status", strategy_deployments_table.c.strategy_id, strategy_deployments_table.c.status)
+Index("idx_strategy_deployment_events_deployment_created", strategy_deployment_events_table.c.deployment_id, strategy_deployment_events_table.c.created_at.desc())
+Index("idx_strategy_deployment_events_user_created", strategy_deployment_events_table.c.user_slug, strategy_deployment_events_table.c.created_at.desc())
 
 
 def _sqlite_url_for_path(path: Path) -> str:

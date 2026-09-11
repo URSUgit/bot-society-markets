@@ -16,6 +16,8 @@ PaperVenueStatus = Literal["ready", "needs_credentials", "manual_only", "watchli
 OrderSide = Literal["buy", "sell", "long", "short"]
 OrderType = Literal["market", "limit", "stop", "stop_limit", "trailing"]
 OrderStatus = Literal["pending", "open", "filled", "cancelled", "rejected"]
+StrategyExecutionMode = Literal["paper", "live"]
+StrategyDeploymentStatus = Literal["active", "paused", "stopped", "killed", "blocked"]
 LaunchReadinessLevel = Literal["selected", "building", "ready", "live"]
 BillingPlanKey = Literal["basic", "pro", "enterprise"]
 ConnectorState = Literal["live", "ready", "demo", "attention", "planned"]
@@ -805,6 +807,42 @@ class TradingOrderView(BaseModel):
     metadata: dict[str, object] | None = None
 
 
+class StrategyBotEventView(BaseModel):
+    id: int
+    deployment_id: int = Field(ge=1)
+    event_type: str
+    severity: str
+    message: str
+    payload: dict[str, object] | None = None
+    created_at: str
+
+
+class StrategyBotDeploymentView(BaseModel):
+    id: int
+    user_slug: str
+    strategy_id: int = Field(ge=1)
+    strategy_name: str
+    asset: str
+    status: StrategyDeploymentStatus
+    execution_mode: StrategyExecutionMode
+    venue: str
+    max_notional_usd: float | None = Field(default=None, ge=0)
+    max_position_pct: float = Field(ge=0, le=1)
+    daily_loss_limit_pct: float = Field(ge=0, le=1)
+    max_open_positions: int = Field(ge=1)
+    min_backtest_win_rate: float = Field(ge=0, le=1)
+    kill_switch_active: bool
+    last_backtest_run_id: int | None = Field(default=None, ge=1)
+    last_order_id: int | None = Field(default=None, ge=1)
+    created_at: str
+    updated_at: str
+    stopped_at: str | None = None
+    message: str
+    metadata: dict[str, object] | None = None
+    last_order: TradingOrderView | None = None
+    recent_events: list[StrategyBotEventView] = Field(default_factory=list)
+
+
 class PaperVenueCapability(BaseModel):
     label: str
     detail: str
@@ -845,6 +883,19 @@ class PaperVenuesSnapshot(BaseModel):
     venues: list[PaperVenueView] = Field(default_factory=list)
     activation_sequence: list[str] = Field(default_factory=list)
     safety_rules: list[str] = Field(default_factory=list)
+
+
+class StrategyBotSnapshot(BaseModel):
+    generated_at: str
+    user_slug: str
+    active_count: int = Field(ge=0)
+    paused_count: int = Field(ge=0)
+    killed_count: int = Field(ge=0)
+    blocked_count: int = Field(ge=0)
+    deployments: list[StrategyBotDeploymentView] = Field(default_factory=list)
+    recent_orders: list[TradingOrderView] = Field(default_factory=list)
+    venues: list[PaperVenueView] = Field(default_factory=list)
+    summary: str
 
 
 class WalletProfileView(BaseModel):
@@ -1071,6 +1122,37 @@ class StrategyBacktestRequest(BaseModel):
     config_override: SimulationRequest | None = None
 
 
+class StrategyDeploymentRequest(BaseModel):
+    execution_mode: StrategyExecutionMode = "paper"
+    venue: str = Field(default="paper", min_length=2, max_length=64)
+    place_initial_order: bool = True
+    max_notional_usd: float | None = Field(default=None, gt=0, le=100000000)
+    max_position_pct: float = Field(default=0.25, ge=0.01, le=1)
+    daily_loss_limit_pct: float = Field(default=0.05, ge=0.001, le=1)
+    max_open_positions: int = Field(default=1, ge=1, le=50)
+    min_backtest_win_rate: float = Field(default=0.45, ge=0, le=1)
+    notes: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_deployment_request(self) -> "StrategyDeploymentRequest":
+        self.venue = re.sub(r"[^A-Za-z0-9._-]", "", self.venue.strip().lower()) or "paper"
+        if self.execution_mode == "paper" and self.venue in {"internal", "paper"}:
+            self.venue = "paper"
+        if self.notes is not None:
+            self.notes = re.sub(r"\s+", " ", self.notes).strip() or None
+        return self
+
+
+class StrategyBotControlRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_reason(self) -> "StrategyBotControlRequest":
+        if self.reason is not None:
+            self.reason = re.sub(r"\s+", " ", self.reason).strip() or None
+        return self
+
+
 class StrategyView(BaseModel):
     id: int
     user_slug: str
@@ -1105,6 +1187,10 @@ class StrategyDeploymentView(BaseModel):
     deployed_at: str
     deployment_notional_usd: float = Field(ge=0)
     message: str
+    deployment_id: int | None = Field(default=None, ge=1)
+    status: StrategyDeploymentStatus | None = None
+    execution_mode: StrategyExecutionMode = "paper"
+    venue: str = "paper"
 
 
 class NotificationChannel(BaseModel):
