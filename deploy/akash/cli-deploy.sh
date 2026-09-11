@@ -257,6 +257,46 @@ select_open_bid_provider() {
   ' <<<"$bids_json"
 }
 
+get_bid_list_json() {
+  local dseq="$1"
+  local state="$2"
+  local bids_json="{}"
+  local bid_count="0"
+
+  if bids_json="$(provider-services query market bid list \
+    --owner "$AKASH_OWNER_ADDRESS" \
+    --dseq "$dseq" \
+    --state "$state" \
+    "${AKASH_QUERY_FLAGS[@]}")"; then
+    bid_count="$(jq -r '(.bids // []) | length' <<<"$bids_json")"
+    if [ "$bid_count" != "0" ]; then
+      printf '%s\n' "$bids_json"
+      return 0
+    fi
+  fi
+
+  # provider-services can lag the chain's current market query version. Use
+  # the public v1beta5 REST gateway as a read-only fallback for bid discovery.
+  local rest_api="${AKASH_REST_API:-https://api.akashnet.net}"
+  local rest_json
+  if rest_json="$(curl -fsS --get \
+    "${rest_api%/}/akash/market/v1beta5/bids/list" \
+    --data-urlencode "filters.owner=$AKASH_OWNER_ADDRESS" \
+    --data-urlencode "filters.dseq=$dseq" \
+    --data-urlencode "filters.state=$state" \
+    --data-urlencode "pagination.limit=50")"; then
+    local rest_count
+    rest_count="$(jq -r '(.bids // []) | length' <<<"$rest_json")"
+    if [ "$rest_count" != "0" ]; then
+      log "Resolved $rest_count $state bid(s) through the Akash v1beta5 REST fallback" >&2
+    fi
+    printf '%s\n' "$rest_json"
+    return 0
+  fi
+
+  printf '%s\n' "$bids_json"
+}
+
 wait_for_open_bids() {
   local dseq="$1"
   local wait_seconds="${AKASH_BID_WAIT_SECONDS:-120}"
@@ -267,11 +307,7 @@ wait_for_open_bids() {
 
   log "Polling up to ${wait_seconds}s for marketplace bids" >&2
   while true; do
-    bids_json="$(provider-services query market bid list \
-      --owner "$AKASH_OWNER_ADDRESS" \
-      --dseq "$dseq" \
-      --state open \
-      "${AKASH_QUERY_FLAGS[@]}")"
+    bids_json="$(get_bid_list_json "$dseq" open)"
     bid_count="$(jq -r '(.bids // []) | length' <<<"$bids_json")"
 
     if [ "$bid_count" != "0" ]; then
@@ -292,11 +328,7 @@ wait_for_open_bids() {
 print_closed_bid_summary() {
   local dseq="$1"
   local closed_json
-  closed_json="$(provider-services query market bid list \
-    --owner "$AKASH_OWNER_ADDRESS" \
-    --dseq "$dseq" \
-    --state closed \
-    "${AKASH_QUERY_FLAGS[@]}")"
+  closed_json="$(get_bid_list_json "$dseq" closed)"
   jq '
     {
       closed_bid_count: ((.bids // []) | length),
