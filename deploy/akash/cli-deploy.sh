@@ -591,8 +591,8 @@ send_manifest_to_provider() {
   local command_provider_url="$saved_provider_url"
   local command_tls_bootstrap="$saved_tls_bootstrap"
 
-  if [ -n "$saved_provider_url" ] && [ -n "${AKASH_PROVIDER:-}" ] && [ "$provider" != "$AKASH_PROVIDER" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
-    log "Skipping pinned provider URL/TLS bootstrap because selected provider differs from AKASH_PROVIDER."
+  if [ -n "$saved_provider_url" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
+    log "Ignoring pinned provider URL because AKASH_FORCE_PROVIDER_URL is not true; provider-services will resolve the selected provider endpoint from chain metadata."
     command_provider_url=""
     command_tls_bootstrap="false"
   fi
@@ -640,8 +640,8 @@ status_deployment() {
 
     local saved_provider_url="${AKASH_PROVIDER_URL:-}"
     local saved_tls_bootstrap="${AKASH_PROVIDER_TLS_BOOTSTRAP:-}"
-    if [ -n "$saved_provider_url" ] && [ -n "${AKASH_PROVIDER:-}" ] && [ "$RESOLVED_PROVIDER" != "$AKASH_PROVIDER" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
-      log "Skipping pinned provider URL/TLS bootstrap for status because the active lease uses another provider."
+    if [ -n "$saved_provider_url" ] && [ "$(bool_env "${AKASH_FORCE_PROVIDER_URL:-false}")" != "true" ]; then
+      log "Ignoring pinned provider URL for status because AKASH_FORCE_PROVIDER_URL is not true."
       AKASH_PROVIDER_URL=""
       AKASH_PROVIDER_TLS_BOOTSTRAP="false"
     fi
