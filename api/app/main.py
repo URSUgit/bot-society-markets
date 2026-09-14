@@ -715,12 +715,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return get_service(request).get_leaderboard(current_user_slug(request))
 
     @app.get("/api/v1/social-trading", response_model=SocialTradingEnvelope)
+    @app.get("/api/v1/social/trading", response_model=SocialTradingEnvelope)
     @app.get("/api/social-trading", response_model=SocialTradingEnvelope)
     def social_trading(request: Request) -> SocialTradingEnvelope:
         user_slug = current_user_slug(request) or active_settings.default_user_slug
         return SocialTradingEnvelope(social_trading=get_service(request).get_social_trading_snapshot(user_slug))
 
     @app.get("/api/v1/social-traders", response_model=list[SocialTraderScorecard])
+    @app.get("/api/v1/social/traders", response_model=list[SocialTraderScorecard])
     @app.get("/api/social-traders", response_model=list[SocialTraderScorecard])
     def social_traders(request: Request) -> list[SocialTraderScorecard]:
         user_slug = current_user_slug(request) or active_settings.default_user_slug
@@ -743,6 +745,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/api/v1/social-traders/discover", response_model=SocialDiscoveryRunResult)
+    @app.post("/api/v1/social/traders/discover", response_model=SocialDiscoveryRunResult)
     @app.post("/api/social-traders/discover", response_model=SocialDiscoveryRunResult)
     def discover_social_traders(request: Request) -> SocialDiscoveryRunResult:
         result = get_service(request).refresh_social_trader_discovery()
@@ -759,6 +762,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return result
 
     @app.post("/api/v1/social-traders/analyze", response_model=SocialDiscoveryRunResult)
+    @app.post("/api/v1/social/traders/analyze", response_model=SocialDiscoveryRunResult)
     @app.post("/api/social-traders/analyze", response_model=SocialDiscoveryRunResult)
     def analyze_social_trader(
         payload: SocialTraderAnalyzeRequest,
@@ -780,6 +784,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return result
 
     @app.post("/api/v1/social-traders/extract-signals", response_model=FinancialSignalExtractionResult)
+    @app.post("/api/v1/social/traders/extract-signals", response_model=FinancialSignalExtractionResult)
     @app.post("/api/social-traders/extract-signals", response_model=FinancialSignalExtractionResult)
     def extract_social_trader_signals(
         payload: FinancialSignalExtractionRequest,

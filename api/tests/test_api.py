@@ -725,6 +725,9 @@ def test_bootstrap_skips_live_youtube_discovery() -> None:
             traders_response = client.get("/api/social-traders")
             assert traders_response.status_code == 200
             assert traders_response.json()
+            slash_alias_response = client.get("/api/v1/social/traders")
+            assert slash_alias_response.status_code == 200
+            assert slash_alias_response.json()
             provider_status = client.get("/api/system/providers").json()["provider_status"]
             assert provider_status["social_discovery_provider_mode"] == "youtube"
             assert provider_status["social_discovery_provider_source"] == "youtube-data-api"
