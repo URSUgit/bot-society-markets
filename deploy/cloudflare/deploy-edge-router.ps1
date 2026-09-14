@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot "edge-router\wrangler.jsonc"
+    $ConfigPath = Join-Path $PSScriptRoot "..\..\wrangler.jsonc"
 }
 
 npx wrangler@latest deploy --config $ConfigPath

@@ -4,7 +4,7 @@
   "compatibility_date": "2026-04-28",
   "workers_dev": false,
   "vars": {
-    "ORIGIN_BASE_URL": "https://bitprivat-api.onrender.com"
+    "ORIGIN_BASE_URL": "https://9bmp7nkea5f7n3n6atdi6t4j64.ingress.codestan.fi"
   },
   "routes": [
     {
