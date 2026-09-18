@@ -8,10 +8,16 @@ param(
     [switch]$ExpectOperatorStrip,
     [switch]$ExpectSocialTrading,
     [switch]$RequireLiveOrigin,
-    [switch]$CheckDirectOrigin
+    [switch]$CheckDirectOrigin,
+    [ValidatePattern("^([0-9a-f]{7,40})?$")]
+    [string]$ExpectedRevision = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($ExpectedRevision -and -not $CheckDirectOrigin) {
+    throw "ExpectedRevision requires CheckDirectOrigin to verify the deployed application."
+}
 
 function Get-ResponseHeader {
     param(
@@ -206,14 +212,32 @@ if ($CheckDirectOrigin) {
         @{
             Name = "Direct origin pulse"
             Url = "$origin/api/v1/system/pulse?v=$cacheBust"
+            RequireLive = $true
             Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*system_pulse*" }
         },
         @{
             Name = "Direct origin social"
             Url = "$origin/api/social-trading?v=$cacheBust"
+            RequireLive = $true
             Assert = { param($r) $r.StatusCode -eq 200 -and $r.Content -like "*top_traders*" -and $r.Content -like "*safety_notes*" }
         }
     )
+    if ($ExpectedRevision) {
+        $checks += @{
+            Name = "Direct origin build revision"
+            Url = "$origin/health?v=$cacheBust"
+            RequireLive = $true
+            Assert = {
+                param($r)
+                if ($r.StatusCode -ne 200) { return $false }
+                $health = $r.Content | ConvertFrom-Json
+                $revision = [string]$health.build_revision
+                return $health.status -eq "ok" -and
+                    $revision -match "^[0-9a-f]{40}$" -and
+                    $revision.StartsWith($ExpectedRevision, [System.StringComparison]::Ordinal)
+            }
+        }
+    }
 }
 
 $results = foreach ($check in $checks) {

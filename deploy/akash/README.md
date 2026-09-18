@@ -249,9 +249,28 @@ Useful commands:
 ```powershell
 .\deploy\akash\deploy-production.ps1 -List
 .\deploy\akash\deploy-production.ps1 -ImageRef "ghcr.io/ursugit/bot-society-markets:sha-5684e60"
-.\deploy\akash\deploy-production.ps1 -NoVerify
 .\deploy\akash\deploy-production.ps1 -WithWorker
 ```
+
+## Deployment verification and retries
+
+Production workflows always require live API responses and direct-origin checks;
+the `verify` workflow input, `-NoVerify` wrapper option, and optional
+`BSM_REQUIRE_LIVE_ORIGIN_VERIFY` switch are no longer used. A snapshot response
+cannot pass these checks. Images must use `:sha-<commit>` tags. Newly published
+images embed the full commit in `/health` as `build_revision`, and verification
+checks that the direct origin runs the requested revision. Older images without
+that field will fail revision verification and must be rebuilt before deployment.
+
+CLI updates derive the canonical manifest hash with an unsigned, non-simulated
+CLI transaction and compare it with the deployment on chain. An unchanged hash
+skips the paid update transaction but still sends the manifest, so a failed
+manifest upload can be retried. Changed hashes must be confirmed on chain before
+upload. Transaction errors, malformed responses, or an unconfirmed hash stop the
+deployment. The existing spend confirmation is still required for update mode.
+
+Run deployment regression tests with `python -m pytest api/tests`; bash, jq and
+PowerShell are required for the deployment tests and checked explicitly in CI.
 
 ## Akash CLI Provider TLS
 
@@ -367,14 +386,13 @@ production secrets must remain in GitHub Actions.
   -Dseq "NEW_DSEQ" `
   -DatabaseMode postgres `
   -WithWorker `
-  -SocialDiscoveryProvider youtube `
-  -NoVerify
+  -SocialDiscoveryProvider youtube
 ```
 
 The workflow reads `BSM_DATABASE_URL` and `BSM_YOUTUBE_API_KEY` from GitHub
 Secrets. It does not print them or store them in the repository. After the
-workflow succeeds, verify the new ingress before closing the previous
-deployment.
+manifest upload, point Cloudflare at the new ingress and rerun the workflow
+to pass mandatory production verification before closing the previous deployment.
 
 `deploy/akash/console-air-production.yaml` is a production reference with
 explicit placeholders. Do not deploy it until both placeholders are replaced

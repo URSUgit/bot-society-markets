@@ -9,7 +9,6 @@ param(
     [switch]$List,
     [switch]$CreateNew,
     [switch]$WithWorker,
-    [switch]$NoVerify,
     [switch]$SkipImageCheck,
     [switch]$NoWatch
 )
@@ -42,7 +41,6 @@ function Get-DefaultImageRef {
 Assert-GitHubCliReady
 
 $resolvedImageRef = if ($ImageRef) { $ImageRef.Trim() } else { Get-DefaultImageRef }
-$verifyValue = if ($NoVerify) { "false" } else { "true" }
 $withWorkerValue = if ($WithWorker) { "true" } else { "false" }
 $skipImageCheckValue = if ($SkipImageCheck) { "true" } else { "false" }
 $modeValue = if ($List) {
@@ -60,7 +58,6 @@ $workflowArgs = @(
     "-f", "mode=$modeValue",
     "-f", "image_ref=$resolvedImageRef",
     "-f", "wait_seconds=$WaitSeconds",
-    "-f", "verify=$verifyValue",
     "-f", "with_worker=$withWorkerValue",
     "-f", "skip_image_check=$skipImageCheckValue",
     "-f", "social_discovery_provider=$SocialDiscoveryProvider"
@@ -92,4 +89,3 @@ if (-not $run) {
 
 Write-Output "Watching Akash Deploy run: $($run.url)"
 gh run watch $run.databaseId --repo $Repo --exit-status
-

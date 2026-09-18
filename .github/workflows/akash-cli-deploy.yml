@@ -38,11 +38,6 @@ on:
         required: false
         default: "90"
         type: string
-      verify:
-        description: Run production smoke verification after manifest/create/update.
-        required: false
-        default: true
-        type: boolean
       with_worker:
         description: Deploy the web + worker SDL instead of single web service.
         required: false
@@ -123,15 +118,14 @@ jobs:
           if [ -z "$mode" ]; then
             mode="update"
           fi
+          if [ "$mode" != "status" ] && [ "$mode" != "close" ] && ! [[ "$image_ref" =~ :sha-[0-9a-f]{7,40}$ ]]; then
+            echo "::error::Production deployment requires an immutable :sha-<commit> image tag."
+            exit 1
+          fi
 
           wait_seconds="${{ github.event.inputs.wait_seconds }}"
           if [ -z "$wait_seconds" ]; then
             wait_seconds="90"
-          fi
-
-          verify="${{ github.event.inputs.verify }}"
-          if [ -z "$verify" ]; then
-            verify="true"
           fi
 
           with_worker="${{ github.event.inputs.with_worker }}"
@@ -182,7 +176,6 @@ jobs:
             echo "mode=$mode"
             echo "image_ref=$image_ref"
             echo "wait_seconds=$wait_seconds"
-            echo "verify=$verify"
             echo "with_worker=$with_worker"
             echo "database_mode=$database_mode"
             echo "pricing_denom=$pricing_denom"
@@ -269,12 +262,13 @@ jobs:
           fi
 
       - name: Verify production
-        if: steps.secrets.outputs.configured == 'true' && steps.options.outputs.mode != 'status' && steps.options.outputs.mode != 'close' && steps.options.outputs.verify == 'true'
+        if: steps.secrets.outputs.configured == 'true' && steps.options.outputs.mode != 'status' && steps.options.outputs.mode != 'close'
         shell: pwsh
+        env:
+          DEPLOYED_IMAGE_REF: ${{ steps.options.outputs.image_ref }}
         run: |
           Start-Sleep -Seconds ([int]"${{ steps.options.outputs.wait_seconds }}")
-          if ("${{ vars.BSM_REQUIRE_LIVE_ORIGIN_VERIFY }}" -eq "true") {
-            ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -Attempts 5 -RetryDelaySeconds 5 -RequireLiveOrigin -CheckDirectOrigin
-          } else {
-            ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -Attempts 5 -RetryDelaySeconds 5
+          if ($env:DEPLOYED_IMAGE_REF -notmatch ':sha-(?<Revision>[0-9a-f]{7,40})$') {
+            throw "Production verification requires an immutable :sha-<commit> image tag."
           }
+          ./deploy/verify-production.ps1 -ExpectOperatorStrip -ExpectSocialTrading -Attempts 5 -RetryDelaySeconds 5 -RequireLiveOrigin -CheckDirectOrigin -ExpectedRevision $Matches.Revision

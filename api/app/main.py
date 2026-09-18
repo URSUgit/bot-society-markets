@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import json
 import logging
+import os
 from pathlib import Path
 from threading import Thread
 
@@ -336,7 +337,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
-        return {"status": "ok", "service": "bot-society-markets"}
+        return {
+            "status": "ok",
+            "service": "bot-society-markets",
+            "build_revision": os.getenv("BSM_BUILD_REVISION", "unknown"),
+        }
 
     @app.get("/api/v1/auth/session", response_model=AuthSessionSnapshot)
     @app.get("/api/auth/session", response_model=AuthSessionSnapshot)

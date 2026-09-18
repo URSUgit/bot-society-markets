@@ -29,8 +29,14 @@ jobs:
           pip install -r requirements.txt
           pip install pytest==9.0.2
 
+      - name: Check deployment test runtimes
+        run: |
+          command -v bash
+          command -v jq
+          command -v pwsh
+
       - name: Run test suite
-        run: python -m pytest api/tests/test_api.py
+        run: python -m pytest api/tests
 
   docker-build:
     runs-on: ubuntu-latest
