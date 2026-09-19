@@ -786,6 +786,42 @@ manifest_deployment() {
   log "Akash CLI manifest upload completed"
 }
 
+deployment_hash_from_chain() {
+  provider-services query deployment get \
+    --owner "$AKASH_OWNER_ADDRESS" \
+    --dseq "$AKASH_DSEQ" \
+    "${AKASH_QUERY_FLAGS[@]}" \
+    | jq -er '.deployment | (.hash // .version) | select(type == "string" and length > 0)'
+}
+
+desired_deployment_hash() {
+  # Generate an unsigned transaction with the CLI's own SDL parser. Do not
+  # hash the YAML text: Akash validates the canonical manifest hash instead.
+  # Override gas=auto: the CLI otherwise simulates even with --generate-only,
+  # and an unchanged hash is rejected during that simulation.
+  provider-services tx deployment update "$AKASH_SDL_PATH" \
+    --dseq "$AKASH_DSEQ" \
+    "${AKASH_TX_FLAGS[@]}" --generate-only --gas 0 \
+    | jq -er '[.body.messages[] | select(."@type" | endswith(".MsgUpdateDeployment"))
+        | (.hash // .version) | select(type == "string" and length > 0)]
+        | select(length == 1) | .[0]'
+}
+
+wait_for_deployment_hash() {
+  local expected_hash="$1"
+  local current_hash
+  local attempt
+  for ((attempt = 1; attempt <= 6; attempt++)); do
+    if current_hash="$(deployment_hash_from_chain)" && [ "$current_hash" = "$expected_hash" ]; then
+      return
+    fi
+    if [ "$attempt" -lt 6 ]; then
+      sleep "$AKASH_MANIFEST_WAIT_SECONDS"
+    fi
+  done
+  fail "The requested deployment hash was not confirmed on chain; manifest upload stopped."
+}
+
 update_deployment() {
   render_sdl
   if ! AKASH_CLI_ALLOW_MISSING_ACTIVE_LEASE=true resolve_existing_or_latest_lease "${AKASH_DSEQ:-}"; then
@@ -800,13 +836,21 @@ update_deployment() {
   fi
   AKASH_DSEQ="$RESOLVED_DSEQ"
 
-  log "Updating deployment hash for DSEQ $AKASH_DSEQ"
-  provider-services tx deployment update "$AKASH_SDL_PATH" \
-    --dseq "$AKASH_DSEQ" \
-    "${AKASH_TX_FLAGS[@]}" >/dev/null
-
-  log "Waiting ${AKASH_MANIFEST_WAIT_SECONDS}s before manifest upload"
-  sleep "$AKASH_MANIFEST_WAIT_SECONDS"
+  local desired_hash current_hash update_json
+  desired_hash="$(desired_deployment_hash)" || fail "Could not derive the requested deployment hash."
+  current_hash="$(deployment_hash_from_chain)" || fail "Could not read the existing deployment hash."
+  if [ "$current_hash" = "$desired_hash" ]; then
+    log "Deployment hash is unchanged; skipping the update transaction and retrying manifest delivery."
+  else
+    log "Updating deployment hash for DSEQ $AKASH_DSEQ"
+    update_json="$(provider-services tx deployment update "$AKASH_SDL_PATH" \
+      --dseq "$AKASH_DSEQ" \
+      "${AKASH_TX_FLAGS[@]}")" || fail "Akash deployment update transaction failed."
+    if ! jq -e '(.tx_response // .) | (.code == 0 or .code == "0")' <<<"$update_json" >/dev/null; then
+      fail "Akash deployment update returned an unsuccessful or unrecognized transaction result."
+    fi
+    wait_for_deployment_hash "$desired_hash"
+  fi
 
   log "Sending updated manifest to provider $RESOLVED_PROVIDER"
   send_manifest_to_provider "$AKASH_DSEQ" "$RESOLVED_PROVIDER"
@@ -881,4 +925,6 @@ export AKASH_SDL_PATH AKASH_DATABASE_MODE AKASH_PRICING_DENOM BSM_REAL_DATA_ONLY
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

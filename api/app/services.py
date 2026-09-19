@@ -250,6 +250,7 @@ from .social_intelligence import (
     YouTubeSocialDiscoveryProvider,
     slugify,
 )
+from .strategy_bot_controls import strategy_bot_control_updates
 from .utils import parse_timestamp, to_timestamp
 
 SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -2634,33 +2635,38 @@ class BotSocietyService:
                 f"the deployment minimum of {request.min_backtest_win_rate:.0%}."
             )
             blockers.append(message)
-        elif request.place_initial_order:
+        elif request.place_initial_order or request.execution_mode == "live":
             try:
                 order_venue = request.venue
                 is_paper = request.execution_mode == "paper"
                 if request.execution_mode == "live" and order_venue in {"paper", "internal"}:
                     order_venue = "interactivebrokers"
-                paper_order = self.place_trading_order(
-                    user_slug,
-                    TradingOrderRequest(
-                        venue=order_venue,
-                        asset=config.asset,
-                        side="buy",
-                        order_type="market",
-                        notional_usd=deployment_notional,
-                        is_paper=is_paper,
-                        client_order_id=f"strategy-{strategy_id}-{backtest_run.id}-deploy",
-                    ),
+                initial_order = TradingOrderRequest(
+                    venue=order_venue,
+                    asset=config.asset,
+                    side="buy",
+                    order_type="market",
+                    notional_usd=deployment_notional,
+                    is_paper=is_paper,
+                    client_order_id=f"strategy-{strategy_id}-{backtest_run.id}-deploy",
                 )
+                if request.place_initial_order:
+                    paper_order = self.place_trading_order(user_slug, initial_order)
+                else:
+                    # Disabling the first order must not bypass live activation gates.
+                    risk = self.check_trading_risk(user_slug, initial_order)
+                    if not risk.approved:
+                        raise ValueError(risk.blockers[0] if risk.blockers else "Deployment blocked by risk checks")
                 deployed = True
                 message = (
                     f"Strategy {strategy_view.name} is active and opened an initial "
                     f"{'paper' if paper_order.is_paper else 'live'} order for {paper_order.asset}."
+                    if paper_order else f"Strategy {strategy_view.name} is active with initial order disabled."
                 )
             except Exception as exc:
                 status = "blocked"
                 message = (
-                    f"Strategy {strategy_view.name} backtested on {backtest_run.asset} but deployment order "
+                    f"Strategy {strategy_view.name} backtested on {backtest_run.asset} but deployment "
                     f"was blocked: {exc}"
                 )
                 blockers.append(str(exc))
@@ -2794,44 +2800,28 @@ class BotSocietyService:
             raise ValueError("Strategy bot deployment not found")
 
         normalized_action = action.strip().lower()
-        if normalized_action not in {"pause", "resume", "kill"}:
-            raise ValueError("Unsupported strategy bot control action")
-        current_status = str(row.get("status") or "active")
+        current_status = str(row.get("status") or "")
+        kill_switch_active = bool(row.get("kill_switch_active"))
         reason = (payload.reason if payload else None) or f"Manual {normalized_action} from control panel."
         now = self._now()
-        updates: dict[str, object | None]
-        severity = "info"
-        if normalized_action == "pause":
-            if current_status == "killed":
-                raise ValueError("Killed strategy bots cannot be paused")
-            updates = {
-                "status": "paused",
-                "kill_switch_active": False,
-                "message": f"Paused: {reason}",
-                "updated_at": now,
-                "stopped_at": None,
-            }
-        elif normalized_action == "resume":
-            if current_status == "killed":
-                raise ValueError("Killed strategy bots cannot be resumed. Deploy the strategy again.")
-            updates = {
-                "status": "active",
-                "kill_switch_active": False,
-                "message": f"Resumed: {reason}",
-                "updated_at": now,
-                "stopped_at": None,
-            }
-        else:
-            severity = "warn"
-            updates = {
-                "status": "killed",
-                "kill_switch_active": True,
-                "message": f"Kill switch active: {reason}",
-                "updated_at": now,
-                "stopped_at": now,
-            }
-
-        repository.update_strategy_deployment(user_slug, deployment_id, updates)
+        updates = strategy_bot_control_updates(
+            current_status=current_status,
+            kill_switch_active=kill_switch_active,
+            action=normalized_action,
+            reason=reason,
+            now=now,
+        )
+        severity = "warn" if normalized_action == "kill" else "info"
+        if not repository.update_strategy_deployment(
+            user_slug,
+            deployment_id,
+            updates,
+            # A kill must still take effect if another operator just paused or
+            # resumed the bot. Other actions must never overwrite that kill.
+            expected_status=current_status if normalized_action != "kill" else None,
+            expected_kill_switch_active=kill_switch_active if normalized_action != "kill" else None,
+        ):
+            raise ValueError("Strategy bot state changed during this request. Refresh and try again.")
         self._record_strategy_deployment_event(
             repository,
             deployment_id=deployment_id,

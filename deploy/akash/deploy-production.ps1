@@ -9,7 +9,6 @@ param(
     [switch]$WithWorker,
     [switch]$CreateNew,
     [switch]$List,
-    [switch]$NoVerify,
     [switch]$SkipImageWorkflowCheck,
     [switch]$EnableAppCanonicalRedirects,
     [decimal]$DepositUsd = 5,
@@ -94,6 +93,10 @@ if (-not $CreateNew -and -not $Dseq) {
 }
 
 $activeImageRef = if ($ImageRef) { $ImageRef.Trim() } else { Get-CurrentImageRef }
+if ($activeImageRef -notmatch ':sha-(?<Revision>[0-9a-f]{7,40})$') {
+    throw "Production verification requires an immutable :sha-<commit> image tag."
+}
+$expectedRevision = $Matches.Revision
 if (-not $SkipImageWorkflowCheck) {
     Assert-ContainerImagePublished -ActiveImageRef $activeImageRef
 }
@@ -148,17 +151,15 @@ $updateArgs = @{
     WaitSeconds = $WaitSeconds
     ExpectOperatorStrip = $true
     ExpectSocialTrading = $true
+    Verify = $true
 }
+$updateArgs.ExpectedRevision = $expectedRevision
 if ($CreateNew) {
     $updateArgs.CreateNew = $true
     $updateArgs.DepositUsd = $DepositUsd
 } else {
     $updateArgs.Dseq = $Dseq
 }
-if (-not $NoVerify) {
-    $updateArgs.Verify = $true
-}
-
 & $updateScript @updateArgs
 
 Write-Output "Akash production deployment command completed."

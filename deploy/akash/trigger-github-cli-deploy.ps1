@@ -15,7 +15,6 @@ param(
     [int]$WaitSeconds = 90,
     [switch]$WithWorker,
     [switch]$ConfirmSpend,
-    [switch]$NoVerify,
     [switch]$NoWatch
 )
 
@@ -47,7 +46,6 @@ function Get-DefaultImageRef {
 Assert-GitHubCliReady
 
 $resolvedImageRef = if ($ImageRef) { $ImageRef.Trim() } else { Get-DefaultImageRef }
-$verifyValue = if ($NoVerify) { "false" } else { "true" }
 $withWorkerValue = if ($WithWorker) { "true" } else { "false" }
 $confirmSpendValue = if ($ConfirmSpend) { "true" } else { "false" }
 
@@ -62,7 +60,6 @@ $workflowArgs = @(
     "-f", "mode=$Mode",
     "-f", "image_ref=$resolvedImageRef",
     "-f", "wait_seconds=$WaitSeconds",
-    "-f", "verify=$verifyValue",
     "-f", "with_worker=$withWorkerValue",
     "-f", "database_mode=$DatabaseMode",
     "-f", "pricing_denom=$PricingDenom",

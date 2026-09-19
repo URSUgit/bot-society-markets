@@ -15,7 +15,8 @@ param(
     [int]$ApiMaxAttempts = 6,
     [int]$ApiRetryBaseSeconds = 5,
     [switch]$ExpectOperatorStrip,
-    [switch]$ExpectSocialTrading
+    [switch]$ExpectSocialTrading,
+    [string]$ExpectedRevision = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,6 +110,9 @@ function Invoke-ProductionVerification {
         RootUrl = $RootUrl
         ApiUrl = $ApiUrl
         StatusUrl = $StatusUrl
+        RequireLiveOrigin = $true
+        CheckDirectOrigin = $true
+        ExpectedRevision = $ExpectedRevision
     }
     if ($ExpectOperatorStrip) {
         $verifyArgs.ExpectOperatorStrip = $true

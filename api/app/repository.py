@@ -590,7 +590,15 @@ class BotSocietyRepository:
         with self.database.connect() as connection:
             return self._rows(connection.execute(stmt))
 
-    def update_strategy_deployment(self, user_slug: str, deployment_id: int, payload: dict[str, Any]) -> int:
+    def update_strategy_deployment(
+        self,
+        user_slug: str,
+        deployment_id: int,
+        payload: dict[str, Any],
+        *,
+        expected_status: str | None,
+        expected_kill_switch_active: bool | None,
+    ) -> int:
         if not payload:
             return 0
         stmt = (
@@ -603,6 +611,10 @@ class BotSocietyRepository:
             )
             .values(**payload)
         )
+        if expected_status is not None:
+            stmt = stmt.where(strategy_deployments_table.c.status == expected_status)
+        if expected_kill_switch_active is not None:
+            stmt = stmt.where(strategy_deployments_table.c.kill_switch_active == expected_kill_switch_active)
         with self.database.connect() as connection:
             result = connection.execute(stmt)
             return max(0, result.rowcount or 0)
